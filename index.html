@@ -74,7 +74,7 @@ button, input, select, textarea { font: inherit; color: inherit }
 .main { display: flex; flex-direction: column; gap: 14px; min-width: 0 }
 
 .sbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px }
-.sbar select, .sbar .title, .search { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; min-width: 0 }
+.sbar select, .sbar .title, .sbar input[type=date], .search { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; min-width: 0 }
 .sbar .title { flex: 1 1 180px }
 .btn { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; white-space: nowrap }
 .btn:hover { border-color: var(--muted) }
@@ -254,6 +254,7 @@ button, input, select, textarea { font: inherit; color: inherit }
     <section class="main">
       <div class="sbar" id="sbar">
         <select id="session" aria-label="Session"></select>
+        <input id="sdate" type="date" aria-label="Session date" title="Session date">
         <input class="title" id="stitle" aria-label="Session title" placeholder="Session title (optional)" maxlength="120">
         <button class="btn" id="new-session" type="button">New session</button>
         <button class="btn" id="copy-recap" type="button">Copy recap</button>
@@ -542,6 +543,8 @@ button, input, select, textarea { font: inherit; color: inherit }
       return '<option value="' + esc(s.id) + '"' + (s.id === S.cur ? ' selected' : '') + '>Session ' + esc(s.number || '?') + ' · ' + esc(fmtDate(s.createdAt || Date.now())) + '</option>';
     }).join('') || '<option value="">No sessions</option>';
     sel.disabled = !S.sessions.size;
+    var sd = $('sdate'); sd.disabled = !ok || !cur;
+    if (document.activeElement !== sd) { var dd = cur ? new Date(cur.createdAt || Date.now()) : null; sd.value = dd ? dd.getFullYear() + '-' + ('0' + (dd.getMonth() + 1)).slice(-2) + '-' + ('0' + dd.getDate()).slice(-2) : ''; }
     var ti = $('stitle'); if (document.activeElement !== ti) ti.value = cur ? (cur.title || '') : ''; ti.disabled = !ok || !cur;
     $('new-session').disabled = !ok; $('copy-recap').disabled = !cur;
     var gb = $('gen-summary'); gb.hidden = !(window.claude && typeof window.claude.use === 'function'); gb.disabled = !ok || !cur || !!S.gen; gb.textContent = S.gen ? 'Writing summary…' : (cur && cur.summary ? 'Regenerate summary' : 'Generate summary');
@@ -999,6 +1002,11 @@ button, input, select, textarea { font: inherit; color: inherit }
   $('filter').addEventListener('click', function (ev) { var b = ev.target.closest('[data-filter]'); if (b) { S.filter = b.dataset.filter; render(); } });
   $('search').addEventListener('input', function (ev) { S.q = ev.target.value; renderList(); });
   $('session').addEventListener('change', function (ev) { S.cur = ev.target.value; lsSet(LS_CUR, S.cur); S.confirmSession = false; render(); });
+  $('sdate').addEventListener('change', function (ev) {
+    var cur = S.sessions.get(S.cur), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ev.target.value); if (!cur || !m || !canWrite()) { render(); return; }
+    var d = new Date(cur.createdAt || Date.now()); d.setFullYear(+m[1], +m[2] - 1, +m[3]);
+    if (d.getTime() !== cur.createdAt) patch('sessions', cur.id, { createdAt: d.getTime() });
+  });
   $('stitle').addEventListener('change', function (ev) { if (S.cur) patch('sessions', S.cur, { title: ev.target.value.trim() }); });
   $('campaign').addEventListener('change', function (ev) { setCampaign(ev.target.value.trim()); });
   $('me').addEventListener('change', function (ev) { S.me = ev.target.value; lsSet(LS_ME, S.me); ev.target.blur(); render(); });
