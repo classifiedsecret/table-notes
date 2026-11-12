@@ -264,6 +264,11 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
 .led th { text-align: left; font: .68rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line) }
 .led td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: baseline; overflow-wrap: anywhere }
 .led .num { text-align: right; white-space: nowrap } .led .neg { color: var(--warn) }
+img.av { cursor: zoom-in }
+.lightbox { position: fixed; inset: 0; z-index: 40; background: rgb(0 0 0 / .82); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; cursor: zoom-out }
+.lightbox img { width: min(512px, 90vw, 78vh); height: auto; border-radius: 8px }
+.lightbox img.logo { background: #fff; padding: 12px }
+.lightbox p { margin: 0; color: #fff; font: 700 1rem var(--display); text-align: center }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: .9rem; max-width: calc(100% - 32px); z-index: 20 }
 .c-note{--c:var(--t-note)} .c-npc{--c:var(--t-npc)} .c-place{--c:var(--t-place)} .c-quest{--c:var(--t-quest)}
 .c-loot{--c:var(--t-loot)} .c-lore{--c:var(--t-lore)} .c-combat{--c:var(--t-combat)} .c-quote{--c:var(--t-quote)}
@@ -273,10 +278,10 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
   <header class="top">
     <input class="campaign" id="campaign" aria-label="Campaign name" placeholder="Name your campaign" maxlength="80">
     <nav class="tabs" aria-label="Views">
+      <a href="#party" id="tab-party">Party</a>
       <a href="#log" id="tab-log">Session log</a>
       <a href="#campaign" id="tab-campaign">Campaign index</a>
       <a href="#map" id="tab-map">Map overview</a>
-      <a href="#party" id="tab-party">Party</a>
       <a href="#npcs" id="tab-npcs">NPCs</a>
       <a href="#factions" id="tab-factions">Factions</a>
       <a href="#tavern" id="tab-tavern">Business</a>
@@ -379,6 +384,7 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
     <button class="btn primary" type="submit">Open notebook</button>
   </form>
 </div>
+<div class="lightbox" id="lightbox" hidden><img id="lightbox-img" alt=""><p id="lightbox-cap"></p></div>
 <div class="toast" id="toast" role="alert" hidden></div>
 
 <script>
@@ -578,7 +584,7 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
           '<div class="go"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-act="pcancel">Cancel</button></div></form></li>'; }
       var sheet = /^https?:\/\//i.test(m.url || '') ? '<a class="sheet" href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer">Character sheet ↗</a>' : '';
       return '<li class="' + (m.active === false ? 'away' : '') + '"><span class="who"><strong>' + esc(m.name || '') + (m.mine ? '<span class="you">you</span>' : '') + '</strong>' +
-        (sub ? '<small>' + esc(sub) + '</small>' : '') + (m.player ? '<small>Player: ' + esc(m.player) + '</small>' : '') + sheet + '</span><span class="side"><span class="act">' + act + '</span>' + (isImg(m.avatar) ? '<img class="av" src="' + esc(m.avatar) + '" alt="Portrait of ' + esc(m.name || '') + '">' : '') + '</span></li>';
+        (sub ? '<small>' + esc(sub) + '</small>' : '') + (m.player ? '<small>Player: ' + esc(m.player) + '</small>' : '') + sheet + '</span><span class="side"><span class="act">' + act + '</span>' + (isImg(m.avatar) ? '<img class="av" data-act="zoom" tabindex="0" role="button" title="Click to enlarge" src="' + esc(m.avatar) + '" alt="Portrait of ' + esc(m.name || '') + '">' : '') + '</span></li>';
     };
     var here = members.filter(function (m) { return m.active !== false; }), away = members.filter(function (m) { return m.active === false; });
     if (!(S.pedit && $('pform'))) $('rail-party').innerHTML = !members.length ? '<p class="hint">No characters yet. Add the ones at your table below; their names then autocomplete when you type @ in a note.</p>'
@@ -681,11 +687,13 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
     fr.onerror = function () { toast("That image couldn't be read. Try a different file."); };
     fr.onload = function () { var im = new Image();
       im.onerror = function () { toast("That image couldn't be read. Try a JPEG or PNG."); };
-      im.onload = function () { var n = 192, cv = document.createElement('canvas'); cv.width = cv.height = n;
+      im.onload = function () { var n = 512, cv = document.createElement('canvas'); cv.width = cv.height = n;
         var side = Math.min(im.width, im.height), sx = (im.width - side) / 2, sy = (im.height - side) * .25;
         if (fit) { var k = Math.min(n / im.width, n / im.height), w = im.width * k, h = im.height * k; cv.getContext('2d').drawImage(im, (n - w) / 2, (n - h) / 2, w, h); }
         else cv.getContext('2d').drawImage(im, sx, sy, side, side, 0, 0, n, n);
-        var url = fit ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', .85);
+        var url = fit ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', .82);
+        if (!fit) [.7, .55, .4].forEach(function (ql) { if (url.length > 120000) url = cv.toDataURL('image/jpeg', ql); });
+        if (fit && url.length > 140000) { var c2 = document.createElement('canvas'); c2.width = c2.height = n; var x2 = c2.getContext('2d'); x2.fillStyle = '#fff'; x2.fillRect(0, 0, n, n); x2.drawImage(cv, 0, 0); url = c2.toDataURL('image/jpeg', .85); }
         if (done) { done(url); return; }
         S.pavatar = url;
         var pv = $('pf-prev'); if (pv) { pv.src = S.pavatar; pv.hidden = false; $('pf-avclear').hidden = false; } };
@@ -1042,7 +1050,7 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
     var pt = svgPoint(ev.clientX, ev.clientY), x = Math.round(pt[0]), y = Math.round(pt[1]), n = S.placing;
     S.placing = null; S.sel = n; put('pins', slug(n), { name: n, x: x, y: y }); render();
   });
-  document.addEventListener('keydown', function (ev) { if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches && ev.target.matches('.m-pin, .m-pick')) { ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
+  document.addEventListener('keydown', function (ev) { if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches && ev.target.matches('.m-pin, .m-pick, img.av')) { ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
 
   /* ---------- NPC directory, factions, tavern ---------- */
   var STAND = ['Hostile', 'Unfriendly', 'Neutral', 'Friendly', 'Allied'];
@@ -1075,7 +1083,7 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
       var id = slug(r.name), d = S.npcs.get(id) || {}, open = S.npcOpen === id;
       return '<div class="card" data-npc="' + esc(id) + '" data-name="' + esc(r.name) + '"><div class="ctop"><h3>' + esc(r.name) + (d.attitude ? '<span class="pill st-' + esc(String(d.attitude).toLowerCase()) + '">' + esc(d.attitude) + '</span>' : '') +
         (S.npcs.has(id) && !r.entries.length ? '<span class="end">' + delBtn('npcs', id, r.name) + '</span>' : '') + '</h3>' +
-        (isImg(d.avatar) ? '<img class="av" src="' + esc(d.avatar) + '" alt="Picture of ' + esc(r.name) + '">' : '') + '</div>' +
+        (isImg(d.avatar) ? '<img class="av" data-act="zoom" tabindex="0" role="button" title="Click to enlarge" src="' + esc(d.avatar) + '" alt="Picture of ' + esc(r.name) + '">' : '') + '</div>' +
         '<div class="two2"><label class="fld">Attitude to us<select' + fa('npcs', id, 'attitude', r.name) + '>' + optHTML(STAND, d.attitude, 'Unknown') + '</select></label>' +
         '<label class="fld">Faction<select' + fa('npcs', id, 'faction', r.name) + '>' + optHTML(facs, d.faction, 'None') + '</select></label></div>' +
         '<label class="fld">Role<input' + fa('npcs', id, 'role', r.name) + ' value="' + esc(d.role || '') + '" maxlength="120" placeholder="Innkeeper, Harper agent, rival"></label>' +
@@ -1099,7 +1107,7 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
       var nm = String(f.name || ''), mine = notes[idx.map[fold(nm).toLowerCase()]] || [], open = S.facOpen === f.id;
       var members = Array.from(S.npcs.values()).filter(function (d) { return d.faction && String(d.faction).toLowerCase() === nm.toLowerCase(); }).map(function (d) { return d.name; });
       return '<div class="card" data-npc="' + esc(f.id) + '" data-piccoll="factions" data-name="' + esc(nm) + '"><div class="ctop"><h3>' + esc(nm) + (f.standing ? '<span class="pill st-' + esc(String(f.standing).toLowerCase()) + '">' + esc(f.standing) + '</span>' : '') + '<span class="end">' + delBtn('factions', f.id, nm) + '</span></h3>' +
-        (isImg(f.avatar) ? '<img class="av logo" src="' + esc(f.avatar) + '" alt="Logo of ' + esc(nm) + '">' : '') + '</div>' +
+        (isImg(f.avatar) ? '<img class="av logo" data-act="zoom" tabindex="0" role="button" title="Click to enlarge" src="' + esc(f.avatar) + '" alt="Logo of ' + esc(nm) + '">' : '') + '</div>' +
         '<div class="fld">Standing with the party<div class="scale" role="group" aria-label="Standing with ' + esc(nm) + '">' + STAND.map(function (st) { return '<button type="button" data-act="fstand" data-id="' + esc(f.id) + '" data-v="' + st + '" aria-pressed="' + (f.standing === st) + '"' + (ok ? '' : ' disabled') + '>' + st + '</button>'; }).join('') + '</div></div>' +
         '<label class="fld">Our contact<input' + fa('factions', f.id, 'contact') + ' value="' + esc(f.contact || '') + '" maxlength="120"></label>' +
         '<label class="fld">Favors, debts and notes<textarea' + fa('factions', f.id, 'notes') + ' maxlength="1500">' + esc(f.notes || '') + '</textarea></label>' +
@@ -1130,7 +1138,7 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
     else { var staff = Array.from(S.bizstaff.values()).sort(function (x, y) { return (x.order || 0) - (y.order || 0); });
       st.innerHTML = !staff.length ? '<p class="meta">No staff listed yet.</p>' : '<div class="cards">' + staff.map(function (m) {
         return '<div class="card" data-npc="' + esc(m.id) + '" data-piccoll="bizstaff" data-name="' + esc(m.name || '') + '"><div class="ctop"><h3>' + esc(m.name || '') + '<span class="end">' + delBtn('bizstaff', m.id, m.name) + '</span></h3>' +
-          (isImg(m.avatar) ? '<img class="av" src="' + esc(m.avatar) + '" alt="Picture of ' + esc(m.name || '') + '">' : '') + '</div>' +
+          (isImg(m.avatar) ? '<img class="av" data-act="zoom" tabindex="0" role="button" title="Click to enlarge" src="' + esc(m.avatar) + '" alt="Picture of ' + esc(m.name || '') + '">' : '') + '</div>' +
           '<div class="two2"><label class="fld">Role<input' + fa('bizstaff', m.id, 'role') + ' value="' + esc(m.role || '') + '" maxlength="80" placeholder="Barkeep, cook"></label>' +
           '<label class="fld">Wage<input' + fa('bizstaff', m.id, 'wage') + ' value="' + esc(m.wage || '') + '" maxlength="40" placeholder="2 gp per tenday"></label></div>' +
           '<label class="fld">Name<input' + fa('bizstaff', m.id, 'name') + ' value="' + esc(m.name || '') + '" maxlength="80"></label>' +
@@ -1231,6 +1239,7 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
   document.addEventListener('click', function (ev) {
     var b = ev.target.closest('[data-act]'); if (!b) return;
     var a = b.dataset.act, id = b.dataset.id, e = id && S.entries.get(id);
+    if (a === 'zoom') { var lb = $('lightbox'), li = $('lightbox-img'); li.src = b.src; li.alt = b.alt || ''; li.className = b.classList.contains('logo') ? 'logo' : ''; $('lightbox-cap').textContent = (b.alt || '').replace(/^(Portrait|Picture|Logo) of /, ''); lb.hidden = false; return; }
     if (a === 'first') return newSession();
     if (a === 'npcpicdel') { var pcl = b.dataset.coll || 'npcs', nd = S[pcl] && S[pcl].get(id); if (nd && canWrite()) patch(pcl, id, { avatar: '' }); return; }
     if (a === 'npcopen') { S.npcOpen = S.npcOpen === id ? null : id; return render(); }
@@ -1304,6 +1313,8 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
     if (S.pavatar !== undefined) upd.avatar = S.pavatar;
     patch('party', id, upd); S.pedit = null; S.pavatar = undefined; render();
   });
+  $('lightbox').addEventListener('click', function () { $('lightbox').hidden = true; });
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && !$('lightbox').hidden) $('lightbox').hidden = true; });
   window.addEventListener('hashchange', route);
 
   route();
