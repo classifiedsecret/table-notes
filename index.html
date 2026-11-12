@@ -424,9 +424,11 @@ button, input, select, textarea { font: inherit; color: inherit }
   var canWrite = function () { return S.mode === 'cloud' || S.mode === 'local'; };
 
   /* ---------- rendering ---------- */
-  function authorOf(e) { var m = e.by && S.party.get(e.by);
-    if (m) return 'Added by ' + (m.player ? m.player + ' (' + m.name + ')' : m.name);
-    return e.byName ? 'Added by ' + e.byName : 'Author not recorded'; }
+  function authorOf(e) {
+    var who = function (id, nm) { var m = id && S.party.get(id); return m ? (m.player ? m.player + ' (' + m.name + ')' : m.name) : (nm || ''); };
+    var a = who(e.by, e.byName), line = a ? 'Added by ' + a : 'Author not recorded';
+    if (e.editedAt) { var ed = who(e.editedBy, e.editedByName); line += '\nEdited by ' + (ed || 'someone (not recorded)') + ' · ' + fmtDate(e.editedAt) + ', ' + fmtTime(e.editedAt); }
+    return line; }
   function rowHTML(e, cross) {
     var t = TYPE[e.type] || TYPE.note, s = S.sessions.get(e.sessionId);
     var txt = S.editing === e.id
@@ -976,7 +978,7 @@ button, input, select, textarea { font: inherit; color: inherit }
     var id = S.editing; if (!id) return;
     var ta = $('edit-' + id), v = ta ? ta.value.trim() : '', cur = S.entries.get(id);
     S.editing = null; S.dirty = false;
-    if (save && cur && v && v !== cur.text) patch('entries', id, { text: v });
+    if (save && cur && v && v !== cur.text) { var me = S.party.get(S.me); patch('entries', id, { text: v, editedBy: me ? me.id : '', editedByName: me ? (me.player || me.name || '') : '', editedAt: Date.now() }); }
     render();
   }
   function recapText() {
