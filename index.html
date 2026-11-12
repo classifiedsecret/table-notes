@@ -9,9 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
-<!-- ============================================================
-     Firebase web app config for the shared notebook database.
-     ============================================================ -->
+<!-- Firebase web app config for the shared notebook database. -->
 <script>
 window.TABLE_NOTES_FIREBASE = {
   apiKey: "AIzaSyBnpqbcYHek_pilJjw9sq8cC6xCsCk8QKw",
@@ -64,6 +62,9 @@ button, input, select, textarea { font: inherit; color: inherit }
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 3px }
 .tabs a { text-decoration: none; color: var(--muted); padding: 5px 12px; border-radius: 5px; font-size: .9rem }
 .tabs a[aria-current="page"] { background: var(--ink); color: var(--bg) }
+.me { display: flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--muted) }
+.me select { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; max-width: 210px; color: var(--ink) }
+.me.ask select { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) }
 .status { font: .75rem var(--mono); color: var(--muted) }
 .status.bad { color: var(--warn) }
 
@@ -245,6 +246,7 @@ button, input, select, textarea { font: inherit; color: inherit }
       <a href="#map" id="tab-map">Map overview</a>
       <a href="#party" id="tab-party">Party</a>
     </nav>
+    <label class="me">You are <select id="me"></select></label>
     <span class="status" id="status" role="status">Connecting…</span>
   </header>
 
@@ -321,8 +323,9 @@ button, input, select, textarea { font: inherit; color: inherit }
     { k: 'combat', label: 'Combat', pre: '!' }, { k: 'quote', label: 'Quote', pre: '"' }
   ];
   var TYPE = {}; TYPES.forEach(function (t) { TYPE[t.k] = t; });
-  var LS = 'table-notes-v1', LS_CUR = 'table-notes-current', LS_PASS = 'table-notes-pass';
-  var S = { sessions: new Map(), entries: new Map(), party: new Map(), pins: new Map(), gen: null, pedit: null, pavatar: undefined, sel: null, placing: null, vb: null, campaign: '', mode: 'connecting', note: '',
+  var LS = 'table-notes-v1', LS_CUR = 'table-notes-current', LS_ME = 'table-notes-me', LS_PASS = 'table-notes-pass';
+  function lsGet0(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  var S = { sessions: new Map(), entries: new Map(), party: new Map(), pins: new Map(), me: lsGet0('table-notes-me'), gen: null, pedit: null, pavatar: undefined, sel: null, placing: null, vb: null, campaign: '', mode: 'connecting', note: '',
             cur: null, view: 'log', filter: 'all', q: '', type: 'note', editing: null, confirm: null, confirmSession: false, dirty: false };
   var db = null, queues = {};
   var $ = function (id) { return document.getElementById(id); };
@@ -421,6 +424,9 @@ button, input, select, textarea { font: inherit; color: inherit }
   var canWrite = function () { return S.mode === 'cloud' || S.mode === 'local'; };
 
   /* ---------- rendering ---------- */
+  function authorOf(e) { var m = e.by && S.party.get(e.by);
+    if (m) return 'Added by ' + (m.player ? m.player + ' (' + m.name + ')' : m.name);
+    return e.byName ? 'Added by ' + e.byName : 'Author not recorded'; }
   function rowHTML(e, cross) {
     var t = TYPE[e.type] || TYPE.note, s = S.sessions.get(e.sessionId);
     var txt = S.editing === e.id
@@ -434,7 +440,7 @@ button, input, select, textarea { font: inherit; color: inherit }
         '<button class="icon' + (e.pinned ? ' on' : '') + '" data-act="pin" data-id="' + esc(e.id) + '" aria-label="' + (e.pinned ? 'Unpin' : 'Pin') + '" title="' + (e.pinned ? 'Unpin' : 'Pin') + '">' + (e.pinned ? '★' : '☆') + '</button>' +
         '<button class="icon" data-act="del" data-id="' + esc(e.id) + '" aria-label="Delete note" title="Delete">✕</button>';
     }
-    return '<li class="row c-' + t.k + (e.done ? ' done' : '') + (t.k === 'quote' ? ' quote' : '') + '">' +
+    return '<li class="row c-' + t.k + (e.done ? ' done' : '') + (t.k === 'quote' ? ' quote' : '') + '" title="' + esc(authorOf(e)) + '">' +
       (cross ? '<button class="icon stag" data-act="goto" data-id="' + esc(e.sessionId) + '" title="Open this session">' + sLabel(s) + '</button>' : '<time>' + fmtTime(e.ts) + '</time>') +
       '<span class="ty">' + t.label + '</span>' +
       '<div class="tx" data-act="edit" data-id="' + esc(e.id) + '">' + txt + '</div>' +
@@ -521,6 +527,13 @@ button, input, select, textarea { font: inherit; color: inherit }
     $('tab-map').toggleAttribute('aria-current', S.view === 'map'); if (S.view === 'map') $('tab-map').setAttribute('aria-current', 'page');
     $('tab-party').toggleAttribute('aria-current', S.view === 'party'); if (S.view === 'party') $('tab-party').setAttribute('aria-current', 'page');
     var c = $('campaign'); if (document.activeElement !== c) c.value = S.campaign; c.disabled = !ok;
+    var ms = $('me');
+    if (!S.me) S.party.forEach(function (m) { if (m.mine && !S.me) S.me = m.id; });
+    if (document.activeElement !== ms) {
+      var mem = Array.from(S.party.values()).sort(function (a, b) { return (a.active === false) - (b.active === false) || (a.order || 0) - (b.order || 0); });
+      ms.innerHTML = '<option value="">Choose…</option>' + mem.map(function (m) { return '<option value="' + esc(m.id) + '"' + (m.id === S.me ? ' selected' : '') + '>' + esc(m.player ? m.player + ' (' + m.name + ')' : m.name || '') + '</option>'; }).join('');
+      ms.parentNode.hidden = !mem.length; ms.parentNode.classList.toggle('ask', !S.party.has(S.me));
+    }
 
     var cur = S.sessions.get(S.cur), sel = $('session');
     sel.innerHTML = sessionsSorted().map(function (s) {
@@ -954,7 +967,9 @@ button, input, select, textarea { font: inherit; color: inherit }
     var text = raw.trim(), type = S.type;
     TYPES.forEach(function (t) { if (t.pre && text.charAt(0) === t.pre) { type = t.k; text = text.slice(1).trim(); } });
     if (!text || !S.cur || !canWrite()) return false;
-    put('entries', newId('e'), { sessionId: S.cur, type: type, text: text, ts: Date.now(), pinned: false, done: false });
+    var me = S.party.get(S.me);
+    if (!me && S.party.size && !S.askedMe) { S.askedMe = true; toast('Choose who you are at the top of the page so your notes carry your name.'); }
+    put('entries', newId('e'), { sessionId: S.cur, type: type, text: text, ts: Date.now(), pinned: false, done: false, by: me ? me.id : '', byName: me ? (me.player || me.name || '') : '' });
     S.type = 'note'; return true;
   }
   function finishEdit(save) {
@@ -984,6 +999,7 @@ button, input, select, textarea { font: inherit; color: inherit }
   $('session').addEventListener('change', function (ev) { S.cur = ev.target.value; lsSet(LS_CUR, S.cur); S.confirmSession = false; render(); });
   $('stitle').addEventListener('change', function (ev) { if (S.cur) patch('sessions', S.cur, { title: ev.target.value.trim() }); });
   $('campaign').addEventListener('change', function (ev) { setCampaign(ev.target.value.trim()); });
+  $('me').addEventListener('change', function (ev) { S.me = ev.target.value; lsSet(LS_ME, S.me); ev.target.blur(); render(); });
   $('new-session').addEventListener('click', newSession);
   $('gen-summary').addEventListener('click', genSummary);
   $('copy-recap').addEventListener('click', function () {
