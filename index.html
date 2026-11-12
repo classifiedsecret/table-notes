@@ -241,6 +241,7 @@ button, input, select, textarea { font: inherit; color: inherit }
 .card h3 .end { margin-left: auto; font: 400 .85rem var(--body) }
 .ctop { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between } .ctop h3 { flex: 1; min-width: 0 }
 .card .av { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; border: 2px solid var(--accent); flex: none }
+.card .av.logo { object-fit: contain; border-color: var(--line); background: var(--bg) }
 .picrow { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center } .picrow .btn { padding-inline: 0; cursor: pointer }
 .fld { display: flex; flex-direction: column; gap: 2px; font: .68rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); min-width: 0 }
 .fld input, .fld select, .fld textarea, .addrow input, .addrow select { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; font: .92rem var(--body); color: var(--ink); text-transform: none; letter-spacing: 0; min-width: 0; width: 100% }
@@ -674,7 +675,7 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
   var SPECIES = ["Aarakocra", "Aasimar", "Astral Elf", "Autognome", "Bugbear", "Centaur", "Changeling", "Deep Gnome", "Dhampir", "Dragonborn", "Duergar", "Dwarf", "Eladrin", "Elf", "Fairy", "Firbolg", "Genasi", "Giff", "Githyanki", "Githzerai", "Gnome", "Goblin", "Goliath", "Grung", "Hadozee", "Half-Elf", "Half-Orc", "Halfling", "Harengon", "Hexblood", "Hobgoblin", "Human", "Kalashtar", "Kender", "Kenku", "Kobold", "Leonin", "Lizardfolk", "Locathah", "Loxodon", "Minotaur", "Orc", "Owlin", "Plasmoid", "Reborn", "Satyr", "Sea Elf", "Shadar-kai", "Shifter", "Simic Hybrid", "Tabaxi", "Thri-kreen", "Tiefling", "Tortle", "Triton", "Vedalken", "Verdan", "Warforged", "Yuan-ti"];
   var CLASSES = {"Artificer": ["Alchemist", "Armorer", "Artillerist", "Battle Smith", "Cartographer"], "Barbarian": ["Path of the Ancestral Guardian", "Path of the Battlerager", "Path of the Beast", "Path of the Berserker", "Path of the Giant", "Path of the Storm Herald", "Path of the Totem Warrior", "Path of the Wild Heart", "Path of Wild Magic", "Path of the World Tree", "Path of the Zealot"], "Bard": ["College of Creation", "College of Dance", "College of Eloquence", "College of Glamour", "College of Lore", "College of the Moon", "College of Spirits", "College of Swords", "College of Valor", "College of Whispers"], "Cleric": ["Arcana Domain", "Death Domain", "Forge Domain", "Grave Domain", "Knowledge Domain", "Life Domain", "Light Domain", "Nature Domain", "Order Domain", "Peace Domain", "Tempest Domain", "Trickery Domain", "Twilight Domain", "War Domain"], "Druid": ["Circle of Dreams", "Circle of the Land", "Circle of the Moon", "Circle of the Sea", "Circle of the Shepherd", "Circle of Spores", "Circle of Stars", "Circle of Wildfire"], "Fighter": ["Arcane Archer", "Banneret", "Battle Master", "Cavalier", "Champion", "Echo Knight", "Eldritch Knight", "Psi Warrior", "Rune Knight", "Samurai"], "Gunslinger": [], "Monk": ["Warrior of the Elements", "Warrior of Mercy", "Warrior of the Open Hand", "Warrior of Shadow", "Way of the Ascendant Dragon", "Way of the Astral Self", "Way of the Drunken Master", "Way of the Four Elements", "Way of the Kensei", "Way of the Long Death", "Way of Mercy", "Way of the Open Hand", "Way of Shadow", "Way of the Sun Soul"], "Paladin": ["Oath of the Ancients", "Oath of Conquest", "Oath of the Crown", "Oath of Devotion", "Oath of Glory", "Oath of the Noble Genies", "Oath of Redemption", "Oath of Vengeance", "Oath of the Watchers", "Oathbreaker"], "Ranger": ["Beast Master", "Drakewarden", "Fey Wanderer", "Gloom Stalker", "Horizon Walker", "Hunter", "Monster Slayer", "Swarmkeeper", "Winter Walker"], "Rogue": ["Arcane Trickster", "Assassin", "Inquisitive", "Mastermind", "Phantom", "Scion of the Three", "Scout", "Soulknife", "Swashbuckler", "Thief"], "Sorcerer": ["Aberrant Sorcery", "Clockwork Sorcery", "Divine Soul", "Draconic Sorcery", "Lunar Sorcery", "Shadow Magic", "Spellfire Sorcery", "Storm Sorcery", "Wild Magic Sorcery"], "Warlock": ["Archfey Patron", "Celestial Patron", "Fathomless Patron", "Fiend Patron", "Genie Patron", "Great Old One Patron", "Hexblade Patron", "Undead Patron", "Undying Patron"], "Wizard": ["Abjurer", "Bladesinger", "Chronurgy Magic", "Conjurer", "Diviner", "Enchanter", "Evoker", "Graviturgy Magic", "Illusionist", "Necromancer", "Order of Scribes", "Transmuter", "War Magic"]};
   var isImg = function (v) { return /^data:image\/(jpeg|png|webp);base64,/.test(v || ''); };
-  function readPortrait(file, done) {
+  function readPortrait(file, done, fit) {
     if (!file || !/^image\//.test(file.type)) { toast('That file is not an image.'); return; }
     var fr = new FileReader();
     fr.onerror = function () { toast("That image couldn't be read. Try a different file."); };
@@ -682,8 +683,9 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
       im.onerror = function () { toast("That image couldn't be read. Try a JPEG or PNG."); };
       im.onload = function () { var n = 192, cv = document.createElement('canvas'); cv.width = cv.height = n;
         var side = Math.min(im.width, im.height), sx = (im.width - side) / 2, sy = (im.height - side) * .25;
-        cv.getContext('2d').drawImage(im, sx, sy, side, side, 0, 0, n, n);
-        var url = cv.toDataURL('image/jpeg', .85);
+        if (fit) { var k = Math.min(n / im.width, n / im.height), w = im.width * k, h = im.height * k; cv.getContext('2d').drawImage(im, (n - w) / 2, (n - h) / 2, w, h); }
+        else cv.getContext('2d').drawImage(im, sx, sy, side, side, 0, 0, n, n);
+        var url = fit ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', .85);
         if (done) { done(url); return; }
         S.pavatar = url;
         var pv = $('pf-prev'); if (pv) { pv.src = S.pavatar; pv.hidden = false; $('pf-avclear').hidden = false; } };
@@ -693,12 +695,12 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
   document.addEventListener('change', function (ev) { if (ev.target.id === 'pf-avatar' && ev.target.files[0]) readPortrait(ev.target.files[0]); });
   function setPic(coll, id, name, url) { if (!canWrite() || !S[coll]) return; var cur = S[coll].get(id), d = cur ? body(cur) : {}; if (!d.name) d.name = name; d.avatar = url; put(coll, id, d); }
   document.addEventListener('change', function (ev) { var t = ev.target; if (!t.dataset || !t.dataset.npcpic || !t.files[0]) return;
-    var id = t.dataset.npcpic, nm = t.dataset.name, pc = t.dataset.piccoll || 'npcs'; readPortrait(t.files[0], function (url) { setPic(pc, id, nm, url); }); t.value = ''; t.blur(); });
-  document.addEventListener('paste', function (ev) { if ((S.view !== 'npcs' && S.view !== 'tavern') || !ev.clipboardData) return;
+    var id = t.dataset.npcpic, nm = t.dataset.name, pc = t.dataset.piccoll || 'npcs'; readPortrait(t.files[0], function (url) { setPic(pc, id, nm, url); }, pc === 'factions'); t.value = ''; t.blur(); });
+  document.addEventListener('paste', function (ev) { if (['npcs', 'tavern', 'factions'].indexOf(S.view) < 0 || !ev.clipboardData) return;
     var f = Array.prototype.filter.call(ev.clipboardData.files || [], function (x) { return /^image\//.test(x.type); })[0]; if (!f) return;
     var a = document.activeElement, card = (a && a.closest && a.closest('.card[data-npc]')) || document.querySelector('.card[data-npc]:hover');
-    if (!card) { toast(S.view === 'tavern' ? 'Point at a staff card, then paste the picture.' : 'Point at an NPC card, then paste the picture.'); return; }
-    ev.preventDefault(); var id = card.dataset.npc, nm = card.dataset.name, pc = card.dataset.piccoll || 'npcs'; readPortrait(f, function (url) { setPic(pc, id, nm, url); }); });
+    if (!card) { toast(S.view === 'tavern' ? 'Point at a staff card, then paste the picture.' : S.view === 'factions' ? 'Point at a faction card, then paste the logo.' : 'Point at an NPC card, then paste the picture.'); return; }
+    ev.preventDefault(); var id = card.dataset.npc, nm = card.dataset.name, pc = card.dataset.piccoll || 'npcs'; readPortrait(f, function (url) { setPic(pc, id, nm, url); }, pc === 'factions'); });
   document.addEventListener('paste', function (ev) { if (!S.pedit || !$('pform') || !ev.clipboardData) return;
     var f = Array.prototype.filter.call(ev.clipboardData.files || [], function (x) { return /^image\//.test(x.type); })[0]; if (f) { ev.preventDefault(); readPortrait(f); } });
   function optHTML(list, cur, blank) { var h = '<option value="">' + blank + '</option>', hit = false;
@@ -1096,10 +1098,13 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
     el.innerHTML = '<div class="cards">' + facs.map(function (f) {
       var nm = String(f.name || ''), mine = notes[idx.map[fold(nm).toLowerCase()]] || [], open = S.facOpen === f.id;
       var members = Array.from(S.npcs.values()).filter(function (d) { return d.faction && String(d.faction).toLowerCase() === nm.toLowerCase(); }).map(function (d) { return d.name; });
-      return '<div class="card"><h3>' + esc(nm) + (f.standing ? '<span class="pill st-' + esc(String(f.standing).toLowerCase()) + '">' + esc(f.standing) + '</span>' : '') + '<span class="end">' + delBtn('factions', f.id, nm) + '</span></h3>' +
+      return '<div class="card" data-npc="' + esc(f.id) + '" data-piccoll="factions" data-name="' + esc(nm) + '"><div class="ctop"><h3>' + esc(nm) + (f.standing ? '<span class="pill st-' + esc(String(f.standing).toLowerCase()) + '">' + esc(f.standing) + '</span>' : '') + '<span class="end">' + delBtn('factions', f.id, nm) + '</span></h3>' +
+        (isImg(f.avatar) ? '<img class="av logo" src="' + esc(f.avatar) + '" alt="Logo of ' + esc(nm) + '">' : '') + '</div>' +
         '<div class="fld">Standing with the party<div class="scale" role="group" aria-label="Standing with ' + esc(nm) + '">' + STAND.map(function (st) { return '<button type="button" data-act="fstand" data-id="' + esc(f.id) + '" data-v="' + st + '" aria-pressed="' + (f.standing === st) + '"' + (ok ? '' : ' disabled') + '>' + st + '</button>'; }).join('') + '</div></div>' +
         '<label class="fld">Our contact<input' + fa('factions', f.id, 'contact') + ' value="' + esc(f.contact || '') + '" maxlength="120"></label>' +
         '<label class="fld">Favors, debts and notes<textarea' + fa('factions', f.id, 'notes') + ' maxlength="1500">' + esc(f.notes || '') + '</textarea></label>' +
+        (ok ? '<p class="meta picrow"><label class="btn quiet">' + (isImg(f.avatar) ? 'Change logo' : 'Add logo') + '<input type="file" accept="image/*" data-npcpic="' + esc(f.id) + '" data-piccoll="factions" data-name="' + esc(nm) + '" hidden></label>' +
+          (isImg(f.avatar) ? '<button class="btn quiet danger" type="button" data-act="npcpicdel" data-coll="factions" data-id="' + esc(f.id) + '">Remove logo</button>' : '<span>or point here and press Ctrl+V</span>') + '</p>' : '') +
         (members.length ? '<p class="meta"><b>Members we know:</b> ' + members.map(esc).join(', ') + '</p>' : '') +
         (mine.length ? '<button class="btn quiet" type="button" data-act="facopen" data-id="' + esc(f.id) + '">' + (open ? 'Hide' : 'Show') + ' ' + mine.length + (mine.length === 1 ? ' note' : ' notes') + '</button>' : '<p class="meta">No notes mention them yet.</p>') +
         (open ? '<ul class="log">' + mine.map(function (e) { return rowHTML(e, true); }).join('') + '</ul>' : '') + '</div>';
