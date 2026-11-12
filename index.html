@@ -343,7 +343,8 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
         <form class="addrow wide" id="led-add" autocomplete="off">
           <input id="led-date" aria-label="In-game date" placeholder="In-game date" maxlength="40">
           <input id="led-text" aria-label="What it was for" placeholder="What it was for" maxlength="160">
-          <input id="led-amt" type="number" min="0" step="any" aria-label="Amount in gold pieces" placeholder="Amount (gp)">
+          <input id="led-amt" type="number" min="0" step="any" aria-label="Amount" placeholder="Amount">
+          <select id="led-cur" aria-label="Coin"><option value="pp">pp (platinum)</option><option value="gp" selected>gp (gold)</option><option value="ep">ep (electrum)</option><option value="sp">sp (silver)</option><option value="cp">cp (copper)</option></select>
           <select id="led-type" aria-label="Income or expense"><option value="1">Income</option><option value="-1">Expense</option></select>
           <button class="btn" type="submit">Add entry</button></form>
         <div id="tav-ledger"></div>
@@ -1101,7 +1102,12 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
         (open ? '<ul class="log">' + mine.map(function (e) { return rowHTML(e, true); }).join('') + '</ul>' : '') + '</div>';
     }).join('') + '</div>';
   }
-  var gp = function (n) { return (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 }); };
+  var COIN = { cp: 1, sp: 10, ep: 50, gp: 100, pp: 1000 };
+  var num = function (n) { return (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 }); };
+  /* ledger maths is done in whole copper pieces; older entries stored a gp amount */
+  function ledCp(r) { return typeof r.cp === 'number' ? r.cp : Math.round((Number(r.amount) || 0) * 100); }
+  function coins(cp) { cp = Math.abs(Math.round(cp)); var g = Math.floor(cp / 100), sv = Math.floor(cp % 100 / 10), c = cp % 10, out = [];
+    if (g || (!sv && !c)) out.push(g.toLocaleString() + ' gp'); if (sv) out.push(sv + ' sp'); if (c) out.push(c + ' cp'); return out.join(' '); }
   function renderTavern() {
     var ok = canWrite(), b = S.biz.get('main') || {}, info = $('tav-info'), st = $('tav-staff'), led = $('tav-ledger');
     ['staff-add', 'led-add'].forEach(function (f) { Array.prototype.forEach.call($(f).elements, function (x) { x.disabled = !ok; }); });
@@ -1121,10 +1127,10 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
           '<label class="fld">Name<input' + fa('bizstaff', m.id, 'name') + ' value="' + esc(m.name || '') + '" maxlength="80"></label>' +
           '<label class="fld">Notes<textarea' + fa('bizstaff', m.id, 'notes') + ' maxlength="800">' + esc(m.notes || '') + '</textarea></label></div>'; }).join('') + '</div>'; }
     var rows = Array.from(S.bizledger.values()).sort(function (x, y) { return (x.ts || 0) - (y.ts || 0); }), bal = 0;
-    var body = rows.map(function (r) { var a = Number(r.amount) || 0; bal += a;
-      return '<tr title="' + esc(r.by ? 'Added by ' + r.by : 'Author not recorded') + '"><td>' + esc(r.date || '') + '</td><td>' + esc(r.text || '') + '</td><td class="num' + (a < 0 ? ' neg' : '') + '">' + (a < 0 ? '−' : '+') + gp(Math.abs(a)) + '</td><td class="num' + (bal < 0 ? ' neg' : '') + '">' + (bal < 0 ? '−' : '') + gp(Math.abs(bal)) + '</td><td class="num">' + delBtn('bizledger', r.id, 'ledger entry') + '</td></tr>'; }).join('');
-    led.innerHTML = '<p class="balance' + (bal < 0 ? ' neg' : '') + '">' + (bal < 0 ? '−' : '') + gp(Math.abs(bal)) + ' gp<small>current balance</small></p>' +
-      (rows.length ? '<div class="tblwrap"><table class="led"><thead><tr><th>Date</th><th>Entry</th><th class="num">Amount (gp)</th><th class="num">Balance</th><th></th></tr></thead><tbody>' + body + '</tbody></table></div>' : '<p class="meta">No ledger entries yet.</p>');
+    var body = rows.map(function (r) { var a = ledCp(r), cur = COIN[r.cur] ? r.cur : 'gp', qty = typeof r.qty === 'number' ? r.qty : Math.abs(a) / 100; bal += a;
+      return '<tr title="' + esc(r.by ? 'Added by ' + r.by : 'Author not recorded') + '"><td>' + esc(r.date || '') + '</td><td>' + esc(r.text || '') + '</td><td class="num' + (a < 0 ? ' neg' : '') + '">' + (a < 0 ? '−' : '+') + num(qty) + ' ' + cur + '</td><td class="num' + (bal < 0 ? ' neg' : '') + '">' + (bal < 0 ? '−' : '') + coins(bal) + '</td><td class="num">' + delBtn('bizledger', r.id, 'ledger entry') + '</td></tr>'; }).join('');
+    led.innerHTML = '<p class="balance' + (bal < 0 ? ' neg' : '') + '">' + (bal < 0 ? '−' : '') + coins(bal) + '<small>current balance, all coins counted at their gold value</small></p>' +
+      (rows.length ? '<div class="tblwrap"><table class="led"><thead><tr><th>Date</th><th>Entry</th><th class="num">Amount</th><th class="num">Balance</th><th></th></tr></thead><tbody>' + body + '</tbody></table></div>' : '<p class="meta">No ledger entries yet.</p>');
   }
   document.addEventListener('change', function (ev) {
     var t = ev.target; if (!t.dataset || !t.dataset.f || !t.dataset.coll || !canWrite()) return;
@@ -1143,7 +1149,9 @@ table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-varia
     if (f === 'staff-add') { var sn = $('staff-name').value.trim(); if (!sn) return; put('bizstaff', newId('st'), { name: sn, role: '', wage: '', notes: '', order: Date.now() }); $('staff-name').value = ''; }
     if (f === 'led-add') { var amt = Number($('led-amt').value), tx = $('led-text').value.trim();
       if (!tx) { toast('Say what the money was for.'); return; } if (!(amt > 0)) { toast('Enter an amount greater than zero.'); return; }
-      var me = S.party.get(S.me); put('bizledger', newId('l'), { date: $('led-date').value.trim(), text: tx, amount: amt * Number($('led-type').value), ts: Date.now(), by: me ? (me.player || me.name || '') : '' });
+      var me = S.party.get(S.me); var cur = COIN[$('led-cur').value] ? $('led-cur').value : 'gp', cpv = Math.round(amt * COIN[cur]) * Number($('led-type').value);
+      if (!cpv) { toast('That amount is less than one copper piece.'); return; }
+      put('bizledger', newId('l'), { date: $('led-date').value.trim(), text: tx, qty: amt, cur: cur, cp: cpv, amount: cpv / 100, ts: Date.now(), by: me ? (me.player || me.name || '') : '' });
       $('led-text').value = ''; $('led-amt').value = ''; $('led-text').focus(); }
     render();
   });
