@@ -128,6 +128,9 @@ button, input, select, textarea { font: inherit; color: inherit }
   .row .act { justify-self: end }
 }
 .sec { font: 700 1rem var(--display); margin: 14px 0 4px; display: flex; gap: 8px; align-items: baseline; color: var(--c) }
+.sec button { border: 0; background: transparent; padding: 2px 0; font: inherit; color: inherit; cursor: pointer; display: inline-flex; gap: 8px; align-items: baseline }
+.sec .chev { display: inline-block; width: 1em; color: var(--muted) }
+.secall { margin: 0; display: flex; gap: 4px } .secall .btn { padding-inline: 6px; font-size: .85rem }
 .sec small { font: .75rem var(--mono); color: var(--muted) }
 .empty { border: 1px dashed var(--line); border-radius: 10px; padding: 22px; color: var(--muted); display: flex; flex-direction: column; gap: 10px; align-items: flex-start }
 .empty strong { color: var(--ink); font: 700 1.1rem var(--display) }
@@ -415,7 +418,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   var TYPE = {}; TYPES.forEach(function (t) { TYPE[t.k] = t; });
   var LS = 'table-notes-v1', LS_CUR = 'table-notes-current', LS_ME = 'table-notes-me', LS_PASS = 'table-notes-pass';
   function lsGet0(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
-  var S = { sessions: new Map(), entries: new Map(), party: new Map(), pins: new Map(), tick: 0, pending: null, npcs: new Map(), factions: new Map(), biz: new Map(), bizstaff: new Map(), bizledger: new Map(), npcq: '', npcOpen: null, facOpen: null, stale: false, me: lsGet0('table-notes-me'), gen: null, pedit: null, pavatar: undefined, sel: null, placing: null, vb: null, campaign: '', mode: 'connecting', note: '',
+  var S = { sessions: new Map(), entries: new Map(), party: new Map(), pins: new Map(), shut: (function () { try { return JSON.parse(localStorage.getItem('table-notes-shut') || '{}') || {}; } catch (e) { return {}; } })(), tick: 0, pending: null, npcs: new Map(), factions: new Map(), biz: new Map(), bizstaff: new Map(), bizledger: new Map(), npcq: '', npcOpen: null, facOpen: null, stale: false, me: lsGet0('table-notes-me'), gen: null, pedit: null, pavatar: undefined, sel: null, placing: null, vb: null, campaign: '', mode: 'connecting', note: '',
             cur: null, view: 'log', filter: 'all', q: '', type: 'note', editing: null, confirm: null, confirmSession: false, dirty: false };
   var db = null, queues = {};
   var $ = function (id) { return document.getElementById(id); };
@@ -601,9 +604,11 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
         if (t.k === 'note') return;
         var g = es.filter(function (e) { return e.type === t.k; });
         if (!g.length) return; any = true;
-        html += '<h3 class="sec c-' + t.k + '">' + t.label + ' <small>' + g.length + '</small></h3><ul class="log">' + g.map(function (e) { return rowHTML(e, true); }).join('') + '</ul>';
+        var shut = !!S.shut[t.k] && !q;   /* a search opens every section so matches are never hidden */
+        html += '<h3 class="sec c-' + t.k + '"><button type="button" data-act="sec" data-k="' + t.k + '" aria-expanded="' + !shut + '"><span class="chev" aria-hidden="true">' + (shut ? '▸' : '▾') + '</span>' + t.label + ' <small>' + g.length + '</small></button></h3>' +
+          (shut ? '' : '<ul class="log">' + g.map(function (e) { return rowHTML(e, true); }).join('') + '</ul>');
       });
-      el.innerHTML = any ? html : '<div class="empty"><strong>Nothing indexed yet</strong><span>Every NPC, place, quest, piece of loot and scrap of lore you tag in a session is collected here, across the whole campaign.</span></div>';
+      el.innerHTML = any ? '<p class="secall"><button class="btn quiet" type="button" data-act="secall" data-v="1">Collapse all</button><button class="btn quiet" type="button" data-act="secall" data-v="0">Expand all</button></p>' + html : '<div class="empty"><strong>Nothing indexed yet</strong><span>Every NPC, place, quest, piece of loot and scrap of lore you tag in a session is collected here, across the whole campaign.</span></div>';
       return;
     }
     if (!S.sessions.size) {
@@ -1434,6 +1439,8 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     var b = ev.target.closest('[data-act]'); if (!b) return;
     var a = b.dataset.act, id = b.dataset.id, e = id && S.entries.get(id);
     if (a === 'zoom') { var lb = $('lightbox'), li = $('lightbox-img'); li.src = b.src; li.alt = b.alt || ''; li.className = b.classList.contains('logo') ? 'logo' : ''; $('lightbox-cap').textContent = (b.alt || '').replace(/^(Portrait|Picture|Logo) of /, ''); lb.hidden = false; return; }
+    if (a === 'sec') { S.shut[b.dataset.k] = !S.shut[b.dataset.k]; lsSet('table-notes-shut', JSON.stringify(S.shut)); renderList(); var nb = document.querySelector('[data-act="sec"][data-k="' + b.dataset.k + '"]'); if (nb) nb.focus(); return; }
+    if (a === 'secall') { TYPES.forEach(function (t) { S.shut[t.k] = b.dataset.v === '1'; }); lsSet('table-notes-shut', JSON.stringify(S.shut)); renderList(); return; }
     if (a === 'first') return newSession();
     if (a === 'npcpicdel') { var pcl = b.dataset.coll || 'npcs', nd = S[pcl] && S[pcl].get(id); if (nd && canWrite()) patch(pcl, id, { avatar: '' }); return; }
     if (a === 'npcopen') { S.npcOpen = S.npcOpen === id ? null : id; return render(); }
