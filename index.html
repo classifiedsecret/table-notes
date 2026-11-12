@@ -232,6 +232,34 @@ button, input, select, textarea { font: inherit; color: inherit }
 .gatebox h2 { font: 700 1.3rem var(--display); margin: 0 } .gatebox p { margin: 0; color: var(--muted) }
 .gatebox input { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 1.05rem }
 .gatebox .gmsg { color: var(--warn); min-height: 1.2em; font-size: .9rem }
+.pane { display: flex; flex-direction: column; gap: 14px; min-width: 0 }
+.pane h2 { font: 700 1.15rem var(--display); margin: 8px 0 0 }
+.pane .lead { color: var(--muted); margin: 0; font-size: .9rem; max-width: 65ch }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0 }
+.card h3 { font: 700 1.05rem var(--display); margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; overflow-wrap: anywhere }
+.card h3 .end { margin-left: auto; font: 400 .85rem var(--body) }
+.fld { display: flex; flex-direction: column; gap: 2px; font: .68rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); min-width: 0 }
+.fld input, .fld select, .fld textarea, .addrow input, .addrow select { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; font: .92rem var(--body); color: var(--ink); text-transform: none; letter-spacing: 0; min-width: 0; width: 100% }
+.fld textarea { resize: vertical; min-height: 3.6em }
+.two2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px }
+.meta { font-size: .85rem; color: var(--muted); margin: 0; overflow-wrap: anywhere } .meta b { color: var(--ink) }
+.q { font-style: italic; font-size: .88rem; margin: 0; border-left: 2px solid var(--line); padding-left: 8px; overflow-wrap: anywhere }
+.addrow { display: flex; flex-wrap: wrap; gap: 6px; max-width: 560px; align-items: center } .addrow.wide { max-width: none }
+.addrow input, .addrow select { flex: 1 1 130px; width: auto } .addrow form { flex: 1 1 260px }
+.pill { font: 600 .66rem var(--mono); text-transform: uppercase; letter-spacing: .06em; border: 1px solid currentColor; border-radius: 999px; padding: 1px 8px }
+.st-hostile { color: var(--warn) } .st-unfriendly { color: var(--t-npc) } .st-neutral { color: var(--muted) } .st-friendly { color: var(--t-place) } .st-allied { color: var(--accent) }
+.scale { display: flex; gap: 4px; flex-wrap: wrap }
+.scale button { border: 1px solid var(--line); background: transparent; border-radius: 5px; padding: 4px 8px; font-size: .8rem; cursor: pointer; color: var(--muted) }
+.scale button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink) }
+.card .row { grid-template-columns: auto auto minmax(0, 1fr) } .card .row .tx { grid-column: 1 / -1; grid-row: 2 } .card .row .act { justify-self: end }
+.balance { font: 700 1.5rem var(--display); margin: 0 } .balance small { font: .75rem var(--mono); color: var(--muted); margin-left: 8px }
+.tblwrap { overflow-x: auto }
+table.led { border-collapse: collapse; width: 100%; min-width: 520px; font-variant-numeric: tabular-nums }
+.led th { text-align: left; font: .68rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line) }
+.led td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: baseline; overflow-wrap: anywhere }
+.led .num { text-align: right; white-space: nowrap } .led .neg { color: var(--warn) }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: .9rem; max-width: calc(100% - 32px); z-index: 20 }
 .c-note{--c:var(--t-note)} .c-npc{--c:var(--t-npc)} .c-place{--c:var(--t-place)} .c-quest{--c:var(--t-quest)}
 .c-loot{--c:var(--t-loot)} .c-lore{--c:var(--t-lore)} .c-combat{--c:var(--t-combat)} .c-quote{--c:var(--t-quote)}
@@ -245,6 +273,9 @@ button, input, select, textarea { font: inherit; color: inherit }
       <a href="#campaign" id="tab-campaign">Campaign index</a>
       <a href="#map" id="tab-map">Map overview</a>
       <a href="#party" id="tab-party">Party</a>
+      <a href="#npcs" id="tab-npcs">NPCs</a>
+      <a href="#factions" id="tab-factions">Factions</a>
+      <a href="#tavern" id="tab-tavern">Tavern</a>
     </nav>
     <label class="me">You are <select id="me"></select></label>
     <span class="status" id="status" role="status">Connecting…</span>
@@ -287,6 +318,33 @@ button, input, select, textarea { font: inherit; color: inherit }
         <div id="rail-party"></div>
         <form class="padd" id="padd" autocomplete="off"><input id="pname" aria-label="New party member name" placeholder="Add a character" maxlength="80"><button class="btn" id="pbtn" type="submit">Add</button></form>
       </div>
+      <div class="pane" id="npcview" hidden>
+        <p class="lead">Everyone you tag with @ in a note appears here with where they were seen and what they said. Fill in the rest as you learn it.</p>
+        <div class="addrow"><input class="search" id="npc-q" type="search" aria-label="Search NPCs" placeholder="Search NPCs">
+          <form class="addrow" id="npc-add" autocomplete="off"><input id="npc-name" aria-label="New NPC name" placeholder="Add an NPC by name" maxlength="80"><button class="btn" type="submit">Add</button></form></div>
+        <div id="npc-list"></div>
+      </div>
+      <div class="pane" id="facview" hidden>
+        <p class="lead">Track where the party stands with each faction, who your contact is, and what you owe or are owed.</p>
+        <form class="addrow" id="fac-add" autocomplete="off"><input id="fac-name" aria-label="New faction name" placeholder="Add a faction" maxlength="80"><button class="btn" type="submit">Add</button></form>
+        <div id="fac-list"></div>
+      </div>
+      <div class="pane" id="tavview" hidden>
+        <p class="lead">The party's business. Every field is shared, so anyone can fill in what they remember; a field saves when you leave it.</p>
+        <div id="tav-info"></div>
+        <h2>Staff</h2>
+        <form class="addrow" id="staff-add" autocomplete="off"><input id="staff-name" aria-label="New staff member name" placeholder="Add a staff member" maxlength="80"><button class="btn" type="submit">Add</button></form>
+        <div id="tav-staff"></div>
+        <h2>Ledger</h2>
+        <p class="lead">Record money in and out. Start with an income entry for the funds already in the till.</p>
+        <form class="addrow wide" id="led-add" autocomplete="off">
+          <input id="led-date" aria-label="In-game date" placeholder="In-game date" maxlength="40">
+          <input id="led-text" aria-label="What it was for" placeholder="What it was for" maxlength="160">
+          <input id="led-amt" type="number" min="0" step="any" aria-label="Amount in gold pieces" placeholder="Amount (gp)">
+          <select id="led-type" aria-label="Income or expense"><option value="1">Income</option><option value="-1">Expense</option></select>
+          <button class="btn" type="submit">Add entry</button></form>
+        <div id="tav-ledger"></div>
+      </div>
       <div class="mapview" id="mapview" hidden>
         <div class="mapbar"><p id="mapmsg"></p><button class="btn" type="button" data-act="zfit">Fit</button><button class="btn" type="button" data-act="zout" aria-label="Zoom out">−</button><button class="btn" type="button" data-act="zin" aria-label="Zoom in">+</button></div>
         <div class="mapbox"><div class="mapwrap" id="mapwrap"></div><div class="mapdetail" id="mapdetail"></div></div>
@@ -326,7 +384,7 @@ button, input, select, textarea { font: inherit; color: inherit }
   var TYPE = {}; TYPES.forEach(function (t) { TYPE[t.k] = t; });
   var LS = 'table-notes-v1', LS_CUR = 'table-notes-current', LS_ME = 'table-notes-me', LS_PASS = 'table-notes-pass';
   function lsGet0(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
-  var S = { sessions: new Map(), entries: new Map(), party: new Map(), pins: new Map(), me: lsGet0('table-notes-me'), gen: null, pedit: null, pavatar: undefined, sel: null, placing: null, vb: null, campaign: '', mode: 'connecting', note: '',
+  var S = { sessions: new Map(), entries: new Map(), party: new Map(), pins: new Map(), npcs: new Map(), factions: new Map(), biz: new Map(), bizstaff: new Map(), bizledger: new Map(), npcq: '', npcOpen: null, facOpen: null, stale: false, me: lsGet0('table-notes-me'), gen: null, pedit: null, pavatar: undefined, sel: null, placing: null, vb: null, campaign: '', mode: 'connecting', note: '',
             cur: null, view: 'log', filter: 'all', q: '', type: 'note', editing: null, confirm: null, confirmSession: false, dirty: false };
   var db = null, queues = {};
   var $ = function (id) { return document.getElementById(id); };
@@ -336,8 +394,10 @@ button, input, select, textarea { font: inherit; color: inherit }
   /* ---------- storage ---------- */
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  var COLLS = ['sessions', 'entries', 'party', 'pins', 'npcs', 'factions', 'biz', 'bizstaff', 'bizledger'];
   function saveLocal() {
-    lsSet(LS, JSON.stringify({ campaign: S.campaign, sessions: Array.from(S.sessions.values()), entries: Array.from(S.entries.values()), party: Array.from(S.party.values()), pins: Array.from(S.pins.values()) }));
+    var o = { campaign: S.campaign }; COLLS.forEach(function (c) { o[c] = Array.from(S[c].values()); });
+    lsSet(LS, JSON.stringify(o));
   }
   function loadLocal() {
     try {
@@ -347,6 +407,7 @@ button, input, select, textarea { font: inherit; color: inherit }
       (d.entries || []).forEach(function (x) { S.entries.set(x.id, x); });
       (d.party || []).forEach(function (x) { S.party.set(x.id, x); });
       (d.pins || []).forEach(function (x) { S.pins.set(x.id, x); });
+      ['npcs', 'factions', 'biz', 'bizstaff', 'bizledger'].forEach(function (c) { (d[c] || []).forEach(function (x) { S[c].set(x.id, x); }); });
     } catch (e) {}
   }
   function writeMsg(e) {
@@ -392,7 +453,7 @@ button, input, select, textarea { font: inherit; color: inherit }
     var unsubs = [], dead = false;
     var fail = function (e) { if (dead) return; clearTimeout(slow);
       if (window.TABLE_NOTES_FIREBASE && e && e.code === 'permission-denied') { dead = true; unsubs.forEach(function (u) { try { u(); } catch (x) {} });
-        db = null; S.mode = 'connecting'; S.note = ''; S.sessions = new Map(); S.entries = new Map(); S.party = new Map(); S.pins = new Map(); lsSet(LS_PASS, ''); render(); showGate("That passphrase wasn't accepted. Check it and try again."); return; }
+        db = null; S.mode = 'connecting'; S.note = ''; S.sessions = new Map(); S.entries = new Map(); S.party = new Map(); S.pins = new Map(); ['npcs', 'factions', 'biz', 'bizstaff', 'bizledger'].forEach(function (c) { S[c] = new Map(); }); lsSet(LS_PASS, ''); render(); showGate("That passphrase wasn't accepted. Check it and try again."); return; }
       S.mode = 'error'; S.note = "Notes can't sync right now. Reopen the page to try again."; render(); };
     var fill = function (coll) { return function (snap) {
       var m = new Map();
@@ -403,6 +464,7 @@ button, input, select, textarea { font: inherit; color: inherit }
     unsubs.push(db.collection('entries').onSnapshot(fill('entries'), fail));
     unsubs.push(db.collection('party').onSnapshot(fill('party'), fail));
     unsubs.push(db.collection('pins').onSnapshot(fill('pins'), fail));
+    ['npcs', 'factions', 'biz', 'bizstaff', 'bizledger'].forEach(function (c) { unsubs.push(db.collection(c).onSnapshot(fill(c), fail)); });
     unsubs.push(db.doc('meta/campaign').onSnapshot(function (snap) {
       var v = snap.exists ? snap.data() : null;
       S.campaign = (v && typeof v.name === 'string') ? v.name : '';
@@ -554,7 +616,9 @@ button, input, select, textarea { font: inherit; color: inherit }
       : '<button class="btn quiet danger" data-act="sdel" type="button">Delete session</button>';
     $('sbar').hidden = S.view !== 'log'; $('capture').hidden = S.view !== 'log';
     $('rail').hidden = S.view !== 'campaign'; $('cols').classList.toggle('solo', S.view !== 'campaign');
-    var side = S.view === 'map' || S.view === 'party'; $('tools').hidden = side; $('list').hidden = side; $('mapview').hidden = S.view !== 'map'; $('partyview').hidden = S.view !== 'party';
+    ['npcs', 'factions', 'tavern'].forEach(function (v) { var t = $('tab-' + v); if (S.view === v) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current'); });
+    $('npcview').hidden = S.view !== 'npcs'; $('facview').hidden = S.view !== 'factions'; $('tavview').hidden = S.view !== 'tavern';
+    var side = S.view !== 'log' && S.view !== 'campaign'; $('tools').hidden = side; $('list').hidden = side; $('mapview').hidden = S.view !== 'map'; $('partyview').hidden = S.view !== 'party';
     $('text').disabled = !ok || !cur; $('add').disabled = !ok || !cur;
 
     $('chips').innerHTML = TYPES.map(function (t) {
@@ -563,7 +627,7 @@ button, input, select, textarea { font: inherit; color: inherit }
     $('filter').innerHTML = [{ k: 'all', label: 'All' }].concat(TYPES).map(function (t) {
       return '<button type="button" data-filter="' + t.k + '" aria-pressed="' + (S.filter === t.k) + '">' + t.label + '</button>';
     }).join('');
-    if (S.view === 'map') renderMap(); else renderList();
+    if (S.view === 'map') renderMap(); else if (S.view === 'npcs') renderNpcs(); else if (S.view === 'factions') renderFactions(); else if (S.view === 'tavern') renderTavern(); else if (S.view !== 'party') renderList();
     renderRail();
   }
 
@@ -643,6 +707,7 @@ button, input, select, textarea { font: inherit; color: inherit }
     var add = function (n, kind) { var k = n.toLowerCase(); if (!n || seen[k]) return; seen[k] = 1; out.push({ name: n, kind: kind }); };
     if (sym === '@') Array.from(S.party.values()).sort(function (a, b) { return (a.active === false) - (b.active === false) || (a.order || 0) - (b.order || 0); })
       .forEach(function (m) { add(String(m.name || '').trim(), m.active === false ? 'Away' : 'Party'); });
+    if (sym === '@') { S.npcs.forEach(function (d) { add(String(d.name || '').trim(), 'NPC'); }); S.bizstaff.forEach(function (d) { add(String(d.name || '').trim(), 'Staff'); }); }
     var ty = AC_SRC[sym];
     allEntries().forEach(function (e) { if (e.type === ty) add(entName(e.text), TYPE[ty].label); });
     if (sym === '@') NPCS.forEach(function (n) { if (!seen[n[0].toLowerCase()]) out.push({ name: n[0], kind: n[1], g: 1 }); });
@@ -960,6 +1025,113 @@ button, input, select, textarea { font: inherit; color: inherit }
   });
   document.addEventListener('keydown', function (ev) { if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches && ev.target.matches('.m-pin, .m-pick')) { ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
 
+  /* ---------- NPC directory, factions, tavern ---------- */
+  var STAND = ['Hostile', 'Unfriendly', 'Neutral', 'Friendly', 'Allied'];
+  function busy(el) { var a = document.activeElement; return !!a && el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); }
+  function fa(coll, id, f, name) { return ' data-coll="' + coll + '" data-id="' + esc(id) + '" data-f="' + f + '"' + (name ? ' data-name="' + esc(name) + '"' : '') + (canWrite() ? '' : ' disabled'); }
+  function delBtn(coll, id, label) {
+    if (!canWrite()) return '';
+    return S.confirm === coll + ':' + id
+      ? '<span class="confirm">Remove? <button class="icon" type="button" data-act="cdel-yes" data-coll="' + coll + '" data-id="' + esc(id) + '">Yes</button><button class="icon" type="button" data-act="del-no">No</button></span>'
+      : '<button class="icon" type="button" data-act="cdel" data-coll="' + coll + '" data-id="' + esc(id) + '" title="Remove" aria-label="Remove ' + esc(label || '') + '">✕</button>';
+  }
+  function npcData() {
+    var es = allEntries(), names = [], map = {};
+    es.forEach(function (e) { if (e.type === 'npc') { var n = entName(e.text).replace(/^[@#$?*]/, '').trim(); if (n) names.push(n); } });
+    S.npcs.forEach(function (d) { if (d.name) names.push(String(d.name)); });
+    var idx = buildIdx(names);
+    Object.keys(idx.map).forEach(function (k) { map[k] = { name: idx.map[k], entries: [], quotes: [], places: [] }; });
+    es.forEach(function (e) { findNames(e.text, idx).forEach(function (n) { var r = map[fold(n).toLowerCase()]; if (!r) return; r.entries.push(e); if (e.type === 'quote') r.quotes.push(e); }); });
+    var places = mapData();
+    Object.keys(places).forEach(function (p) { places[p].npcs.forEach(function (n) { var r = map[fold(n).toLowerCase()]; if (r && r.places.indexOf(p) < 0) r.places.push(p); }); });
+    return Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+  }
+  function renderNpcs() {
+    var el = $('npc-list'); if (busy(el)) { S.stale = true; return; }
+    var q = S.npcq.trim().toLowerCase(), all = npcData(), list = all.filter(function (r) { return !q || r.name.toLowerCase().indexOf(q) >= 0; });
+    var facs = Array.from(S.factions.values()).map(function (f) { return String(f.name || ''); }).filter(Boolean).sort();
+    $('npc-add').querySelector('button').disabled = !canWrite(); $('npc-name').disabled = !canWrite();
+    if (!list.length) { el.innerHTML = '<div class="empty"><strong>' + (all.length ? 'No NPCs match that search' : 'No NPCs yet') + '</strong>' + (all.length ? '' : '<span>Tag someone in a note by starting it with <code>@</code>, or add a name above.</span>') + '</div>'; return; }
+    el.innerHTML = '<div class="cards">' + list.map(function (r) {
+      var id = slug(r.name), d = S.npcs.get(id) || {}, open = S.npcOpen === id;
+      return '<div class="card"><h3>' + esc(r.name) + (d.attitude ? '<span class="pill st-' + esc(String(d.attitude).toLowerCase()) + '">' + esc(d.attitude) + '</span>' : '') +
+        (S.npcs.has(id) && !r.entries.length ? '<span class="end">' + delBtn('npcs', id, r.name) + '</span>' : '') + '</h3>' +
+        '<div class="two2"><label class="fld">Attitude to us<select' + fa('npcs', id, 'attitude', r.name) + '>' + optHTML(STAND, d.attitude, 'Unknown') + '</select></label>' +
+        '<label class="fld">Faction<select' + fa('npcs', id, 'faction', r.name) + '>' + optHTML(facs, d.faction, 'None') + '</select></label></div>' +
+        '<label class="fld">Role<input' + fa('npcs', id, 'role', r.name) + ' value="' + esc(d.role || '') + '" maxlength="120" placeholder="Innkeeper, Harper agent, rival"></label>' +
+        '<label class="fld">What we know<textarea' + fa('npcs', id, 'about', r.name) + ' maxlength="1500">' + esc(d.about || '') + '</textarea></label>' +
+        (r.places.length ? '<p class="meta"><b>Seen at:</b> ' + r.places.map(esc).join(', ') + '</p>' : '') +
+        r.quotes.slice(0, 2).map(function (x) { return '<p class="q">' + esc(x.text) + '</p>'; }).join('') +
+        (r.entries.length ? '<button class="btn quiet" type="button" data-act="npcopen" data-id="' + esc(id) + '">' + (open ? 'Hide' : 'Show') + ' ' + r.entries.length + (r.entries.length === 1 ? ' note' : ' notes') + '</button>' : '<p class="meta">No notes mention them yet.</p>') +
+        (open ? '<ul class="log">' + r.entries.map(function (e) { return rowHTML(e, true); }).join('') + '</ul>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
+  function renderFactions() {
+    var el = $('fac-list'); if (busy(el)) { S.stale = true; return; }
+    var ok = canWrite(), facs = Array.from(S.factions.values()).sort(function (a, b) { return (a.order || 0) - (b.order || 0) || String(a.name).localeCompare(String(b.name)); });
+    $('fac-add').querySelector('button').disabled = !ok; $('fac-name').disabled = !ok;
+    if (!facs.length) { el.innerHTML = '<div class="empty"><strong>No factions yet</strong><span>Add the ones your party deals with, or start from the five big Sword Coast factions.</span>' + (ok ? '<button class="btn" type="button" data-act="facseed">Add the five Sword Coast factions</button>' : '') + '</div>'; return; }
+    var idx = buildIdx(facs.map(function (f) { return String(f.name || ''); })), notes = {};
+    allEntries().forEach(function (e) { findNames(e.text, idx).forEach(function (n) { (notes[n] = notes[n] || []).push(e); }); });
+    el.innerHTML = '<div class="cards">' + facs.map(function (f) {
+      var nm = String(f.name || ''), mine = notes[idx.map[fold(nm).toLowerCase()]] || [], open = S.facOpen === f.id;
+      var members = Array.from(S.npcs.values()).filter(function (d) { return d.faction && String(d.faction).toLowerCase() === nm.toLowerCase(); }).map(function (d) { return d.name; });
+      return '<div class="card"><h3>' + esc(nm) + (f.standing ? '<span class="pill st-' + esc(String(f.standing).toLowerCase()) + '">' + esc(f.standing) + '</span>' : '') + '<span class="end">' + delBtn('factions', f.id, nm) + '</span></h3>' +
+        '<div class="fld">Standing with the party<div class="scale" role="group" aria-label="Standing with ' + esc(nm) + '">' + STAND.map(function (st) { return '<button type="button" data-act="fstand" data-id="' + esc(f.id) + '" data-v="' + st + '" aria-pressed="' + (f.standing === st) + '"' + (ok ? '' : ' disabled') + '>' + st + '</button>'; }).join('') + '</div></div>' +
+        '<label class="fld">Our contact<input' + fa('factions', f.id, 'contact') + ' value="' + esc(f.contact || '') + '" maxlength="120"></label>' +
+        '<label class="fld">Favors, debts and notes<textarea' + fa('factions', f.id, 'notes') + ' maxlength="1500">' + esc(f.notes || '') + '</textarea></label>' +
+        (members.length ? '<p class="meta"><b>Members we know:</b> ' + members.map(esc).join(', ') + '</p>' : '') +
+        (mine.length ? '<button class="btn quiet" type="button" data-act="facopen" data-id="' + esc(f.id) + '">' + (open ? 'Hide' : 'Show') + ' ' + mine.length + (mine.length === 1 ? ' note' : ' notes') + '</button>' : '<p class="meta">No notes mention them yet.</p>') +
+        (open ? '<ul class="log">' + mine.map(function (e) { return rowHTML(e, true); }).join('') + '</ul>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
+  var gp = function (n) { return (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 }); };
+  function renderTavern() {
+    var ok = canWrite(), b = S.biz.get('main') || {}, info = $('tav-info'), st = $('tav-staff'), led = $('tav-ledger');
+    ['staff-add', 'led-add'].forEach(function (f) { Array.prototype.forEach.call($(f).elements, function (x) { x.disabled = !ok; }); });
+    var tf = function (label, f, ph) { return '<label class="fld">' + label + '<input' + fa('biz', 'main', f) + ' value="' + esc(b[f] || '') + '" maxlength="160" placeholder="' + esc(ph || '') + '"></label>'; };
+    var ta = function (label, f, ph) { return '<label class="fld">' + label + '<textarea' + fa('biz', 'main', f) + ' maxlength="2000" placeholder="' + esc(ph || '') + '">' + esc(b[f] || '') + '</textarea></label>'; };
+    if (busy(info)) S.stale = true;
+    else info.innerHTML = '<div class="card"><div class="grid2">' + tf('Business name', 'name', 'The name over the door') + tf('Type of business', 'kind', 'Tavern, inn, shop') +
+      tf('Location', 'location', 'Town and district') + tf('How and when we got it', 'acquired', '') + '</div><div class="grid2">' +
+      ta('Owners and shares', 'owners', 'Who owns what part') + ta('Rooms, features and upgrades', 'features', 'Taproom, cellar, stage, rooms to let') +
+      ta('Description', 'about', 'What the place is like') + ta('House rules, upkeep and other notes', 'notes', 'Costs per tenday, what the DM has ruled') + '</div></div>';
+    if (busy(st)) S.stale = true;
+    else { var staff = Array.from(S.bizstaff.values()).sort(function (x, y) { return (x.order || 0) - (y.order || 0); });
+      st.innerHTML = !staff.length ? '<p class="meta">No staff listed yet.</p>' : '<div class="cards">' + staff.map(function (m) {
+        return '<div class="card"><h3>' + esc(m.name || '') + '<span class="end">' + delBtn('bizstaff', m.id, m.name) + '</span></h3>' +
+          '<div class="two2"><label class="fld">Role<input' + fa('bizstaff', m.id, 'role') + ' value="' + esc(m.role || '') + '" maxlength="80" placeholder="Barkeep, cook"></label>' +
+          '<label class="fld">Wage<input' + fa('bizstaff', m.id, 'wage') + ' value="' + esc(m.wage || '') + '" maxlength="40" placeholder="2 gp per tenday"></label></div>' +
+          '<label class="fld">Name<input' + fa('bizstaff', m.id, 'name') + ' value="' + esc(m.name || '') + '" maxlength="80"></label>' +
+          '<label class="fld">Notes<textarea' + fa('bizstaff', m.id, 'notes') + ' maxlength="800">' + esc(m.notes || '') + '</textarea></label></div>'; }).join('') + '</div>'; }
+    var rows = Array.from(S.bizledger.values()).sort(function (x, y) { return (x.ts || 0) - (y.ts || 0); }), bal = 0;
+    var body = rows.map(function (r) { var a = Number(r.amount) || 0; bal += a;
+      return '<tr title="' + esc(r.by ? 'Added by ' + r.by : 'Author not recorded') + '"><td>' + esc(r.date || '') + '</td><td>' + esc(r.text || '') + '</td><td class="num' + (a < 0 ? ' neg' : '') + '">' + (a < 0 ? '−' : '+') + gp(Math.abs(a)) + '</td><td class="num' + (bal < 0 ? ' neg' : '') + '">' + (bal < 0 ? '−' : '') + gp(Math.abs(bal)) + '</td><td class="num">' + delBtn('bizledger', r.id, 'ledger entry') + '</td></tr>'; }).join('');
+    led.innerHTML = '<p class="balance' + (bal < 0 ? ' neg' : '') + '">' + (bal < 0 ? '−' : '') + gp(Math.abs(bal)) + ' gp<small>current balance</small></p>' +
+      (rows.length ? '<div class="tblwrap"><table class="led"><thead><tr><th>Date</th><th>Entry</th><th class="num">Amount (gp)</th><th class="num">Balance</th><th></th></tr></thead><tbody>' + body + '</tbody></table></div>' : '<p class="meta">No ledger entries yet.</p>');
+  }
+  document.addEventListener('change', function (ev) {
+    var t = ev.target; if (!t.dataset || !t.dataset.f || !t.dataset.coll || !canWrite()) return;
+    var coll = t.dataset.coll, id = t.dataset.id, cur = S[coll].get(id), d = cur ? body(cur) : {}, v = String(t.value).trim();
+    if (t.dataset.name && !d.name) d.name = t.dataset.name;
+    if (t.dataset.f === 'name' && !v) { t.value = d.name || ''; return; }
+    if ((d[t.dataset.f] || '') === v) return;
+    d[t.dataset.f] = v; put(coll, id, d); if (t.tagName === 'SELECT') t.blur();
+  });
+  document.addEventListener('focusout', function () { if (S.stale) setTimeout(function () { if (S.stale) { S.stale = false; render(); } }, 60); });
+  $('npc-q').addEventListener('input', function (ev) { S.npcq = ev.target.value; renderNpcs(); });
+  document.addEventListener('submit', function (ev) {
+    var f = ev.target.id; if (['npc-add', 'fac-add', 'staff-add', 'led-add'].indexOf(f) < 0) return; ev.preventDefault(); if (!canWrite()) return;
+    if (f === 'npc-add') { var n = $('npc-name').value.trim(); if (!n) return; if (!S.npcs.has(slug(n))) put('npcs', slug(n), { name: n }); $('npc-name').value = ''; S.npcq = ''; $('npc-q').value = ''; }
+    if (f === 'fac-add') { var fn = $('fac-name').value.trim(); if (!fn) return; if (!S.factions.has(slug(fn))) put('factions', slug(fn), { name: fn, order: Date.now() }); $('fac-name').value = ''; }
+    if (f === 'staff-add') { var sn = $('staff-name').value.trim(); if (!sn) return; put('bizstaff', newId('st'), { name: sn, role: '', wage: '', notes: '', order: Date.now() }); $('staff-name').value = ''; }
+    if (f === 'led-add') { var amt = Number($('led-amt').value), tx = $('led-text').value.trim();
+      if (!tx) { toast('Say what the money was for.'); return; } if (!(amt > 0)) { toast('Enter an amount greater than zero.'); return; }
+      var me = S.party.get(S.me); put('bizledger', newId('l'), { date: $('led-date').value.trim(), text: tx, amount: amt * Number($('led-type').value), ts: Date.now(), by: me ? (me.player || me.name || '') : '' });
+      $('led-text').value = ''; $('led-amt').value = ''; $('led-text').focus(); }
+    render();
+  });
+
   /* ---------- actions ---------- */
   function newSession() {
     if (!canWrite()) return;
@@ -990,7 +1162,7 @@ button, input, select, textarea { font: inherit; color: inherit }
     es.forEach(function (e) { out += '\n- ' + fmtTime(e.ts) + ' [' + (TYPE[e.type] || TYPE.note).label + '] ' + e.text + (e.type === 'quest' && e.done ? ' (done)' : ''); });
     return out + '\n';
   }
-  function route() { S.view = location.hash === '#campaign' ? 'campaign' : location.hash === '#map' ? 'map' : location.hash === '#party' ? 'party' : 'log'; S.pedit = null; S.placing = null; render(); }
+  function route() { var hv = location.hash.slice(1); S.view = ['campaign', 'map', 'party', 'npcs', 'factions', 'tavern'].indexOf(hv) >= 0 ? hv : 'log'; S.pedit = null; S.confirm = null; S.placing = null; render(); }
 
   /* ---------- events ---------- */
   $('capture').addEventListener('submit', function (ev) {
@@ -1019,6 +1191,12 @@ button, input, select, textarea { font: inherit; color: inherit }
     var b = ev.target.closest('[data-act]'); if (!b) return;
     var a = b.dataset.act, id = b.dataset.id, e = id && S.entries.get(id);
     if (a === 'first') return newSession();
+    if (a === 'npcopen') { S.npcOpen = S.npcOpen === id ? null : id; return render(); }
+    if (a === 'facopen') { S.facOpen = S.facOpen === id ? null : id; return render(); }
+    if (a === 'cdel') { if (canWrite()) { S.confirm = b.dataset.coll + ':' + id; render(); } return; }
+    if (a === 'cdel-yes') { if (canWrite()) { S.confirm = null; del(b.dataset.coll, id); render(); } return; }
+    if (a === 'fstand') { var fc = S.factions.get(id); if (fc && canWrite()) patch('factions', id, { standing: fc.standing === b.dataset.v ? '' : b.dataset.v }); return; }
+    if (a === 'facseed') { if (!canWrite()) return; b.disabled = true; ['Harpers', 'Order of the Gauntlet', 'Emerald Enclave', "Lords' Alliance", 'Zhentarim'].forEach(function (n, i) { put('factions', slug(n), { name: n, order: i + 1 }); }); return; }
     if (a === 'seed') { var sd = window.TABLE_NOTES_SEED; if (!sd || !canWrite()) return; b.disabled = true;
       ['sessions', 'entries', 'party', 'pins'].forEach(function (c) { (sd[c] || []).forEach(function (x) { if (x && x.id) put(c, x.id, body(x)); }); });
       if (sd.campaign && !S.campaign) setCampaign(sd.campaign); toast('Example session added'); return; }
@@ -1058,7 +1236,7 @@ button, input, select, textarea { font: inherit; color: inherit }
     if (a === 'del') { S.confirm = id; return render(); }
     if (a === 'del-no') { S.confirm = null; return render(); }
     if (a === 'del-yes') { S.confirm = null; del('entries', id); return render(); }
-    if (a === 'edit' && e && S.view !== 'map' && S.editing !== id && !ev.target.closest('textarea')) {
+    if (a === 'edit' && e && (S.view === 'log' || S.view === 'campaign') && S.editing !== id && !ev.target.closest('textarea')) {
       S.editing = null; S.confirm = null; render(); S.editing = id; renderList();
       var ta = $('edit-' + id); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
     }
