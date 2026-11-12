@@ -285,7 +285,7 @@ img.av { cursor: zoom-in }
 <div class="app">
   <div class="hero"><div class="herobg" id="herobg" aria-hidden="true"></div>
   <header class="top">
-    <input class="campaign" id="campaign" aria-label="Campaign name" placeholder="Name your campaign" maxlength="80">
+    <input class="campaign" id="campname" aria-label="Campaign name" placeholder="Name your campaign" maxlength="80">
     <nav class="tabs" aria-label="Views">
       <a href="#party" id="tab-party">Party</a>
       <a href="#log" id="tab-log">Session log</a>
@@ -617,7 +617,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     $('tab-campaign').toggleAttribute('aria-current', S.view === 'campaign'); if (S.view === 'campaign') $('tab-campaign').setAttribute('aria-current', 'page');
     $('tab-map').toggleAttribute('aria-current', S.view === 'map'); if (S.view === 'map') $('tab-map').setAttribute('aria-current', 'page');
     $('tab-party').toggleAttribute('aria-current', S.view === 'party'); if (S.view === 'party') $('tab-party').setAttribute('aria-current', 'page');
-    var c = $('campaign'); if (document.activeElement !== c) c.value = S.campaign; c.disabled = !ok;
+    var c = $('campname'); if (document.activeElement !== c) c.value = S.campaign; c.disabled = !ok;
     var ms = $('me');
     if (!S.me) S.party.forEach(function (m) { if (m.mine && !S.me) S.me = m.id; });
     if (document.activeElement !== ms) {
@@ -1336,7 +1336,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     if (d.getTime() !== cur.createdAt) patch('sessions', cur.id, { createdAt: d.getTime() });
   });
   $('stitle').addEventListener('change', function (ev) { if (S.cur) patch('sessions', S.cur, { title: ev.target.value.trim() }); });
-  $('campaign').addEventListener('change', function (ev) { setCampaign(ev.target.value.trim()); });
+  $('campname').addEventListener('change', function (ev) { setCampaign(ev.target.value.trim()); });
   $('me').addEventListener('change', function (ev) { S.me = ev.target.value; lsSet(LS_ME, S.me); ev.target.blur(); render(); });
   $('new-session').addEventListener('click', newSession);
   $('gen-summary').addEventListener('click', genSummary);
