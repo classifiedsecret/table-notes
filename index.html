@@ -278,6 +278,8 @@ img.av { cursor: zoom-in }
 .hero .tabs a[aria-current="page"] { background: #F5F0E6; color: #14181E }
 .hero .me, .hero .status { text-shadow: 0 1px 6px rgb(0 0 0 / .7) }
 @media (max-width: 560px) { .hero { padding: 14px 14px 84px } }
+a.maplink { color: inherit; text-decoration: underline; text-decoration-style: dotted; text-decoration-color: var(--t-place); text-underline-offset: 3px; cursor: pointer }
+a.maplink:hover { color: var(--t-place); text-decoration-style: solid }
 a.ddb { color: inherit; text-decoration: underline; text-decoration-style: dotted; text-decoration-color: var(--accent); text-underline-offset: 3px; cursor: pointer }
 a.ddb:hover { color: var(--accent); text-decoration-style: solid }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: .9rem; max-width: calc(100% - 32px); z-index: 20 }
@@ -413,7 +415,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   var TYPE = {}; TYPES.forEach(function (t) { TYPE[t.k] = t; });
   var LS = 'table-notes-v1', LS_CUR = 'table-notes-current', LS_ME = 'table-notes-me', LS_PASS = 'table-notes-pass';
   function lsGet0(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
-  var S = { sessions: new Map(), entries: new Map(), party: new Map(), pins: new Map(), npcs: new Map(), factions: new Map(), biz: new Map(), bizstaff: new Map(), bizledger: new Map(), npcq: '', npcOpen: null, facOpen: null, stale: false, me: lsGet0('table-notes-me'), gen: null, pedit: null, pavatar: undefined, sel: null, placing: null, vb: null, campaign: '', mode: 'connecting', note: '',
+  var S = { sessions: new Map(), entries: new Map(), party: new Map(), pins: new Map(), tick: 0, pending: null, npcs: new Map(), factions: new Map(), biz: new Map(), bizstaff: new Map(), bizledger: new Map(), npcq: '', npcOpen: null, facOpen: null, stale: false, me: lsGet0('table-notes-me'), gen: null, pedit: null, pavatar: undefined, sel: null, placing: null, vb: null, campaign: '', mode: 'connecting', note: '',
             cur: null, view: 'log', filter: 'all', q: '', type: 'note', editing: null, confirm: null, confirmSession: false, dirty: false };
   var db = null, queues = {};
   var $ = function (id) { return document.getElementById(id); };
@@ -452,7 +454,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   }
   function body(obj) { var b = {}; for (var k in obj) if (k !== 'id') b[k] = obj[k]; return b; }
   function put(coll, id, data) {
-    if (S.mode === 'local') { S[coll].set(id, Object.assign({ id: id }, data)); saveLocal(); render(); return; }
+    if (S.mode === 'local') { S[coll].set(id, Object.assign({ id: id }, data)); S.tick++; saveLocal(); render(); return; }
     if (!db) return;
     queue(coll + '/' + id, function () { return db.collection(coll).doc(id).set(data); });
   }
@@ -461,7 +463,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     put(coll, id, Object.assign(body(cur), data));
   }
   function del(coll, id) {
-    if (S.mode === 'local') { S[coll].delete(id); saveLocal(); render(); return; }
+    if (S.mode === 'local') { S[coll].delete(id); S.tick++; saveLocal(); render(); return; }
     if (!db) return;
     queue(coll + '/' + id, function () { return db.collection(coll).doc(id).delete(); });
   }
@@ -487,7 +489,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     var fill = function (coll) { return function (snap) {
       var m = new Map();
       snap.docs.forEach(function (doc) { m.set(doc.id, Object.assign({ id: doc.id }, doc.data())); });
-      S[coll] = m; live(snap); pickCurrent(); render();
+      S[coll] = m; S.tick++; live(snap); pickCurrent(); render();
     }; };
     unsubs.push(db.collection('sessions').onSnapshot(fill('sessions'), fail));
     unsubs.push(db.collection('entries').onSnapshot(fill('entries'), fail));
@@ -539,6 +541,11 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     SPELLS.forEach(function (n) { SPELL_CANON[n.toLowerCase()] = n; });
   }
   var PLAIN = {}; "Light|Friends|Message|Resistance|Gust|Alarm|Command|Jump|Shield|Sleep|Snare|Aid|Darkness|Silence|Web|Fear|Fly|Slow|Dream|Dawn|Harm|Heal|Symbol|Gate|Wish|Weird|Maze|Clone|Creation|Scatter|Sending|Tongues|Guidance|Sanctuary|Ceremony|Daylight|Knock|Bane|Grease|Mending|Hallow|Blight|Confusion|Bless|Blur|Blink|Hex|Geas".split('|').forEach(function (n) { PLAIN[n] = 1; });
+  function placeNames() { var pn = GAZ.slice(); allEntries().forEach(function (e) { if (e.type === 'place') pn.unshift(entName(e.text).replace(/^[@#$?*]/, '')); }); S.pins.forEach(function (p) { if (p.name) pn.push(String(p.name)); }); return pn; }
+  function placeIndex() {   /* rebuilt only when the notes or pins change */
+    var key = S.entries.size + ':' + S.pins.size + ':' + S.tick;
+    if (!S._pi || S._piKey !== key) { S._pi = buildIdx(placeNames()); S._piKey = key; }
+    return S._pi; }
   function linkify(e) {
     if (!ITEM_RE) linkInit();
     var text = String(e.text || ''), hits = [], m, taken = function (a, b) { return hits.some(function (h) { return a < h[1] && b > h[0]; }); };
@@ -550,9 +557,13 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
         var before = text.slice(0, a), after = text.slice(b), poss = /['’]s\s+$/.test(before), verb = /\b(?:cast|casts|casting|used|uses|using)\s+$/i.test(before), art = /\b(?:a|an|the|with|via|her|his|their|my|our)\s+$/i.test(before), tail = /^\s+spell\b/i.test(after);
         if (!(poss || verb || tail || (art && !PLAIN[nm]))) continue; }
       push(a, b, DDB + 'spells/' + ddbSlug(nm)); }
+    var pi = placeIndex(), ft = fold(text);
+    if (pi.re && ft.length === text.length) { pi.re.lastIndex = 0; while ((m = pi.re.exec(ft))) { var pa = m.index + m[1].length, canon = pi.map[m[2].toLowerCase()], cf = canon ? fold(canon) : '';
+      if (!canon || (cf.length < 6 && cf.indexOf(' ') < 0 && m[2] !== cf)) continue;
+      if (!taken(pa, pa + m[2].length)) hits.push([pa, pa + m[2].length, '#map-' + slug(canon), 1]); } }
     if (!hits.length) return esc(text);
     hits.sort(function (x, y) { return x[0] - y[0]; }); var out = '', pos = 0;
-    hits.forEach(function (h) { out += esc(text.slice(pos, h[0])) + '<a class="ddb" href="' + esc(h[2]) + '" target="_blank" rel="noopener noreferrer" title="Open on D&amp;D Beyond">' + esc(text.slice(h[0], h[1])) + '</a>'; pos = h[1]; });
+    hits.forEach(function (h) { out += esc(text.slice(pos, h[0])) + (h[3] ? '<a class="maplink" href="' + esc(h[2]) + '" target="_blank" rel="noopener" title="Show on the map in a new tab">' : '<a class="ddb" href="' + esc(h[2]) + '" target="_blank" rel="noopener noreferrer" title="Open on D&amp;D Beyond">') + esc(text.slice(h[0], h[1])) + '</a>'; pos = h[1]; });
     return out + esc(text.slice(pos));
   }
   function authorOf(e) {
@@ -1041,7 +1052,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     });
   }
   function svgPoint(cx, cy) { var r = $('mapwrap').getBoundingClientRect(), v = S.vb; return [v.x + (cx - r.left) / r.width * v.w, v.y + (cy - r.top) / r.height * v.h]; }
-  function zoomAt(f, cx, cy) { ensureVB(); var v = S.vb, r = $('mapwrap').getBoundingClientRect(), asp = r.height / r.width;
+  function zoomAt(f, cx, cy) { ensureVB(); S.pending = null; var v = S.vb, r = $('mapwrap').getBoundingClientRect(), asp = r.height / r.width;
     var maxW = Math.max(900, 1320 / asp), nw = Math.max(110, Math.min(maxW, v.w * f)), k = nw / v.w;
     if (cx == null) { cx = r.left + r.width / 2; cy = r.top + r.height / 2; }
     var p = svgPoint(cx, cy); v.x = p[0] - (p[0] - v.x) * k; v.y = p[1] - (p[1] - v.y) * k; v.w = nw; v.h = nw * asp; applyVB(); }
@@ -1068,6 +1079,12 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   function renderMap() {
     var places = mapData(), names = Object.keys(places).sort(), h = '', ok = canWrite();
     ensureVB(); if (!TERRAIN) TERRAIN = terrainSVG();
+    if (S.pending) { var want = S.pending, cand = Object.keys(COORDS).concat(Object.keys(PARENT), placeNames()), hit = null;
+      for (var ci = 0; ci < cand.length && !hit; ci++) if (slug(cand[ci]) === want) hit = cand[ci];
+      if (hit) { var tgt = pinFor(hit) ? hit : (PARENT[hit] || hit), pc = pinFor(tgt); S.sel = tgt;
+        if (pc) { var mr = $('mapwrap').getBoundingClientRect(), asp2 = mr.width ? mr.height / mr.width : .6, zw = 300; S.vb = { x: pc[0] - zw / 2, y: pc[1] - zw * asp2 / 2, w: zw, h: zw * asp2 }; S.pending = null; }
+        else if (S.mode === 'local') S.pending = null; }
+      else if (S.mode === 'local') S.pending = null; }
     if (!$('mapsvg')) $('mapwrap').innerHTML = '<svg id="mapsvg" viewBox="0 0 900 1320" role="group" aria-label="Map of the Sword Coast">' + TERRAIN + '<g id="mapdyn"></g></svg>';
     REGIONS.forEach(function (r) { h += '<text class="m-region m-pick' + (r[5] ? ' r-sea' : '') + '" data-act="mpick" data-place="' + esc(r[0]) + '" tabindex="0" role="button" transform="translate(' + r[1] + ',' + r[2] + ') rotate(' + r[4] + ')" font-size="' + r[3] + '" text-anchor="middle">' + esc(r[0]) + '</text>'; });
     var refs = {}; Object.keys(COORDS).forEach(function (n) { refs[n] = 1; }); S.pins.forEach(function (p) { if (p.name) refs[p.name] = 1; });
@@ -1386,6 +1403,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   function route() { var hv = location.hash.slice(1);
     if (hv === 'tavern') { try { history.replaceState(null, '', '#business'); } catch (e) {} }
     if (hv === 'business') hv = 'tavern';
+    if (hv.indexOf('map-') === 0) { S.pending = hv.slice(4); hv = 'map'; }
     S.view = ['campaign', 'map', 'party', 'npcs', 'factions', 'tavern'].indexOf(hv) >= 0 ? hv : 'log'; S.pedit = null; S.confirm = null; S.placing = null; render(); }
 
   /* ---------- events ---------- */
