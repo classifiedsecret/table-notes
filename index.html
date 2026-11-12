@@ -284,7 +284,7 @@ img.av { cursor: zoom-in }
       <a href="#map" id="tab-map">Map overview</a>
       <a href="#npcs" id="tab-npcs">NPCs</a>
       <a href="#factions" id="tab-factions">Factions</a>
-      <a href="#tavern" id="tab-tavern">Business</a>
+      <a href="#business" id="tab-tavern">Business</a>
     </nav>
     <label class="me">You are <select id="me"></select></label>
     <span class="status" id="status" role="status">Connecting…</span>
@@ -1211,7 +1211,10 @@ img.av { cursor: zoom-in }
     es.forEach(function (e) { out += '\n- ' + fmtTime(e.ts) + ' [' + (TYPE[e.type] || TYPE.note).label + '] ' + e.text + (e.type === 'quest' && e.done ? ' (done)' : ''); });
     return out + '\n';
   }
-  function route() { var hv = location.hash.slice(1); S.view = ['campaign', 'map', 'party', 'npcs', 'factions', 'tavern'].indexOf(hv) >= 0 ? hv : 'log'; S.pedit = null; S.confirm = null; S.placing = null; render(); }
+  function route() { var hv = location.hash.slice(1);
+    if (hv === 'tavern') { try { history.replaceState(null, '', '#business'); } catch (e) {} }
+    if (hv === 'business') hv = 'tavern';
+    S.view = ['campaign', 'map', 'party', 'npcs', 'factions', 'tavern'].indexOf(hv) >= 0 ? hv : 'log'; S.pedit = null; S.confirm = null; S.placing = null; render(); }
 
   /* ---------- events ---------- */
   $('capture').addEventListener('submit', function (ev) {
