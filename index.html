@@ -246,6 +246,7 @@ button, input, select, textarea { font: inherit; color: inherit }
 .ctop { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between } .ctop h3 { flex: 1; min-width: 0 }
 .card .av { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; border: 2px solid var(--accent); flex: none }
 .card .av.logo { object-fit: contain; border-color: var(--line); background: var(--bg) }
+.removed { margin-top: 6px } .removed .btn { padding: 0 4px; font-size: .85rem }
 .picrow { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center } .picrow .btn { padding-inline: 0; cursor: pointer }
 .fld { display: flex; flex-direction: column; gap: 2px; font: .68rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); min-width: 0 }
 .fld input, .fld select, .fld textarea, .addrow input, .addrow select { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; font: .92rem var(--body); color: var(--ink); text-transform: none; letter-spacing: 0; min-width: 0; width: 100% }
@@ -1153,14 +1154,18 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   }
   function renderNpcs() {
     var el = $('npc-list'); if (busy(el)) { S.stale = true; return; }
-    var q = S.npcq.trim().toLowerCase(), all = npcData(), list = all.filter(function (r) { return !q || r.name.toLowerCase().indexOf(q) >= 0; });
+    var q = S.npcq.trim().toLowerCase(), every = npcData(), gone = every.filter(function (r) { var d = S.npcs.get(slug(r.name)); return d && d.hidden; }),
+      all = every.filter(function (r) { return gone.indexOf(r) < 0; }), list = all.filter(function (r) { return !q || r.name.toLowerCase().indexOf(q) >= 0; });
+    var goneHTML = gone.length ? '<p class="meta removed"><b>Removed cards:</b> ' + gone.map(function (r) { return esc(r.name) + (canWrite() ? ' <button class="btn quiet" type="button" data-act="npcback" data-id="' + esc(slug(r.name)) + '">Restore</button>' : ''); }).join(' · ') + '</p>' : '';
     var facs = Array.from(S.factions.values()).map(function (f) { return String(f.name || ''); }).filter(Boolean).sort();
     $('npc-add').querySelector('button').disabled = !canWrite(); $('npc-name').disabled = !canWrite();
-    if (!list.length) { el.innerHTML = '<div class="empty"><strong>' + (all.length ? 'No NPCs match that search' : 'No NPCs yet') + '</strong>' + (all.length ? '' : '<span>Tag someone in a note by starting it with <code>@</code>, or add a name above.</span>') + '</div>'; return; }
+    if (!list.length) { el.innerHTML = '<div class="empty"><strong>' + (all.length ? 'No NPCs match that search' : 'No NPCs yet') + '</strong>' + (all.length ? '' : '<span>Tag someone in a note by starting it with <code>@</code>, or add a name above.</span>') + '</div>' + goneHTML; return; }
     el.innerHTML = '<div class="cards">' + list.map(function (r) {
       var id = slug(r.name), d = S.npcs.get(id) || {}, open = S.npcOpen === id;
       return '<div class="card" data-npc="' + esc(id) + '" data-name="' + esc(r.name) + '"><div class="ctop"><h3>' + esc(r.name) + (d.attitude ? '<span class="pill st-' + esc(String(d.attitude).toLowerCase()) + '">' + esc(d.attitude) + '</span>' : '') +
-        (S.npcs.has(id) && !r.entries.length ? '<span class="end">' + delBtn('npcs', id, r.name) + '</span>' : '') + '</h3>' +
+        (canWrite() ? '<span class="end">' + (S.confirm === 'npcrm:' + id
+          ? '<span class="confirm">Remove card? <button class="icon" type="button" data-act="npcrm-yes" data-id="' + esc(id) + '" data-name="' + esc(r.name) + '" data-notes="' + r.entries.length + '">Yes</button><button class="icon" type="button" data-act="del-no">No</button></span>'
+          : '<button class="icon" type="button" data-act="npcrm" data-id="' + esc(id) + '" title="Remove card" aria-label="Remove ' + esc(r.name) + '">✕</button>') + '</span>' : '') + '</h3>' +
         (isImg(d.avatar) ? '<img class="av" data-act="zoom" tabindex="0" role="button" title="Click to enlarge" src="' + esc(d.avatar) + '" alt="Picture of ' + esc(r.name) + '">' : '') + '</div>' +
         '<div class="two2"><label class="fld">Attitude to us<select' + fa('npcs', id, 'attitude', r.name) + '>' + optHTML(STAND, d.attitude, 'Unknown') + '</select></label>' +
         '<label class="fld">Faction<select' + fa('npcs', id, 'faction', r.name) + '>' + optHTML(facs, d.faction, 'None') + '</select></label></div>' +
@@ -1172,7 +1177,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
         r.quotes.slice(0, 2).map(function (x) { return '<p class="q">' + esc(x.text) + '</p>'; }).join('') +
         (r.entries.length ? '<button class="btn quiet" type="button" data-act="npcopen" data-id="' + esc(id) + '">' + (open ? 'Hide' : 'Show') + ' ' + r.entries.length + (r.entries.length === 1 ? ' note' : ' notes') + '</button>' : '<p class="meta">No notes mention them yet.</p>') +
         (open ? '<ul class="log">' + r.entries.map(function (e) { return rowHTML(e, true); }).join('') + '</ul>' : '') + '</div>';
-    }).join('') + '</div>';
+    }).join('') + '</div>' + goneHTML;
   }
   function renderFactions() {
     var el = $('fac-list'); if (busy(el)) { S.stale = true; return; }
@@ -1272,7 +1277,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   $('npc-ac').addEventListener('mousedown', function (ev) { ev.preventDefault(); var li = ev.target.closest('[data-i]'); if (li) nacPick(Number(li.dataset.i)); });
   document.addEventListener('submit', function (ev) {
     var f = ev.target.id; if (['npc-add', 'fac-add', 'staff-add', 'led-add'].indexOf(f) < 0) return; ev.preventDefault(); if (!canWrite()) return;
-    if (f === 'npc-add') { var n = $('npc-name').value.trim(); if (!n) return; if (!S.npcs.has(slug(n))) put('npcs', slug(n), { name: n }); $('npc-name').value = ''; S.npcq = ''; $('npc-q').value = ''; }
+    if (f === 'npc-add') { var n = $('npc-name').value.trim(); if (!n) return; if (!S.npcs.has(slug(n))) put('npcs', slug(n), { name: n }); else if (S.npcs.get(slug(n)).hidden) patch('npcs', slug(n), { hidden: false }); $('npc-name').value = ''; S.npcq = ''; $('npc-q').value = ''; }
     if (f === 'fac-add') { var fn = $('fac-name').value.trim(); if (!fn) return; if (!S.factions.has(slug(fn))) put('factions', slug(fn), { name: fn, order: Date.now() }); $('fac-name').value = ''; }
     if (f === 'staff-add') { var sn = $('staff-name').value.trim(); if (!sn) return; put('bizstaff', newId('st'), { name: sn, role: '', wage: '', notes: '', order: Date.now() }); $('staff-name').value = ''; }
     if (f === 'led-add') { var tx = $('led-text').value.trim(), cs = {}, tot = 0, bad = false;
@@ -1444,6 +1449,12 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     if (a === 'secall') { TYPES.forEach(function (t) { S.shut[t.k] = b.dataset.v === '1'; }); lsSet('table-notes-shut', JSON.stringify(S.shut)); renderList(); return; }
     if (a === 'first') return newSession();
     if (a === 'npcpicdel') { var pcl = b.dataset.coll || 'npcs', nd = S[pcl] && S[pcl].get(id); if (nd && canWrite()) patch(pcl, id, { avatar: '' }); return; }
+    if (a === 'npcrm') { if (canWrite()) { S.confirm = 'npcrm:' + id; render(); } return; }
+    if (a === 'npcrm-yes') { if (!canWrite()) return; S.confirm = null;
+      if (Number(b.dataset.notes) > 0) { var cur0 = S.npcs.get(id), d0 = cur0 ? body(cur0) : {}; if (!d0.name) d0.name = b.dataset.name; d0.hidden = true; put('npcs', id, d0); toast('Card removed. The notes about them are kept.'); }
+      else if (S.npcs.has(id)) del('npcs', id);
+      render(); return; }
+    if (a === 'npcback') { if (canWrite() && S.npcs.has(id)) patch('npcs', id, { hidden: false }); return; }
     if (a === 'npcopen') { S.npcOpen = S.npcOpen === id ? null : id; return render(); }
     if (a === 'facopen') { S.facOpen = S.facOpen === id ? null : id; return render(); }
     if (a === 'cdel') { if (canWrite()) { S.confirm = b.dataset.coll + ':' + id; render(); } return; }
