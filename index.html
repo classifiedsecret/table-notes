@@ -114,7 +114,19 @@ button, input, select, textarea { font: inherit; color: inherit }
 .row { display: grid; grid-template-columns: 3.8rem 4.4rem minmax(0, 1fr) auto; gap: 4px 10px; align-items: baseline; padding: 9px 2px; border-bottom: 1px solid var(--line) }
 .row time, .stag { font: .78rem var(--mono); color: var(--muted); font-variant-numeric: tabular-nums }
 .ty { font: 600 .72rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--c) }
-.tx { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; cursor: text }
+.tx { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; cursor: text; position: relative }
+.tx .ac { white-space: normal; font-style: normal; text-decoration: none }
+.tmb { padding: 0; text-align: left; background: transparent; border: 0; cursor: pointer; border-radius: 4px }
+.tmb:hover time, .tysel:hover { text-decoration: underline dotted; text-underline-offset: 3px }
+.tm { font: .78rem var(--mono); background: var(--bg); color: var(--ink); border: 1px solid var(--accent); border-radius: 6px; padding: 2px 4px; max-width: 100% }
+.row.timing { grid-template-columns: auto 4.4rem minmax(0, 1fr) auto }
+select.tysel { appearance: none; -webkit-appearance: none; background: transparent; border: 0; padding: 0; margin: 0; width: 100%; min-width: 0; cursor: pointer; border-radius: 4px }
+select.tysel option { color: var(--ink); background: var(--surface); text-transform: none; letter-spacing: 0; font-weight: 400 }
+.grip { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none }
+.row.dragging { opacity: .45 }
+.row.drop-before { box-shadow: inset 0 2px 0 var(--accent) }
+.row.drop-after { box-shadow: inset 0 -2px 0 var(--accent) }
+body.dragging-note { cursor: grabbing; user-select: none; -webkit-user-select: none }
 .row.done .tx { text-decoration: line-through; color: var(--muted) }
 .row.quote .tx { font-style: italic }
 .tx textarea { width: 100%; background: var(--bg); border: 1px solid var(--accent); border-radius: 6px; padding: 6px 8px; resize: vertical; min-height: 3.2em }
@@ -339,6 +351,7 @@ a.ddb:hover { color: var(--accent); text-decoration-style: solid }
       <div class="tools" id="tools">
         <input class="search" id="search" type="search" aria-label="Search all sessions" placeholder="Search every session">
         <div class="filter" id="filter" role="group" aria-label="Filter by type"></div>
+        <button class="btn quiet" id="undo" type="button" hidden title="Bring back the note you last deleted">↶ Undo delete</button>
       </div>
 
       <div id="list"></div>
@@ -519,7 +532,11 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   function sLabel(s) { return s ? new Date(s.createdAt || Date.now()).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '?'; }
   function fmtTime(ts) { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
   function fmtDate(ts) { return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
-  function allEntries() { return Array.from(S.entries.values()).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }); }
+  S.undo = []; S.timing = null; S.drag = false;
+  function ordOf(e) { return e.ord != null ? e.ord : (e.ts || 0); }
+  function allEntries() { return Array.from(S.entries.values()).sort(function (a, b) { return ordOf(b) - ordOf(a) || (b.ts || 0) - (a.ts || 0); }); }
+  function stamp() { var me = S.party.get(S.me); return { editedBy: me ? me.id : '', editedByName: me ? (me.player || me.name || '') : '', editedAt: Date.now() }; }
+  function hhmm(ts) { var d = new Date(ts), z = function (n) { return (n < 10 ? '0' : '') + n; }; return z(d.getHours()) + ':' + z(d.getMinutes()); }
   var canWrite = function () { return S.mode === 'cloud' || S.mode === 'local'; };
 
   /* ---------- rendering ---------- */
@@ -579,19 +596,27 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   function rowHTML(e, cross) {
     var t = TYPE[e.type] || TYPE.note, s = S.sessions.get(e.sessionId);
     var txt = S.editing === e.id
-      ? '<textarea id="edit-' + esc(e.id) + '" data-edit="' + esc(e.id) + '" aria-label="Edit note">' + esc(e.text || '') + '</textarea>'
+      ? '<textarea id="edit-' + esc(e.id) + '" data-edit="' + esc(e.id) + '" aria-label="Edit note" role="combobox" aria-autocomplete="list" aria-expanded="false">' + esc(e.text || '') + '</textarea><ul class="ac edit" role="listbox" aria-label="Suggestions" hidden></ul>'
       : linkify(e);
+    var can = canWrite() && (S.view === 'log' || S.view === 'campaign');
+    var grip = can && S.view === 'log' && !cross && S.filter === 'all'
+      ? '<button class="icon grip" type="button" data-grip="' + esc(e.id) + '" aria-label="Reorder note: drag, or press Arrow Up or Arrow Down" title="Drag to reorder">⠿</button>' : '';
+    var tm = cross ? '<button class="icon stag" data-act="goto" data-id="' + esc(e.sessionId) + '" title="Open this session">' + sLabel(s) + '</button>'
+      : S.timing === e.id ? '<input class="tm" type="time" data-time="' + esc(e.id) + '" value="' + hhmm(e.ts) + '" aria-label="Note time">'
+      : can ? '<button class="tmb" type="button" data-act="time" data-id="' + esc(e.id) + '" title="Change the time"><time>' + fmtTime(e.ts) + '</time></button>'
+      : '<time>' + fmtTime(e.ts) + '</time>';
+    var ty = can ? '<select class="ty tysel" data-type="' + esc(e.id) + '" aria-label="Note type" title="Change the type">' + TYPES.map(function (x) { return '<option value="' + x.k + '"' + (x.k === t.k ? ' selected' : '') + '>' + x.label + '</option>'; }).join('') + '</select>'
+      : '<span class="ty">' + t.label + '</span>';
     var act;
     if (S.confirm === e.id) {
       act = '<span class="confirm">Delete? <button class="icon" data-act="del-yes" data-id="' + esc(e.id) + '">Yes</button><button class="icon" data-act="del-no">No</button></span>';
     } else {
       act = (e.type === 'quest' ? '<button class="icon" data-act="done" data-id="' + esc(e.id) + '" aria-label="' + (e.done ? 'Reopen quest' : 'Mark quest done') + '" title="' + (e.done ? 'Reopen' : 'Mark done') + '">' + (e.done ? '↺' : '✓') + '</button>' : '') +
         '<button class="icon' + (e.pinned ? ' on' : '') + '" data-act="pin" data-id="' + esc(e.id) + '" aria-label="' + (e.pinned ? 'Unpin' : 'Pin') + '" title="' + (e.pinned ? 'Unpin' : 'Pin') + '">' + (e.pinned ? '★' : '☆') + '</button>' +
-        '<button class="icon" data-act="del" data-id="' + esc(e.id) + '" aria-label="Delete note" title="Delete">✕</button>';
+        '<button class="icon" data-act="del" data-id="' + esc(e.id) + '" aria-label="Delete note" title="Delete">✕</button>' + grip;
     }
-    return '<li class="row c-' + t.k + (e.done ? ' done' : '') + (t.k === 'quote' ? ' quote' : '') + '" title="' + esc(authorOf(e)) + '">' +
-      (cross ? '<button class="icon stag" data-act="goto" data-id="' + esc(e.sessionId) + '" title="Open this session">' + sLabel(s) + '</button>' : '<time>' + fmtTime(e.ts) + '</time>') +
-      '<span class="ty">' + t.label + '</span>' +
+    return '<li class="row c-' + t.k + (e.done ? ' done' : '') + (t.k === 'quote' ? ' quote' : '') + (S.timing === e.id ? ' timing' : '') + '" data-row="' + esc(e.id) + '" title="' + esc(authorOf(e)) + '">' +
+      tm + ty +
       '<div class="tx" data-act="edit" data-id="' + esc(e.id) + '">' + txt + '</div>' +
       '<div class="act">' + act + '</div></li>';
   }
@@ -669,8 +694,9 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   }
 
   function render() {
-    if (S.editing) { S.dirty = true; return; }
+    if (S.editing || S.timing || S.drag) { S.dirty = true; return; }
     var ok = canWrite(), st = $('status');
+    $('undo').hidden = !S.undo.length || !ok;
     st.textContent = S.note || { connecting: 'Connecting…', cloud: S.sync || 'Saved to this page', local: 'Saved in this browser only', error: 'Not syncing' }[S.mode];
     st.className = 'status' + (S.note || S.mode === 'error' ? ' bad' : '');
     $('tab-log').toggleAttribute('aria-current', S.view === 'log'); if (S.view === 'log') $('tab-log').setAttribute('aria-current', 'page');
@@ -795,7 +821,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   document.addEventListener('change', function (ev) { var m = /^pf-c(\d)$/.exec(ev.target.id || ''); if (m) $('pf-s' + m[1]).innerHTML = optHTML(CLASSES[ev.target.value] || [], '', 'Subclass'); });
 
   /* ---------- autocomplete ---------- */
-  var AC = { items: [], idx: 0, start: -1 };
+  var AC = { items: [], idx: 0, start: -1, el: null, box: null };
   var GAZ = ["Waterdeep", "Baldur's Gate", "Neverwinter", "Luskan", "Daggerford", "Candlekeep", "Beregost", "Nashkel", "Elturel", "Scornubel", "Triel", "Boareskyr Bridge", "Dragonspear Castle", "Greenest", "Phandalin", "Leilon", "Thundertree", "Port Llast", "Mirabar", "Mithral Hall", "Silverymoon", "Sundabar", "Everlund", "Yartar", "Triboar", "Longsaddle", "Red Larch", "Westbridge", "Amphail", "Goldenfields", "Secomber", "Loudwater", "Llorkh", "Zelbross", "Citadel Adbar", "Citadel Felbarr", "Gauntlgrym", "Nesmé", "Conyberry", "Xantharl's Keep", "Mornbryn's Shield", "Olostin's Hold", "Jalanthar", "Deadsnows", "Quaervarr", "Beorunna's Well", "Griffon's Nest", "Morgur's Mound", "One Stone", "Shining White", "Calling Horns", "Noanar's Hold", "Uluvin", "Womford", "Bargewright Inn", "Beliard", "Summit Hall", "Kheldell", "Julkoun", "Stone Bridge", "Ironford", "Nightstone", "Zymorven Hall", "Orlbar", "Rassalantar", "Thornhold", "Helm's Hold", "Castle Never", "Old Owl Well", "Wave Echo Cave", "Cragmaw Castle", "Hellgate Keep", "Grandfather Tree", "Ascore", "Dekanter", "Spellgard", "Hartsvale", "Fireshear", "Hundelstone", "Ironmaster", "Soubar", "Asbravn", "Berdusk", "Iriaebor", "Darkhold", "Hluthvar", "Hill's Edge", "Corm Orp", "Easting", "Proskur", "Durlag's Tower", "Gullykin", "Friendly Arm Inn", "Ulgoth's Beard", "Warlock's Crypt", "Evereska", "Icewind Dale", "Ten-Towns", "Bryn Shander", "Targos", "Easthaven", "Caer-Konig", "Caer-Dineval", "Lonelywood", "Termalaine", "Bremen", "Good Mead", "Dougan's Hole", "Kelvin's Cairn", "Reghed Glacier", "Sea of Moving Ice", "Spine of the World", "Maer Dualdon", "Lac Dinneshere", "Redwaters", "Carnath Roadhouse", "Castle Naerytar", "Skyreach Castle", "Parnast", "Well of Dragons", "Xonthal's Tower", "Tomb of Diderius", "Serpent Hills", "Oyaviggaton", "Neronvain's Stronghold", "Ss'tck'al", "Mere of Dead Men", "Misty Forest", "Sunset Mountains", "Greenfields", "Sword Coast", "The North", "Savage Frontier", "Western Heartlands", "Silver Marches", "Dessarin Valley", "Delimbiyr Vale", "Neverwinter Wood", "Sword Mountains", "Mount Hotenow", "High Forest", "High Moor", "Trollbark Forest", "Troll Hills", "Trollclaws", "Fields of the Dead", "Reaching Woods", "Wood of Sharp Teeth", "Cloakwood", "Greypeak Mountains", "Evermoors", "Lurkwood", "Moonwood", "Cold Wood", "Nether Mountains", "Rauvin Mountains", "Star Mounts", "Lost Peaks", "Crags", "Lizard Marsh", "Ardeep Forest", "Kryptgarden Forest", "Westwood", "Greycloak Hills", "Far Hills", "Forest of Wyrms", "Marsh of Chelimber", "Battle of Bones", "River Delimbiyr", "River Chionthar", "River Dessarin", "River Mirar", "River Rauvin", "River Surbrin", "Neverwinter River", "Winding Water", "Trade Way", "Long Road", "High Road", "Coast Way", "Uldoon Trail", "Evermoor Way", "Anauroch", "Shade Enclave", "Tunlands", "Netheril", "Castle Ward", "Sea Ward", "North Ward", "Trades Ward", "Dock Ward", "Southern Ward", "Field Ward", "City of the Dead", "Field of Triumph", "Mount Waterdeep", "Castle Waterdeep", "Deepwater Harbor", "Mistshore", "Blackstaff Tower", "Yawning Portal", "Undermountain", "Skullport", "Upper City", "Lower City", "Outer City", "Wyrm's Rock", "Wyrm's Crossing", "Elfsong Tavern", "High Hall", "Protector's Enclave", "Blacklake District", "Hall of Justice", "Chasm", "Moonshae Isles", "Gwynneth", "Alaron", "Caer Callidyrr", "Caer Corwell", "Norland", "Snowdown", "Oman", "Moray", "Korinn Archipelago", "Mintarn", "Orlumbor", "Ruathym", "Gundarlun", "Tuern", "Purple Rocks", "Whalebones", "Nelanther Isles", "Lantan", "Nimbral", "Evermeet", "Sea of Swords", "Trackless Sea", "Shining Sea", "Amn", "Athkatla", "Crimmor", "Purskul", "Murann", "Eshpurta", "Keczulla", "Esmeltaran", "Trademeet", "Riatavin", "Cloud Peaks", "Small Teeth", "Snowflake Mountains", "Tethyr", "Zazesspur", "Darromar", "Myratma", "Saradush", "Velen", "Wealdath", "Starspire Mountains", "Calimshan", "Calimport", "Memnon", "Almraiven", "Suldolphor", "Calim Desert", "Marching Mountains", "Lake of Steam", "Border Kingdoms", "Erlkazar", "Chult", "Port Nyanzaru", "Omu", "Mezro", "Fort Beluarian", "Camp Vengeance", "Tashalar", "Tashluta", "Samarach", "Thindol", "Lapaliiya", "Sheirtalar", "Halruaa", "Halarahh", "Lake Halruaa", "Dambrath", "Luiren", "The Shaar", "Shaarmid", "Great Rift", "Eartheart", "Underhome", "Mhair Jungles", "Black Jungles", "Estagund", "Durpar", "Veldorn", "Ulgarth", "Var the Golden", "Utter East", "Vilhon Reach", "Turmish", "Alaghôn", "Chondath", "Arrabar", "Sespech", "Ormpetarr", "Hlondeth", "Nimpeth", "Chondalwood", "Winterwood", "Gulthmere Forest", "Cedarspoke", "Orsraun Mountains", "Shining Plains", "Assam", "Ormath", "Lheshayl", "Dragon Coast", "Westgate", "Teziir", "Starmantle", "Reddansyr", "Ilipur", "Pros", "Elversult", "Priapurl", "Pirate Isles", "Dragonisle", "Sea of Fallen Stars", "Dragonmere", "Lake of Dragons", "Cormyr", "Suzail", "Marsember", "Arabel", "Tilverton", "Wheloon", "Immersea", "Eveningstar", "High Horn", "Waymoot", "Espar", "Hilp", "Dhedluk", "Thunder Peaks", "Storm Horns", "King's Forest", "Hullack Forest", "Vast Swamp", "Stonelands", "Goblin Marches", "Sembia", "Selgaunt", "Ordulin", "Saerloon", "Yhaunn", "Daerlun", "Urmlaspyr", "Dalelands", "Shadowdale", "Mistledale", "Ashabenford", "Battledale", "Essembra", "Deepingdale", "Highmoon", "Archendale", "Archenbridge", "Harrowdale", "Featherdale", "Scardale", "Tasseldale", "Daggerdale", "Dagger Falls", "High Dale", "Cormanthor", "Myth Drannor", "Elventree", "Semberholme", "Tangled Trees", "Moonsea", "Zhentil Keep", "Hillsfar", "Mulmaster", "Melvaunt", "Thentia", "Phlan", "Hulburg", "Voonlar", "Yûlash", "Teshwave", "Citadel of the Raven", "Elmwood", "Ironfang Keep", "Thar", "Glister", "The Ride", "Vaasa", "Damara", "Heliogabalus", "Bloodstone Pass", "Palischuk", "Darmshall", "Galena Mountains", "Great Glacier", "Sossal", "Impiltur", "Lyrabar", "Hlammach", "Dilpur", "Sarshel", "The Vast", "Ravens Bluff", "Tantras", "Calaunt", "Procampur", "Tsurlagol", "Earthfast Mountains", "Earthspur Mountains", "Great Dale", "Uthmere", "Narfell", "Bildoobaris", "Rashemen", "Immilmar", "Mulsantir", "Mulptan", "Lake Ashane", "Urlingwood", "Ashenwood", "Thesk", "Telflamm", "Phsant", "Phent", "Tammar", "Two Stars", "Aglarond", "Velprintalar", "Emmech", "Furthinghome", "Yuirwood", "Altumbel", "Spandeliyon", "Thay", "Eltabbar", "Bezantur", "Amruthar", "Pyarados", "Surthay", "Thaymount", "Tyraturos", "Nethentir", "Lake Thaylambar", "Plateau of Thay", "Sunrise Mountains", "Thazalhar", "Wizards' Reach", "Escalant", "Laothkund", "Delthuntle", "Mulhorand", "Skuld", "Gheldaneth", "Neldorild", "Unther", "Messemprar", "Unthalass", "Chessenta", "Cimbar", "Luthcheq", "Airspur", "Soorenar", "Akanax", "Mordulkin", "Threskel", "Mourktar", "Murghôm", "Semphar", "Raurin", "Plains of Purple Dust", "Alamber Sea", "Tymanther", "Djerad Thymar", "Akanûl", "Hordelands", "Endless Wastes", "Underdark", "Menzoberranzan", "Gracklstugh", "Blingdenstone", "Mantol-Derith", "Sloobludop", "Neverlight Grove", "Ched Nasad", "Sshamath", "Eryndlyn", "Sschindylryn", "Oryndoll", "Araumycos", "Darklake", "Wormwrithings", "Labyrinth", "Velkynvelve"];
   var NPCS = [["Governor Tarbaw Nighthill", "Hoard"], ["Castellan Escobert the Red", "Hoard"], ["Linan Swift", "Hoard"], ["Cuth Swift", "Hoard"], ["Sergeant Markguth", "Hoard"], ["Eadyan Falconmoon", "Hoard"], ["Lennithon", "Hoard"], ["Langdedrosa Cyanwrath", "Hoard"], ["Frulam Mondath", "Hoard"], ["Leosin Erlanthar", "Hoard"], ["Nesim Waladra", "Hoard"], ["Ontharr Frume", "Hoard"], ["Carlon Amoffel", "Hoard"], ["Rezmir", "Hoard"], ["Jamna Gleamsilver", "Hoard"], ["Azbara Jos", "Hoard"], ["Ackyn Selebon", "Hoard"], ["Ardred Briferhew", "Hoard"], ["Bog Luck", "Hoard"], ["Gristle Pete", "Hoard"], ["Pharblex Spattergoo", "Hoard"], ["Snapjaw", "Hoard"], ["Dralmorrer Borngray", "Hoard"], ["Voaraghamanthar", "Hoard"], ["Waervaerendor", "Hoard"], ["Talis the White", "Hoard"], ["Trespin", "Hoard"], ["Captain Othelstan", "Hoard"], ["Gundalin", "Hoard"], ["Raggnar Redtooth", "Hoard"], ["Rath Modar", "Hoard"], ["Sandesyl Morgia", "Hoard"], ["Blagothkus", "Hoard"], ["Esclarotta", "Hoard"], ["Wessic the Wizened", "Hoard"], ["Glazhael the Cloudchaser", "Hoard"], ["Achreny Ulyeltin", "Hoard"], ["Aldor Urnpoleshurst", "Hoard"], ["Beyd Sechepol", "Hoard"], ["Edhelri Lewel", "Hoard"], ["Eldkin Agetul", "Hoard"], ["Enom Tobun", "Hoard"], ["Green Imsa", "Hoard"], ["Lai Angesstun", "Hoard"], ["Lasfelro the Silent", "Hoard"], ["Leda Widris", "Hoard"], ["Losvius Longnose", "Hoard"], ["Noohar Serelim", "Hoard"], ["Nyerhite Verther", "Hoard"], ["Orvustia Esseren", "Hoard"], ["Oyn Evenmor", "Hoard"], ["Radecere Perethun", "Hoard"], ["Samardag the Hoper", "Hoard"], ["Sulesdeg the Pole", "Hoard"], ["Tyjit Skesh", "Hoard"], ["Werond Torohar", "Hoard"], ["Severin Silrajin", "Tiamat"], ["Galvan the Blue", "Tiamat"], ["Neronvain", "Tiamat"], ["Varram the White", "Tiamat"], ["Naergoth Bladelord", "Tiamat"], ["Tiamat", "Tiamat"], ["Dagult Neverember", "Tiamat"], ["Laeral Silverhand", "Tiamat"], ["Remallia Haventree", "Tiamat"], ["Sir Isteval", "Tiamat"], ["Taern Hornblade", "Tiamat"], ["King Melandrach", "Tiamat"], ["Alagarthas", "Tiamat"], ["Ulder Ravengard", "Tiamat"], ["Connerad Brawnanvil", "Tiamat"], ["Delaan Winterhound", "Tiamat"], ["Elanil Elassidil", "Tiamat"], ["Rian Nightshade", "Tiamat"], ["Dala Silmerhelve", "Tiamat"], ["Nymmurh", "Tiamat"], ["Maccath the Crimson", "Tiamat"], ["Arauthator", "Tiamat"], ["Bonecarver", "Tiamat"], ["Barking Seal", "Tiamat"], ["Orcaheart", "Tiamat"], ["Marfulb", "Tiamat"], ["Lerustah Half-face", "Tiamat"], ["Sir Lanniver Strayl", "Tiamat"], ["Bolo", "Tiamat"], ["Diderius", "Tiamat"], ["Chuth", "Tiamat"], ["Galin", "Tiamat"], ["Iskander", "Tiamat"], ["Jorgen Pawl", "Tiamat"], ["Taraz the Fair", "Tiamat"], ["Nyh Ilmichh", "Tiamat"], ["Eseldra Yeth", "Tiamat"], ["Szass Tam", "Tiamat"], ["Protanther", "Tiamat"], ["Ileuthra", "Tiamat"], ["Otaaryliakkarnos", "Tiamat"], ["Tazmikella", "Tiamat"], ["Edith", "Delves"], ["Fill", "Delves"], ["Uncle Nibblecheek", "Delves"], ["Xia", "Delves"], ["Orcus", "Delves"], ["Elakdras", "Delves"], ["Anthradusk", "Delves"]];
   var LOOT = [["Copper Pieces", "Treasure"], ["Silver Pieces", "Treasure"], ["Electrum Pieces", "Treasure"], ["Gold Pieces", "Treasure"], ["Platinum Pieces", "Treasure"], ["Trade Bar", "Treasure"], ["Art Object", "Treasure"], ["Gemstone", "Treasure"], ["Agate", "Treasure"], ["Amber", "Treasure"], ["Amethyst", "Treasure"], ["Aquamarine", "Treasure"], ["Azurite", "Treasure"], ["Black Opal", "Treasure"], ["Black Pearl", "Treasure"], ["Black Sapphire", "Treasure"], ["Bloodstone", "Treasure"], ["Carnelian", "Treasure"], ["Citrine", "Treasure"], ["Coral", "Treasure"], ["Diamond", "Treasure"], ["Emerald", "Treasure"], ["Fire Opal", "Treasure"], ["Garnet", "Treasure"], ["Jade", "Treasure"], ["Jacinth", "Treasure"], ["Jasper", "Treasure"], ["Jet", "Treasure"], ["Lapis Lazuli", "Treasure"], ["Malachite", "Treasure"], ["Moonstone", "Treasure"], ["Obsidian", "Treasure"], ["Onyx", "Treasure"], ["Opal", "Treasure"], ["Pearl", "Treasure"], ["Peridot", "Treasure"], ["Quartz", "Treasure"], ["Ruby", "Treasure"], ["Sapphire", "Treasure"], ["Star Ruby", "Treasure"], ["Star Sapphire", "Treasure"], ["Tiger Eye", "Treasure"], ["Topaz", "Treasure"], ["Tourmaline", "Treasure"], ["Turquoise", "Treasure"], ["Zircon", "Treasure"], ["Spell Scroll", "Treasure"], ["Spell Scroll (Cantrip)", "Treasure"], ["Treasure Map", "Treasure"], ["Deed", "Treasure"], ["Letter of Credit", "Treasure"], ["Potion of Healing", "Potion"], ["Potion of Greater Healing", "Potion"], ["Potion of Superior Healing", "Potion"], ["Potion of Supreme Healing", "Potion"], ["Potion of Animal Friendship", "Potion"], ["Potion of Clairvoyance", "Potion"], ["Potion of Climbing", "Potion"], ["Potion of Diminution", "Potion"], ["Potion of Fire Breath", "Potion"], ["Potion of Flying", "Potion"], ["Potion of Gaseous Form", "Potion"], ["Potion of Hill Giant Strength", "Potion"], ["Potion of Frost Giant Strength", "Potion"], ["Potion of Stone Giant Strength", "Potion"], ["Potion of Fire Giant Strength", "Potion"], ["Potion of Cloud Giant Strength", "Potion"], ["Potion of Storm Giant Strength", "Potion"], ["Potion of Growth", "Potion"], ["Potion of Heroism", "Potion"], ["Potion of Invisibility", "Potion"], ["Potion of Invulnerability", "Potion"], ["Potion of Longevity", "Potion"], ["Potion of Mind Reading", "Potion"], ["Potion of Poison", "Potion"], ["Potion of Resistance", "Potion"], ["Potion of Speed", "Potion"], ["Potion of Vitality", "Potion"], ["Potion of Water Breathing", "Potion"], ["Elixir of Health", "Potion"], ["Oil of Etherealness", "Potion"], ["Oil of Sharpness", "Potion"], ["Oil of Slipperiness", "Potion"], ["Philter of Love", "Potion"], ["Dust of Disappearance", "Potion"], ["Dust of Dryness", "Potion"], ["Dust of Sneezing and Choking", "Potion"], ["Bead of Force", "Potion"], ["Keoghtom's Ointment", "Potion"], ["Marvelous Pigments", "Potion"], ["Sovereign Glue", "Potion"], ["Universal Solvent", "Potion"], ["Restorative Ointment", "Potion"], ["Adamantine Armor", "Magic"], ["Ammunition +1", "Magic"], ["Ammunition +2", "Magic"], ["Ammunition +3", "Magic"], ["Amulet of Health", "Magic"], ["Amulet of Proof against Detection and Location", "Magic"], ["Amulet of the Planes", "Magic"], ["Animated Shield", "Magic"], ["Apparatus of Kwalish", "Magic"], ["Armor +1", "Magic"], ["Armor +2", "Magic"], ["Armor +3", "Magic"], ["Armor of Invulnerability", "Magic"], ["Armor of Resistance", "Magic"], ["Armor of Vulnerability", "Magic"], ["Arrow of Slaying", "Magic"], ["Arrow-Catching Shield", "Magic"], ["Bag of Beans", "Magic"], ["Bag of Devouring", "Magic"], ["Bag of Holding", "Magic"], ["Bag of Tricks", "Magic"], ["Belt of Dwarvenkind", "Magic"], ["Belt of Hill Giant Strength", "Magic"], ["Belt of Frost Giant Strength", "Magic"], ["Belt of Stone Giant Strength", "Magic"], ["Belt of Fire Giant Strength", "Magic"], ["Belt of Cloud Giant Strength", "Magic"], ["Belt of Storm Giant Strength", "Magic"], ["Berserker Axe", "Magic"], ["Boots of Elvenkind", "Magic"], ["Boots of Levitation", "Magic"], ["Boots of Speed", "Magic"], ["Boots of Striding and Springing", "Magic"], ["Boots of the Winterlands", "Magic"], ["Winged Boots", "Magic"], ["Bowl of Commanding Water Elementals", "Magic"], ["Bracers of Archery", "Magic"], ["Bracers of Defense", "Magic"], ["Brazier of Commanding Fire Elementals", "Magic"], ["Brooch of Shielding", "Magic"], ["Broom of Flying", "Magic"], ["Candle of Invocation", "Magic"], ["Cap of Water Breathing", "Magic"], ["Cape of the Mountebank", "Magic"], ["Carpet of Flying", "Magic"], ["Censer of Controlling Air Elementals", "Magic"], ["Chime of Opening", "Magic"], ["Circlet of Blasting", "Magic"], ["Cloak of Arachnida", "Magic"], ["Cloak of Displacement", "Magic"], ["Cloak of Elvenkind", "Magic"], ["Cloak of Protection", "Magic"], ["Cloak of the Bat", "Magic"], ["Cloak of the Manta Ray", "Magic"], ["Crystal Ball", "Magic"], ["Cube of Force", "Magic"], ["Cubic Gate", "Magic"], ["Daern's Instant Fortress", "Magic"], ["Dagger of Venom", "Magic"], ["Dancing Sword", "Magic"], ["Decanter of Endless Water", "Magic"], ["Deck of Illusions", "Magic"], ["Deck of Many Things", "Magic"], ["Defender", "Magic"], ["Demon Armor", "Magic"], ["Dimensional Shackles", "Magic"], ["Dragon Scale Mail", "Magic"], ["Dragon Slayer", "Magic"], ["Driftglobe", "Magic"], ["Dwarven Plate", "Magic"], ["Dwarven Thrower", "Magic"], ["Efreeti Bottle", "Magic"], ["Efreeti Chain", "Magic"], ["Elemental Gem", "Magic"], ["Elven Chain", "Magic"], ["Eversmoking Bottle", "Magic"], ["Eyes of Charming", "Magic"], ["Eyes of Minute Seeing", "Magic"], ["Eyes of the Eagle", "Magic"], ["Feather Token", "Magic"], ["Figurine of Wondrous Power", "Magic"], ["Flame Tongue", "Magic"], ["Folding Boat", "Magic"], ["Frost Brand", "Magic"], ["Gauntlets of Ogre Power", "Magic"], ["Gem of Brightness", "Magic"], ["Gem of Seeing", "Magic"], ["Giant Slayer", "Magic"], ["Glamoured Studded Leather", "Magic"], ["Gloves of Missile Snaring", "Magic"], ["Gloves of Swimming and Climbing", "Magic"], ["Gloves of Thievery", "Magic"], ["Goggles of Night", "Magic"], ["Hammer of Thunderbolts", "Magic"], ["Hat of Disguise", "Magic"], ["Headband of Intellect", "Magic"], ["Helm of Brilliance", "Magic"], ["Helm of Comprehending Languages", "Magic"], ["Helm of Telepathy", "Magic"], ["Helm of Teleportation", "Magic"], ["Heward's Handy Haversack", "Magic"], ["Holy Avenger", "Magic"], ["Horn of Blasting", "Magic"], ["Horn of Valhalla", "Magic"], ["Horseshoes of Speed", "Magic"], ["Horseshoes of a Zephyr", "Magic"], ["Immovable Rod", "Magic"], ["Instrument of the Bards", "Magic"], ["Ioun Stone", "Magic"], ["Iron Bands of Bilarro", "Magic"], ["Iron Flask", "Magic"], ["Javelin of Lightning", "Magic"], ["Lantern of Revealing", "Magic"], ["Luck Blade", "Magic"], ["Mace of Disruption", "Magic"], ["Mace of Smiting", "Magic"], ["Mace of Terror", "Magic"], ["Mantle of Spell Resistance", "Magic"], ["Manual of Bodily Health", "Magic"], ["Manual of Gainful Exercise", "Magic"], ["Manual of Golems", "Magic"], ["Manual of Quickness of Action", "Magic"], ["Medallion of Thoughts", "Magic"], ["Mirror of Life Trapping", "Magic"], ["Mithral Armor", "Magic"], ["Necklace of Adaptation", "Magic"], ["Necklace of Fireballs", "Magic"], ["Necklace of Prayer Beads", "Magic"], ["Nine Lives Stealer", "Magic"], ["Nolzur's Marvelous Pigments", "Magic"], ["Oathbow", "Magic"], ["Orb of Dragonkind", "Magic"], ["Pearl of Power", "Magic"], ["Periapt of Health", "Magic"], ["Periapt of Proof against Poison", "Magic"], ["Periapt of Wound Closure", "Magic"], ["Pipes of Haunting", "Magic"], ["Pipes of the Sewers", "Magic"], ["Plate Armor of Etherealness", "Magic"], ["Portable Hole", "Magic"], ["Quaal's Feather Token", "Magic"], ["Quiver of Ehlonna", "Magic"], ["Ring of Animal Influence", "Magic"], ["Ring of Djinni Summoning", "Magic"], ["Ring of Elemental Command", "Magic"], ["Ring of Evasion", "Magic"], ["Ring of Feather Falling", "Magic"], ["Ring of Free Action", "Magic"], ["Ring of Invisibility", "Magic"], ["Ring of Jumping", "Magic"], ["Ring of Mind Shielding", "Magic"], ["Ring of Protection", "Magic"], ["Ring of Regeneration", "Magic"], ["Ring of Resistance", "Magic"], ["Ring of Shooting Stars", "Magic"], ["Ring of Spell Storing", "Magic"], ["Ring of Spell Turning", "Magic"], ["Ring of Swimming", "Magic"], ["Ring of Telekinesis", "Magic"], ["Ring of the Ram", "Magic"], ["Ring of Three Wishes", "Magic"], ["Ring of Warmth", "Magic"], ["Ring of Water Walking", "Magic"], ["Ring of X-ray Vision", "Magic"], ["Robe of Eyes", "Magic"], ["Robe of Scintillating Colors", "Magic"], ["Robe of Stars", "Magic"], ["Robe of the Archmagi", "Magic"], ["Robe of Useful Items", "Magic"], ["Rod of Absorption", "Magic"], ["Rod of Alertness", "Magic"], ["Rod of Lordly Might", "Magic"], ["Rod of Resurrection", "Magic"], ["Rod of Rulership", "Magic"], ["Rod of Security", "Magic"], ["Rod of the Pact Keeper", "Magic"], ["Rope of Climbing", "Magic"], ["Rope of Entanglement", "Magic"], ["Saddle of the Cavalier", "Magic"], ["Scarab of Protection", "Magic"], ["Scimitar of Speed", "Magic"], ["Scroll of Protection", "Magic"], ["Sending Stones", "Magic"], ["Sentinel Shield", "Magic"], ["Shield +1", "Magic"], ["Shield +2", "Magic"], ["Shield +3", "Magic"], ["Shield of Missile Attraction", "Magic"], ["Slippers of Spider Climbing", "Magic"], ["Sphere of Annihilation", "Magic"], ["Spellguard Shield", "Magic"], ["Staff of Charming", "Magic"], ["Staff of Fire", "Magic"], ["Staff of Frost", "Magic"], ["Staff of Healing", "Magic"], ["Staff of Power", "Magic"], ["Staff of Striking", "Magic"], ["Staff of Swarming Insects", "Magic"], ["Staff of the Adder", "Magic"], ["Staff of the Magi", "Magic"], ["Staff of the Python", "Magic"], ["Staff of the Woodlands", "Magic"], ["Staff of Thunder and Lightning", "Magic"], ["Staff of Withering", "Magic"], ["Stone of Controlling Earth Elementals", "Magic"], ["Stone of Good Luck", "Magic"], ["Sun Blade", "Magic"], ["Sword of Life Stealing", "Magic"], ["Sword of Sharpness", "Magic"], ["Sword of Wounding", "Magic"], ["Sword of Answering", "Magic"], ["Talisman of Pure Good", "Magic"], ["Talisman of the Sphere", "Magic"], ["Talisman of Ultimate Evil", "Magic"], ["Tentacle Rod", "Magic"], ["Tome of Clear Thought", "Magic"], ["Tome of Leadership and Influence", "Magic"], ["Tome of Understanding", "Magic"], ["Tome of the Stilled Tongue", "Magic"], ["Trident of Fish Command", "Magic"], ["Vicious Weapon", "Magic"], ["Vorpal Sword", "Magic"], ["Wand of Binding", "Magic"], ["Wand of Enemy Detection", "Magic"], ["Wand of Fear", "Magic"], ["Wand of Fireballs", "Magic"], ["Wand of Lightning Bolts", "Magic"], ["Wand of Magic Detection", "Magic"], ["Wand of Magic Missiles", "Magic"], ["Wand of Paralysis", "Magic"], ["Wand of Polymorph", "Magic"], ["Wand of Secrets", "Magic"], ["Wand of the War Mage", "Magic"], ["Wand of Web", "Magic"], ["Wand of Wonder", "Magic"], ["Weapon +1", "Magic"], ["Weapon +2", "Magic"], ["Weapon +3", "Magic"], ["Weapon of Warning", "Magic"], ["Well of Many Worlds", "Magic"], ["Wind Fan", "Magic"], ["Wings of Flying", "Magic"], ["Alchemy Jug", "Magic"], ["Wand of Winter", "Magic"], ["Hazirawn", "Magic"], ["Dragontooth Dagger", "Magic"], ["Insignia of Claws", "Magic"], ["Tankard of Plenty", "Magic"], ["Black Dragon Mask", "Magic"], ["Blue Dragon Mask", "Magic"], ["Green Dragon Mask", "Magic"], ["Red Dragon Mask", "Magic"], ["White Dragon Mask", "Magic"], ["Mask of the Dragon Queen", "Magic"], ["Draakhorn", "Magic"], ["Club", "Weapon"], ["Dagger", "Weapon"], ["Greatclub", "Weapon"], ["Handaxe", "Weapon"], ["Javelin", "Weapon"], ["Light Hammer", "Weapon"], ["Mace", "Weapon"], ["Quarterstaff", "Weapon"], ["Sickle", "Weapon"], ["Spear", "Weapon"], ["Light Crossbow", "Weapon"], ["Dart", "Weapon"], ["Shortbow", "Weapon"], ["Sling", "Weapon"], ["Battleaxe", "Weapon"], ["Flail", "Weapon"], ["Glaive", "Weapon"], ["Greataxe", "Weapon"], ["Greatsword", "Weapon"], ["Halberd", "Weapon"], ["Lance", "Weapon"], ["Longsword", "Weapon"], ["Maul", "Weapon"], ["Morningstar", "Weapon"], ["Pike", "Weapon"], ["Rapier", "Weapon"], ["Scimitar", "Weapon"], ["Shortsword", "Weapon"], ["Trident", "Weapon"], ["War Pick", "Weapon"], ["Warhammer", "Weapon"], ["Whip", "Weapon"], ["Blowgun", "Weapon"], ["Hand Crossbow", "Weapon"], ["Heavy Crossbow", "Weapon"], ["Longbow", "Weapon"], ["Net", "Weapon"], ["Musket", "Weapon"], ["Pistol", "Weapon"], ["Arrows", "Weapon"], ["Crossbow Bolts", "Weapon"], ["Sling Bullets", "Weapon"], ["Blowgun Needles", "Weapon"], ["Silvered Weapon", "Weapon"], ["Adamantine Weapon", "Weapon"], ["Padded Armor", "Armor"], ["Leather Armor", "Armor"], ["Studded Leather Armor", "Armor"], ["Hide Armor", "Armor"], ["Chain Shirt", "Armor"], ["Scale Mail", "Armor"], ["Breastplate", "Armor"], ["Half Plate Armor", "Armor"], ["Ring Mail", "Armor"], ["Chain Mail", "Armor"], ["Splint Armor", "Armor"], ["Plate Armor", "Armor"], ["Shield", "Armor"], ["Abacus", "Gear"], ["Acid", "Gear"], ["Alchemist's Fire", "Gear"], ["Antitoxin", "Gear"], ["Backpack", "Gear"], ["Ball Bearings", "Gear"], ["Barrel", "Gear"], ["Basket", "Gear"], ["Bedroll", "Gear"], ["Bell", "Gear"], ["Blanket", "Gear"], ["Block and Tackle", "Gear"], ["Book", "Gear"], ["Glass Bottle", "Gear"], ["Bucket", "Gear"], ["Caltrops", "Gear"], ["Candle", "Gear"], ["Crossbow Bolt Case", "Gear"], ["Map Case", "Gear"], ["Chain", "Gear"], ["Chalk", "Gear"], ["Chest", "Gear"], ["Climber's Kit", "Gear"], ["Fine Clothes", "Gear"], ["Traveler's Clothes", "Gear"], ["Common Clothes", "Gear"], ["Costume", "Gear"], ["Component Pouch", "Gear"], ["Crowbar", "Gear"], ["Arcane Focus", "Gear"], ["Druidic Focus", "Gear"], ["Holy Symbol", "Gear"], ["Fishing Tackle", "Gear"], ["Flask", "Gear"], ["Grappling Hook", "Gear"], ["Hammer", "Gear"], ["Sledgehammer", "Gear"], ["Healer's Kit", "Gear"], ["Holy Water", "Gear"], ["Hourglass", "Gear"], ["Hunting Trap", "Gear"], ["Ink", "Gear"], ["Ink Pen", "Gear"], ["Jug", "Gear"], ["Ladder", "Gear"], ["Lamp", "Gear"], ["Bullseye Lantern", "Gear"], ["Hooded Lantern", "Gear"], ["Lock", "Gear"], ["Magnifying Glass", "Gear"], ["Manacles", "Gear"], ["Mess Kit", "Gear"], ["Steel Mirror", "Gear"], ["Oil", "Gear"], ["Paper", "Gear"], ["Parchment", "Gear"], ["Perfume", "Gear"], ["Miner's Pick", "Gear"], ["Piton", "Gear"], ["Basic Poison", "Gear"], ["Pole", "Gear"], ["Iron Pot", "Gear"], ["Pouch", "Gear"], ["Quiver", "Gear"], ["Portable Ram", "Gear"], ["Rations", "Gear"], ["Robes", "Gear"], ["Hempen Rope", "Gear"], ["Silk Rope", "Gear"], ["Sack", "Gear"], ["Merchant's Scale", "Gear"], ["Sealing Wax", "Gear"], ["Shovel", "Gear"], ["Signal Whistle", "Gear"], ["Signet Ring", "Gear"], ["Soap", "Gear"], ["Spellbook", "Gear"], ["Iron Spikes", "Gear"], ["Spyglass", "Gear"], ["Tent", "Gear"], ["Tinderbox", "Gear"], ["Torch", "Gear"], ["Vial", "Gear"], ["Waterskin", "Gear"], ["Whetstone", "Gear"], ["Burglar's Pack", "Gear"], ["Diplomat's Pack", "Gear"], ["Dungeoneer's Pack", "Gear"], ["Entertainer's Pack", "Gear"], ["Explorer's Pack", "Gear"], ["Priest's Pack", "Gear"], ["Scholar's Pack", "Gear"], ["Thieves' Tools", "Gear"], ["Herbalism Kit", "Gear"], ["Disguise Kit", "Gear"], ["Forgery Kit", "Gear"], ["Poisoner's Kit", "Gear"], ["Navigator's Tools", "Gear"], ["Alchemist's Supplies", "Gear"], ["Brewer's Supplies", "Gear"], ["Calligrapher's Supplies", "Gear"], ["Carpenter's Tools", "Gear"], ["Cartographer's Tools", "Gear"], ["Cobbler's Tools", "Gear"], ["Cook's Utensils", "Gear"], ["Glassblower's Tools", "Gear"], ["Jeweler's Tools", "Gear"], ["Leatherworker's Tools", "Gear"], ["Mason's Tools", "Gear"], ["Painter's Supplies", "Gear"], ["Potter's Tools", "Gear"], ["Smith's Tools", "Gear"], ["Tinker's Tools", "Gear"], ["Weaver's Tools", "Gear"], ["Woodcarver's Tools", "Gear"], ["Dice Set", "Gear"], ["Playing Cards", "Gear"], ["Dragonchess Set", "Gear"], ["Lute", "Gear"], ["Lyre", "Gear"], ["Flute", "Gear"], ["Drum", "Gear"], ["Horn", "Gear"], ["Bagpipes", "Gear"], ["Dulcimer", "Gear"], ["Pan Flute", "Gear"], ["Shawm", "Gear"], ["Viol", "Gear"], ["Riding Horse", "Gear"], ["Warhorse", "Gear"], ["Draft Horse", "Gear"], ["Pony", "Gear"], ["Mule", "Gear"], ["Mastiff", "Gear"], ["Saddle", "Gear"], ["Saddlebags", "Gear"], ["Cart", "Gear"], ["Wagon", "Gear"], ["Rowboat", "Gear"], ["Keelboat", "Gear"], ["Armor of Gleaming", "Xanathar's"], ["Bead of Nourishment", "Xanathar's"], ["Bead of Refreshment", "Xanathar's"], ["Boots of False Tracks", "Xanathar's"], ["Candle of the Deep", "Xanathar's"], ["Cast-Off Armor", "Xanathar's"], ["Charlatan's Die", "Xanathar's"], ["Cloak of Billowing", "Xanathar's"], ["Cloak of Many Fashions", "Xanathar's"], ["Clockwork Amulet", "Xanathar's"], ["Clothes of Mending", "Xanathar's"], ["Dark Shard Amulet", "Xanathar's"], ["Dread Helm", "Xanathar's"], ["Ear Horn of Hearing", "Xanathar's"], ["Enduring Spellbook", "Xanathar's"], ["Ersatz Eye", "Xanathar's"], ["Hat of Vermin", "Xanathar's"], ["Hat of Wizardry", "Xanathar's"], ["Heward's Handy Spice Pouch", "Xanathar's"], ["Horn of Silent Alarm", "Xanathar's"], ["Instrument of Illusions", "Xanathar's"], ["Instrument of Scribing", "Xanathar's"], ["Lock of Trickery", "Xanathar's"], ["Moon-Touched Sword", "Xanathar's"], ["Mystery Key", "Xanathar's"], ["Orb of Direction", "Xanathar's"], ["Orb of Time", "Xanathar's"], ["Perfume of Bewitching", "Xanathar's"], ["Pipe of Smoke Monsters", "Xanathar's"], ["Pole of Angling", "Xanathar's"], ["Pole of Collapsing", "Xanathar's"], ["Pot of Awakening", "Xanathar's"], ["Rope of Mending", "Xanathar's"], ["Ruby of the War Mage", "Xanathar's"], ["Shield of Expression", "Xanathar's"], ["Smoldering Armor", "Xanathar's"], ["Staff of Adornment", "Xanathar's"], ["Staff of Birdcalls", "Xanathar's"], ["Staff of Flowers", "Xanathar's"], ["Talking Doll", "Xanathar's"], ["Tankard of Sobriety", "Xanathar's"], ["Unbreakable Arrow", "Xanathar's"], ["Veteran's Cane", "Xanathar's"], ["Walloping Ammunition", "Xanathar's"], ["Wand of Conducting", "Xanathar's"], ["Wand of Pyrotechnics", "Xanathar's"], ["Wand of Scowls", "Xanathar's"], ["Wand of Smiles", "Xanathar's"], ["Absorbing Tattoo", "Tasha's"], ["Barrier Tattoo", "Tasha's"], ["Blood Fury Tattoo", "Tasha's"], ["Coiling Grasp Tattoo", "Tasha's"], ["Eldritch Claw Tattoo", "Tasha's"], ["Ghost Step Tattoo", "Tasha's"], ["Illuminator's Tattoo", "Tasha's"], ["Lifewell Tattoo", "Tasha's"], ["Masquerade Tattoo", "Tasha's"], ["Shadowfell Brand Tattoo", "Tasha's"], ["Spellwrought Tattoo", "Tasha's"], ["All-Purpose Tool", "Tasha's"], ["Amulet of the Devout", "Tasha's"], ["Arcane Grimoire", "Tasha's"], ["Bloodwell Vial", "Tasha's"], ["Moon Sickle", "Tasha's"], ["Rhythm-Maker's Drum", "Tasha's"], ["Alchemical Compendium", "Tasha's"], ["Astral Shard", "Tasha's"], ["Astromancy Archive", "Tasha's"], ["Atlas of Endless Horizons", "Tasha's"], ["Baba Yaga's Mortar and Pestle", "Tasha's"], ["Bell Branch", "Tasha's"], ["Cauldron of Plenty", "Tasha's"], ["Crook of Rao", "Tasha's"], ["Crystalline Chronicle", "Tasha's"], ["Demonomicon of Iggwilv", "Tasha's"], ["Devotee's Censer", "Tasha's"], ["Duplicitous Manuscript", "Tasha's"], ["Elemental Essence Shard", "Tasha's"], ["Far Realm Shard", "Tasha's"], ["Feywild Shard", "Tasha's"], ["Fulminating Treatise", "Tasha's"], ["Heart Weaver's Primer", "Tasha's"], ["Libram of Souls and Flesh", "Tasha's"], ["Luba's Tarokka of Souls", "Tasha's"], ["Lyre of Building", "Tasha's"], ["Mighty Servant of Leuk-o", "Tasha's"], ["Nature's Mantle", "Tasha's"], ["Outer Essence Shard", "Tasha's"], ["Planecaller's Codex", "Tasha's"], ["Prosthetic Limb", "Tasha's"], ["Protective Verses", "Tasha's"], ["Reveler's Concertina", "Tasha's"], ["Shadowfell Shard", "Tasha's"], ["Teeth of Dahlver-Nar", "Tasha's"], ["Whisper Jar", "Tasha's"], ["Amethyst Lodestone", "Fizban's"], ["Crystal Blade", "Fizban's"], ["Dragon Vessel", "Fizban's"], ["Dragon-Touched Focus", "Fizban's"], ["Dragon's Wrath Weapon", "Fizban's"], ["Dragonhide Belt", "Fizban's"], ["Dragonlance", "Fizban's"], ["Emerald Pen", "Fizban's"], ["Flail of Tiamat", "Fizban's"], ["Gold Canary Figurine of Wondrous Power", "Fizban's"], ["Platinum Scarf", "Fizban's"], ["Potion of Dragon's Majesty", "Fizban's"], ["Ruby Weave Gem", "Fizban's"], ["Sapphire Buckler", "Fizban's"], ["Scaled Ornament", "Fizban's"], ["Topaz Annihilator", "Fizban's"], ["Deck of Many More Things", "Many Things"], ["Deck of Dimensions", "Many Things"], ["Deck of Miscellany", "Many Things"], ["Deck of Wonder", "Many Things"], ["Deck of Oracles", "Many Things"], ["Card Sharp's Deck", "Many Things"], ["Fate Cutter Shears", "Many Things"], ["Fate Dealer's Deck", "Many Things"], ["Glimmering Moonbow", "Many Things"], ["Sling of Giant Felling", "Many Things"], ["Antimagic Armor", "Many Things"], ["Armor of Fungal Spores", "Many Things"], ["Armor of the Fallen", "Many Things"], ["Armor of Weightlessness", "Many Things"], ["Bloodrage Greataxe", "Many Things"], ["Bloodseeker Ammunition", "Many Things"], ["Boomerang Shield", "Many Things"], ["Breastplate of Balance", "Many Things"], ["Clockwork Armor", "Many Things"], ["Crown of Whirling Comets", "Many Things"], ["Donjon's Sundering Sphere", "Many Things"], ["Forcebreaker Weapon", "Many Things"], ["Gloomwrought Armor", "Many Things"], ["Grasping Whip", "Many Things"], ["Hammer of Runic Focus", "Many Things"], ["House of Cards", "Many Things"], ["Jester's Mask", "Many Things"], ["Plate of Knight's Fellowship", "Many Things"], ["Rogue's Mantle", "Many Things"], ["Ruinblade", "Many Things"], ["Sage's Signet", "Many Things"], ["Shield of the Tortoise", "Many Things"], ["Skull Helm", "Many Things"], ["Starshot Crossbow", "Many Things"], ["Stonemaker War Pick", "Many Things"], ["Sun Staff", "Many Things"], ["Tidecaller Trident", "Many Things"], ["Warrior's Passkey", "Many Things"], ["Weapon of Throne's Command", "Many Things"], ["Winged Ammunition", "Many Things"], ["Adze of Annam", "Bigby's"], ["Bloodshed Blade", "Bigby's"], ["Crown of the Wrath Bringer", "Bigby's"], ["Delver's Claws", "Bigby's"], ["Glowrune Pigment", "Bigby's"], ["Harp of Gilded Plenty", "Bigby's"], ["Helm of Perfect Potential", "Bigby's"], ["Lash of Immolation", "Bigby's"], ["Nimbus Coronet", "Bigby's"], ["Orb of the Veil", "Bigby's"], ["Zephyr Armor", "Bigby's"], ["Wyrmreaver Gauntlets", "Bigby's"], ["Thunderbuss", "Bigby's"], ["Stormgirdle", "Bigby's"], ["Mistral Mantle", "Bigby's"], ["Enspelled Weapon", "DMG 2024"], ["Enspelled Armor", "DMG 2024"], ["Enspelled Staff", "DMG 2024"], ["Potion of Pugilism", "DMG 2024"], ["Hat of Many Spells", "DMG 2024"], ["Wraps of Unarmed Power", "DMG 2024"], ["Thunderous Greatclub", "DMG 2024"], ["Quarterstaff of the Acrobat", "DMG 2024"], ["Executioner's Axe", "DMG 2024"], ["Shield of the Cavalier", "DMG 2024"], ["Energy Bow", "DMG 2024"], ["Lute of Thunderous Thumping", "DMG 2024"], ["Axe of the Dwarvish Lords", "Artifact"], ["Book of Exalted Deeds", "Artifact"], ["Book of Vile Darkness", "Artifact"], ["Eye of Vecna", "Artifact"], ["Hand of Vecna", "Artifact"], ["Sword of Kas", "Artifact"], ["Wand of Orcus", "Artifact"], ["Blackrazor", "Artifact"], ["Wave", "Artifact"], ["Whelm", "Artifact"], ["Moonblade", "Artifact"], ["Soul Coin", "Avernus"], ["Shield of the Hidden Lord", "Avernus"], ["Helm of Devil Command", "Avernus"], ["Battle Standard of Infernal Power", "Avernus"], ["Gauntlets of Flaming Fury", "Avernus"], ["Infernal Puzzle Box", "Avernus"], ["Matalotok", "Avernus"], ["Obsidian Flint Dragon Plate", "Avernus"], ["Fane-Eater", "Avernus"], ["Hellfire Weapon", "Avernus"], ["Sword of Zariel", "Avernus"], ["Sunsword", "Strahd"], ["Holy Symbol of Ravenkind", "Strahd"], ["Tome of Strahd", "Strahd"], ["Icon of Ravenloft", "Strahd"], ["Blood Spear", "Strahd"], ["Gulthias Staff", "Strahd"], ["Saint Markovia's Thighbone", "Strahd"], ["Tarokka Deck", "Strahd"], ["Wildspace Orb", "Spelljammer"], ["Spelljamming Helm", "Spelljammer"], ["Fish Suit", "Spelljammer"]];
@@ -815,15 +841,22 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     if (sym === '#') GAZ.forEach(function (n) { if (!seen[n.toLowerCase()]) out.push({ name: n, kind: 'Faerûn', g: 1 }); });
     return out;
   }
-  function acClose() { AC.items = []; AC.start = -1; $('ac').hidden = true; $('ac').innerHTML = ''; $('text').setAttribute('aria-expanded', 'false'); $('text').removeAttribute('aria-activedescendant'); }
+  function acClose() {
+    if (AC.box) { AC.box.hidden = true; AC.box.innerHTML = ''; }
+    if (AC.el) { AC.el.setAttribute('aria-expanded', 'false'); AC.el.removeAttribute('aria-activedescendant'); }
+    AC.items = []; AC.start = -1;
+  }
   function acDraw() {
-    $('ac').innerHTML = AC.items.map(function (c, i) {
+    AC.box.innerHTML = AC.items.map(function (c, i) {
       return '<li role="option" id="ac-' + i + '" data-i="' + i + '" aria-selected="' + (i === AC.idx) + '"><span>' + esc(c.name) + '</span><small>' + esc(c.kind) + '</small></li>';
     }).join('');
-    $('ac').hidden = false; $('text').setAttribute('aria-expanded', 'true'); $('text').setAttribute('aria-activedescendant', 'ac-' + AC.idx);
+    AC.box.hidden = false; AC.el.setAttribute('aria-expanded', 'true'); AC.el.setAttribute('aria-activedescendant', 'ac-' + AC.idx);
   }
-  function acUpdate() {
-    var ti = $('text'), pos = ti.selectionStart == null ? ti.value.length : ti.selectionStart;
+  function acUpdate(ev) {
+    var ti = ev && ev.target && ev.target.matches && ev.target.matches('[data-edit]') ? ev.target : $('text');
+    if (AC.el !== ti) acClose();
+    AC.el = ti; AC.box = ti.id === 'text' ? $('ac') : ti.parentNode.querySelector('.ac');
+    var pos = ti.selectionStart == null ? ti.value.length : ti.selectionStart;
     var m = /(^|\s)([@#$?*])([^@#$?*!",.;:()]{0,40})$/.exec(ti.value.slice(0, pos));
     if (!m || /^\s/.test(m[3]) || (!m[3] && m[2] !== '@')) return acClose();
     var tok = norm(m[3]);
@@ -835,20 +868,26 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     AC.items = items; AC.idx = 0; AC.start = pos - m[3].length - 1; acDraw();
   }
   function acPick(i) {
-    var c = AC.items[i]; if (!c) return;
-    var ti = $('text'), v = ti.value, pos = ti.selectionStart == null ? v.length : ti.selectionStart;
+    var c = AC.items[i], ti = AC.el; if (!c || !ti) return;
+    var v = ti.value, pos = ti.selectionStart == null ? v.length : ti.selectionStart;
     var lead = v.slice(0, AC.start), keep = lead.trim() === '' ? v.charAt(AC.start) : '';
     var head = lead + keep + c.name;
     ti.value = head + v.slice(pos); acClose(); ti.focus(); ti.setSelectionRange(head.length, head.length);
   }
+  function acKey(ev) {
+    if (!AC.items.length || AC.el !== ev.target) return false;
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); AC.idx = (AC.idx + (ev.key === 'ArrowDown' ? 1 : AC.items.length - 1)) % AC.items.length; acDraw(); return true; }
+    if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); acPick(AC.idx); return true; }
+    if (ev.key === 'Escape') { ev.preventDefault(); acClose(); return true; }
+    return false;
+  }
+  document.addEventListener('input', function (ev) { if (ev.target.matches && ev.target.matches('[data-edit]')) acUpdate(ev); });
+  document.addEventListener('mousedown', function (ev) { var li = ev.target.closest && ev.target.closest('.ac.edit [data-i]'); if (li) { ev.preventDefault(); acPick(Number(li.dataset.i)); } });
   $('text').addEventListener('input', acUpdate);
   $('text').addEventListener('click', acUpdate);
   $('text').addEventListener('blur', acClose);
   $('text').addEventListener('keydown', function (ev) {
-    if (!AC.items.length) return;
-    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); AC.idx = (AC.idx + (ev.key === 'ArrowDown' ? 1 : AC.items.length - 1)) % AC.items.length; acDraw(); }
-    else if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); acPick(AC.idx); }
-    else if (ev.key === 'Escape') { ev.preventDefault(); acClose(); }
+    acKey(ev);
   });
   $('ac').addEventListener('mousedown', function (ev) { ev.preventDefault(); var li = ev.target.closest('[data-i]'); if (li) acPick(Number(li.dataset.i)); });
 
@@ -1399,10 +1438,33 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   }
   function finishEdit(save) {
     var id = S.editing; if (!id) return;
-    var ta = $('edit-' + id), v = ta ? ta.value.trim() : '', cur = S.entries.get(id);
-    S.editing = null; S.dirty = false;
-    if (save && cur && v && v !== cur.text) { var me = S.party.get(S.me); patch('entries', id, { text: v, editedBy: me ? me.id : '', editedByName: me ? (me.player || me.name || '') : '', editedAt: Date.now() }); }
+    var ta = $('edit-' + id), v = ta ? ta.value.trim() : '', cur = S.entries.get(id), type = cur && cur.type;
+    acClose(); S.editing = null; S.dirty = false;
+    TYPES.forEach(function (t) { if (t.pre && v.charAt(0) === t.pre && v.length > 1) { type = t.k; v = v.slice(1).trim(); } });
+    if (save && cur && v && (v !== cur.text || type !== cur.type)) patch('entries', id, Object.assign({ text: v, type: type }, stamp()));
     render();
+  }
+  function finishTime(save) {
+    var id = S.timing; if (!id) return;
+    var inp = document.querySelector('[data-time]'), cur = S.entries.get(id), m = inp && /^(\d\d):(\d\d)/.exec(inp.value);
+    S.timing = null; S.dirty = false;
+    if (save && cur && m) {
+      var d = new Date(cur.ts || Date.now());
+      if (d.getHours() !== +m[1] || d.getMinutes() !== +m[2]) { d.setHours(+m[1], +m[2]); patch('entries', id, Object.assign({ ts: d.getTime(), ord: null }, stamp())); }
+    }
+    render();
+  }
+  /* Drag order lives in "ord"; a note without one sorts by its time. */
+  function moveNote(id, targetId, after) {
+    var cur = S.entries.get(id); if (!cur || id === targetId) return;
+    var full = allEntries().filter(function (e) { return e.sessionId === cur.sessionId; });
+    var was = full.map(function (e) { return e.id; }).indexOf(id);
+    var list = full.filter(function (e) { return e.id !== id; });
+    var ti = list.map(function (e) { return e.id; }).indexOf(targetId); if (ti < 0) return;
+    var p = ti + (after ? 1 : 0); if (p === was) return;
+    var above = list[p - 1], below = list[p];
+    var ord = above && below ? (ordOf(above) + ordOf(below)) / 2 : above ? ordOf(above) - 1000 : ordOf(below) + 1000;
+    patch('entries', id, { ord: ord });
   }
   function recapText() {
     var s = S.sessions.get(S.cur); if (!s) return '';
@@ -1499,18 +1561,79 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     if (a === 'done' && e) return patch('entries', id, { done: !e.done });
     if (a === 'del') { S.confirm = id; return render(); }
     if (a === 'del-no') { S.confirm = null; return render(); }
-    if (a === 'del-yes') { S.confirm = null; del('entries', id); return render(); }
+    if (a === 'del-yes') {
+      S.confirm = null;
+      if (e) { S.undo.push({ id: id, data: body(e) }); if (S.undo.length > 25) S.undo.shift(); toast('Note deleted. Undo delete brings it back.'); }
+      del('entries', id); return render();
+    }
+    if (a === 'time' && e && canWrite()) {
+      S.confirm = null; S.timing = id; renderList();
+      var ti = document.querySelector('[data-time]'); if (ti) ti.focus(); return;
+    }
     if (a === 'edit' && e && (S.view === 'log' || S.view === 'campaign') && S.editing !== id && !ev.target.closest('textarea')) {
       S.editing = null; S.confirm = null; render(); S.editing = id; renderList();
       var ta = $('edit-' + id); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
     }
   });
   document.addEventListener('keydown', function (ev) {
-    if (!ev.target.matches || !ev.target.matches('[data-edit]')) return;
+    if (!ev.target.matches) return;
+    if (ev.target.matches('[data-time]')) { if (ev.key === 'Enter') { ev.preventDefault(); finishTime(true); } else if (ev.key === 'Escape') finishTime(false); return; }
+    if (ev.target.matches('[data-grip]') && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) {
+      ev.preventDefault();
+      var gid = ev.target.dataset.grip, me = S.entries.get(gid); if (!me) return;
+      var ids = allEntries().filter(function (x) { return x.sessionId === me.sessionId; }).map(function (x) { return x.id; });
+      var nb = ids[ids.indexOf(gid) + (ev.key === 'ArrowUp' ? -1 : 1)]; if (!nb) return;
+      moveNote(gid, nb, ev.key === 'ArrowDown');
+      setTimeout(function () { var g = document.querySelector('[data-grip="' + gid + '"]'); if (g) g.focus(); }, 0);
+      return;
+    }
+    if (!ev.target.matches('[data-edit]')) return;
+    if (acKey(ev)) return;
     if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); finishEdit(true); }
     else if (ev.key === 'Escape') finishEdit(false);
   });
-  document.addEventListener('focusout', function (ev) { if (ev.target.matches && ev.target.matches('[data-edit]') && S.editing) finishEdit(true); });
+  document.addEventListener('focusout', function (ev) {
+    if (!ev.target.matches) return;
+    if (ev.target.matches('[data-edit]') && S.editing) finishEdit(true);
+    else if (ev.target.matches('[data-time]') && S.timing) finishTime(true);
+  });
+  document.addEventListener('change', function (ev) {
+    var t = ev.target; if (!t.matches || !t.matches('[data-type]')) return;
+    var cur = S.entries.get(t.dataset.type); if (!cur || !TYPE[t.value] || cur.type === t.value || !canWrite()) return;
+    patch('entries', cur.id, Object.assign({ type: t.value }, stamp()));
+  });
+  $('undo').addEventListener('click', function () {
+    var u = S.undo.pop(); if (!u || !canWrite()) return render();
+    put('entries', u.id, u.data); toast('Note restored'); render();
+  });
+  var DR = null;
+  function dragEnd(commit) {
+    if (!DR) return; var d = DR; DR = null; S.drag = false;
+    document.body.classList.remove('dragging-note');
+    Array.prototype.forEach.call(document.querySelectorAll('.row.dragging, .row.drop-before, .row.drop-after'), function (r) { r.classList.remove('dragging', 'drop-before', 'drop-after'); });
+    if (commit && d.over && d.over !== d.li) moveNote(d.id, d.over.dataset.row, d.after);
+    S.dirty = false; render();
+  }
+  document.addEventListener('pointerdown', function (ev) {
+    var g = ev.target.closest && ev.target.closest('[data-grip]'); if (!g || ev.button) return;
+    var li = g.closest('li'); if (!li) return;
+    ev.preventDefault();
+    if (S.editing) finishEdit(true); if (S.timing) finishTime(true);
+    li = document.querySelector('[data-row="' + g.dataset.grip + '"]'); if (!li) return;
+    DR = { id: g.dataset.grip, li: li, over: null, after: false }; S.drag = true;
+    li.classList.add('dragging'); document.body.classList.add('dragging-note');
+  });
+  document.addEventListener('pointermove', function (ev) {
+    if (!DR) return; ev.preventDefault();
+    var rows = Array.prototype.slice.call(DR.li.parentNode.children), tgt = null, after = false;
+    for (var i = 0; i < rows.length; i++) { var r = rows[i].getBoundingClientRect(); if (ev.clientY < r.top + r.height / 2) { tgt = rows[i]; break; } }
+    if (!tgt) { tgt = rows[rows.length - 1]; after = true; }
+    rows.forEach(function (x) { x.classList.remove('drop-before', 'drop-after'); });
+    if (tgt !== DR.li) tgt.classList.add(after ? 'drop-after' : 'drop-before');
+    DR.over = tgt; DR.after = after;
+  }, { passive: false });
+  document.addEventListener('pointerup', function () { dragEnd(true); });
+  document.addEventListener('pointercancel', function () { dragEnd(false); });
   $('padd').addEventListener('submit', function (ev) {
     ev.preventDefault(); var i = $('pname'), n = i.value.trim(); if (!n || !canWrite()) return;
     var o = 0; S.party.forEach(function (m) { o = Math.max(o, Number(m.order) || 0); });
