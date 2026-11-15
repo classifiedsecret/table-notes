@@ -113,6 +113,7 @@ button, input, select, textarea { font: inherit; color: inherit }
 .log { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line) }
 .row { display: grid; grid-template-columns: 3.8rem 4.4rem minmax(0, 1fr) auto; gap: 4px 10px; align-items: baseline; padding: 9px 2px; border-bottom: 1px solid var(--line) }
 .row time, .stag { font: .78rem var(--mono); color: var(--muted); font-variant-numeric: tabular-nums }
+.row .stag { white-space: nowrap; padding-left: 0; padding-right: 0; text-align: left }
 .ty { font: 600 .72rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--c) }
 .tx { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; cursor: text; position: relative }
 .tx .ac { white-space: normal; font-style: normal; text-decoration: none }
@@ -311,7 +312,6 @@ a.ddb:hover { color: var(--accent); text-decoration-style: solid }
     <nav class="tabs" aria-label="Views">
       <a href="#party" id="tab-party">Party</a>
       <a href="#log" id="tab-log">Session log</a>
-      <a href="#campaign" id="tab-campaign">Campaign index</a>
       <a href="#map" id="tab-map">Map overview</a>
       <a href="#npcs" id="tab-npcs">NPCs</a>
       <a href="#factions" id="tab-factions">Factions</a>
@@ -635,7 +635,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
         html += '<h3 class="sec c-' + t.k + '"><button type="button" data-act="sec" data-k="' + t.k + '" aria-expanded="' + !shut + '"><span class="chev" aria-hidden="true">' + (shut ? '▸' : '▾') + '</span>' + t.label + ' <small>' + g.length + '</small></button></h3>' +
           (shut ? '' : '<ul class="log">' + g.map(function (e) { return rowHTML(e, true); }).join('') + '</ul>');
       });
-      el.innerHTML = any ? '<p class="secall"><button class="btn quiet" type="button" data-act="secall" data-v="1">Collapse all</button><button class="btn quiet" type="button" data-act="secall" data-v="0">Expand all</button></p>' + html : '<div class="empty"><strong>Nothing indexed yet</strong><span>Every NPC, place, quest, piece of loot and scrap of lore you tag in a session is collected here, across the whole campaign.</span></div>';
+      el.innerHTML = any ? '<p class="secall"><button class="btn quiet" type="button" data-act="secall" data-v="1">Collapse all</button><button class="btn quiet" type="button" data-act="secall" data-v="0">Expand all</button></p>' + html : '<div class="empty"><strong>Nothing indexed yet</strong><span>Every NPC, place, quest, piece of loot and scrap of lore you tag is collected here, across every session. Pick a session above to start taking notes.</span></div>';
       return;
     }
     if (!S.sessions.size) {
@@ -699,8 +699,8 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     $('undo').hidden = !S.undo.length || !ok;
     st.textContent = S.note || { connecting: 'Connecting…', cloud: S.sync || 'Saved to this page', local: 'Saved in this browser only', error: 'Not syncing' }[S.mode];
     st.className = 'status' + (S.note || S.mode === 'error' ? ' bad' : '');
-    $('tab-log').toggleAttribute('aria-current', S.view === 'log'); if (S.view === 'log') $('tab-log').setAttribute('aria-current', 'page');
-    $('tab-campaign').toggleAttribute('aria-current', S.view === 'campaign'); if (S.view === 'campaign') $('tab-campaign').setAttribute('aria-current', 'page');
+    var inLog = S.view === 'log' || S.view === 'campaign', all = S.view === 'campaign';
+    if (inLog) $('tab-log').setAttribute('aria-current', 'page'); else $('tab-log').removeAttribute('aria-current');
     $('tab-map').toggleAttribute('aria-current', S.view === 'map'); if (S.view === 'map') $('tab-map').setAttribute('aria-current', 'page');
     $('tab-party').toggleAttribute('aria-current', S.view === 'party'); if (S.view === 'party') $('tab-party').setAttribute('aria-current', 'page');
     var c = $('campname'); if (document.activeElement !== c) c.value = S.campaign; c.disabled = !ok;
@@ -713,8 +713,8 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     }
 
     var cur = S.sessions.get(S.cur), sel = $('session');
-    sel.innerHTML = sessionsSorted().map(function (s) {
-      return '<option value="' + esc(s.id) + '"' + (s.id === S.cur ? ' selected' : '') + '>Session - ' + esc(fmtDate(s.createdAt || Date.now())) + (s.title ? ' · ' + esc(String(s.title).slice(0, 40)) : '') + '</option>';
+    sel.innerHTML = (S.sessions.size ? '<option value="__all"' + (all ? ' selected' : '') + '>All sessions (grouped by type)</option>' : '') + sessionsSorted().map(function (s) {
+      return '<option value="' + esc(s.id) + '"' + (s.id === S.cur && !all ? ' selected' : '') + '>Session - ' + esc(fmtDate(s.createdAt || Date.now())) + (s.title ? ' · ' + esc(String(s.title).slice(0, 40)) : '') + '</option>';
     }).join('') || '<option value="">No sessions</option>';
     sel.disabled = !S.sessions.size;
     var sd = $('sdate'); sd.disabled = !ok || !cur;
@@ -726,9 +726,11 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     $('del-session-wrap').innerHTML = !cur || !ok ? '' : S.confirmSession
       ? '<span class="confirm">Delete this session and its notes? <button class="icon" data-act="sdel-yes">Yes</button><button class="icon" data-act="sdel-no">No</button></span>'
       : '<button class="btn quiet danger" data-act="sdel" type="button">Delete session</button>';
-    $('sbar').hidden = S.view !== 'log'; $('capture').hidden = S.view !== 'log';
+    $('sbar').hidden = !inLog; $('capture').hidden = S.view !== 'log';
+    ['sdate', 'stitle', 'new-session', 'copy-recap', 'del-session-wrap'].forEach(function (k) { $(k).hidden = all; }); if (all) gb.hidden = true;
     $('rail').hidden = S.view !== 'campaign'; $('cols').classList.toggle('solo', S.view !== 'campaign');
-    if (S.heroView !== S.view) { S.heroView = S.view; $('herobg').innerHTML = heroSVG(S.view); }
+    var hview = all ? 'log' : S.view;
+    if (S.heroView !== hview) { S.heroView = hview; $('herobg').innerHTML = heroSVG(hview); }
     ['npcs', 'factions', 'tavern'].forEach(function (v) { var t = $('tab-' + v); if (S.view === v) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current'); });
     $('npcview').hidden = S.view !== 'npcs'; $('facview').hidden = S.view !== 'factions'; $('tavview').hidden = S.view !== 'tavern';
     var side = S.view !== 'log' && S.view !== 'campaign'; $('tools').hidden = side; $('list').hidden = side; $('mapview').hidden = S.view !== 'map'; $('partyview').hidden = S.view !== 'party';
@@ -1491,7 +1493,12 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   $('chips').addEventListener('click', function (ev) { var b = ev.target.closest('[data-type]'); if (b) { S.type = b.dataset.type; render(); $('text').focus(); } });
   $('filter').addEventListener('click', function (ev) { var b = ev.target.closest('[data-filter]'); if (b) { S.filter = b.dataset.filter; render(); } });
   $('search').addEventListener('input', function (ev) { S.q = ev.target.value; renderList(); });
-  $('session').addEventListener('change', function (ev) { S.cur = ev.target.value; lsSet(LS_CUR, S.cur); S.confirmSession = false; render(); });
+  $('session').addEventListener('change', function (ev) {
+    S.confirmSession = false;
+    if (ev.target.value === '__all') { location.hash = '#campaign'; return; }
+    S.cur = ev.target.value; lsSet(LS_CUR, S.cur);
+    if (S.view !== 'log') location.hash = '#log'; else render();
+  });
   $('sdate').addEventListener('change', function (ev) {
     var cur = S.sessions.get(S.cur), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ev.target.value); if (!cur || !m || !canWrite()) { render(); return; }
     var d = new Date(cur.createdAt || Date.now()); d.setFullYear(+m[1], +m[2] - 1, +m[3]);
