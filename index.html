@@ -89,13 +89,13 @@ button, input, select, textarea { font: inherit; color: inherit }
 .chip { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 3px 10px; font-size: .82rem; cursor: pointer; color: var(--muted); display: inline-flex; gap: 6px; align-items: baseline }
 .chip kbd { font: 600 .78rem var(--mono); color: var(--c) }
 .chip[aria-pressed="true"] { border-color: var(--c); color: var(--ink); box-shadow: inset 0 0 0 1px var(--c) }
-.entry { display: flex; gap: 8px; position: relative }
+.entry { display: flex; gap: 8px; position: relative; align-items: flex-start }
 .ac { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--surface); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / .18) }
 .ac li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 7px 10px; border-radius: 5px; cursor: pointer }
 .ac li span { min-width: 0; overflow-wrap: anywhere }
 .ac li small { font: .7rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); white-space: nowrap }
 .ac li[aria-selected="true"] { background: var(--line) }
-.entry input { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 1.02rem }
+.entry textarea { flex: 1; min-width: 0; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font: inherit; font-size: 1.02rem; line-height: 1.4; resize: none; overflow: hidden; box-sizing: border-box; display: block; overflow-wrap: anywhere }
 .hint { font-size: .8rem; color: var(--muted); margin: 0 }
 
 .summary { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px }
@@ -129,7 +129,7 @@ select.tysel option { color: var(--ink); background: var(--surface); text-transf
 body.dragging-note { cursor: grabbing; user-select: none; -webkit-user-select: none }
 .row.done .tx { text-decoration: line-through; color: var(--muted) }
 .row.quote .tx { font-style: italic }
-.tx textarea { width: 100%; background: var(--bg); border: 1px solid var(--accent); border-radius: 6px; padding: 6px 8px; resize: vertical; min-height: 3.2em }
+.tx textarea { display: block; box-sizing: border-box; overflow: hidden; font: inherit; color: var(--ink); width: 100%; background: var(--bg); border: 1px solid var(--accent); border-radius: 6px; padding: 6px 8px; resize: vertical; min-height: 3.2em }
 .act { display: flex; gap: 2px; align-items: center }
 .icon { border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: .95rem; line-height: 1.2 }
 .icon:hover { color: var(--ink); background: var(--line) }
@@ -336,7 +336,7 @@ a.ddb:hover { color: var(--accent); text-decoration-style: solid }
       <form class="capture" id="capture" autocomplete="off">
         <div class="chips" id="chips" role="group" aria-label="Note type"></div>
         <div class="entry">
-          <input id="text" aria-label="New note" placeholder="@Harbor master, owes us a favor" maxlength="2000" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ac">
+          <textarea id="text" rows="1" aria-label="New note" placeholder="@Harbor master, owes us a favor" maxlength="2000" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ac" enterkeyhint="send"></textarea>
           <ul class="ac" id="ac" role="listbox" aria-label="Suggestions" hidden></ul>
           <button class="btn primary" id="add" type="submit">Add</button>
         </div>
@@ -872,7 +872,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     var v = ti.value, pos = ti.selectionStart == null ? v.length : ti.selectionStart;
     var lead = v.slice(0, AC.start), keep = lead.trim() === '' ? v.charAt(AC.start) : '';
     var head = lead + keep + c.name;
-    ti.value = head + v.slice(pos); acClose(); ti.focus(); ti.setSelectionRange(head.length, head.length);
+    ti.value = head + v.slice(pos); acClose(); fit(ti); ti.focus(); ti.setSelectionRange(head.length, head.length);
   }
   function acKey(ev) {
     if (!AC.items.length || AC.el !== ev.target) return false;
@@ -883,11 +883,15 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   }
   document.addEventListener('input', function (ev) { if (ev.target.matches && ev.target.matches('[data-edit]')) acUpdate(ev); });
   document.addEventListener('mousedown', function (ev) { var li = ev.target.closest && ev.target.closest('.ac.edit [data-i]'); if (li) { ev.preventDefault(); acPick(Number(li.dataset.i)); } });
+  function fit(el) { if (!el) return; el.style.height = 'auto'; el.style.height = (el.scrollHeight + el.offsetHeight - el.clientHeight) + 'px'; }
+  document.addEventListener('input', function (ev) { if (ev.target.matches && ev.target.matches('#text, [data-edit]')) fit(ev.target); });
+  window.addEventListener('resize', function () { fit($('text')); fit(document.querySelector('[data-edit]')); });
   $('text').addEventListener('input', acUpdate);
   $('text').addEventListener('click', acUpdate);
   $('text').addEventListener('blur', acClose);
   $('text').addEventListener('keydown', function (ev) {
-    acKey(ev);
+    if (acKey(ev)) return;
+    if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); var f = $('capture'); if (f.requestSubmit) f.requestSubmit(); else $('add').click(); }
   });
   $('ac').addEventListener('mousedown', function (ev) { ev.preventDefault(); var li = ev.target.closest('[data-i]'); if (li) acPick(Number(li.dataset.i)); });
 
@@ -1482,7 +1486,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   /* ---------- events ---------- */
   $('capture').addEventListener('submit', function (ev) {
     ev.preventDefault(); var i = $('text');
-    if (addEntry(i.value)) { i.value = ''; render(); } i.focus();
+    if (addEntry(i.value)) { i.value = ''; fit(i); render(); } i.focus();
   });
   $('chips').addEventListener('click', function (ev) { var b = ev.target.closest('[data-type]'); if (b) { S.type = b.dataset.type; render(); $('text').focus(); } });
   $('filter').addEventListener('click', function (ev) { var b = ev.target.closest('[data-filter]'); if (b) { S.filter = b.dataset.filter; render(); } });
@@ -1572,7 +1576,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     }
     if (a === 'edit' && e && (S.view === 'log' || S.view === 'campaign') && S.editing !== id && !ev.target.closest('textarea')) {
       S.editing = null; S.confirm = null; render(); S.editing = id; renderList();
-      var ta = $('edit-' + id); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+      var ta = $('edit-' + id); if (ta) { fit(ta); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
     }
   });
   document.addEventListener('keydown', function (ev) {
