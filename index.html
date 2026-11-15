@@ -303,6 +303,43 @@ a.ddb:hover { color: var(--accent); text-decoration-style: solid }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: .9rem; max-width: calc(100% - 32px); z-index: 20 }
 .c-note{--c:var(--t-note)} .c-npc{--c:var(--t-npc)} .c-place{--c:var(--t-place)} .c-quest{--c:var(--t-quest)}
 .c-loot{--c:var(--t-loot)} .c-lore{--c:var(--t-lore)} .c-combat{--c:var(--t-combat)} .c-quote{--c:var(--t-quote)}
+/* Dice tray */
+#diceview { --gold: var(--t-quest); --crit: var(--t-place); --fumble: var(--warn); display: flex; flex-direction: column; gap: 14px }
+.dt-tray { position: relative; border-radius: 14px; overflow: hidden; background: #1a120b; aspect-ratio: 14 / 9.4; max-width: 100%; box-shadow: 0 10px 30px rgb(0 0 0 / .28) }
+#dt-stage, #dt-stage canvas { display: block; width: 100%; height: 100% }
+.dt-total { position: absolute; right: 14px; top: 12px; min-width: 3.2rem; text-align: center; padding: 6px 14px 4px; border-radius: 10px; background: rgb(18 12 7 / .78); color: #fff3d6; border: 1px solid rgb(255 220 150 / .35); font: 700 2rem/1.1 var(--display); font-variant-numeric: tabular-nums }
+.dt-total small { display: block; font: 500 .62rem/1.4 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: #d9c39a }
+.dt-total.crit { color: #9ff0c0; border-color: #5fd093 } .dt-total.fumble { color: #ffb0a6; border-color: #f0796d }
+.dt-note { position: absolute; left: 14px; bottom: 12px; right: 14px; margin: 0; color: #e8d9b8; font-size: .82rem }
+.dt-opts { display: flex; flex-wrap: wrap; gap: 10px 18px } .dt-opts label, .dt-bar label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem }
+.dt-opts select { padding: 7px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); max-width: 100% }
+.dt-pool { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px }
+.dt-die { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0 }
+.dt-die.on { border-color: var(--accent) }
+.dt-die .name { font: 700 .95rem var(--mono); display: flex; align-items: center; gap: 6px }
+.dt-die .dot { width: 10px; height: 10px; border-radius: 3px; background: var(--c); border: 1px solid rgb(0 0 0 / .25); transform: rotate(45deg) }
+.dt-die .step { display: flex; align-items: center; gap: 2px }
+.dt-die .step button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-weight: 600; font-size: 1.1rem; cursor: pointer }
+.dt-die .step button:hover:not(:disabled) { border-color: var(--accent) }
+.dt-die .step button:disabled { opacity: .4; cursor: default }
+.dt-die .step output { width: 1.8rem; text-align: center; font: 700 1.05rem var(--mono); font-variant-numeric: tabular-nums }
+@media (max-width: 760px) { .dt-pool { grid-template-columns: repeat(4, minmax(0, 1fr)) } }
+@media (max-width: 440px) { .dt-pool { grid-template-columns: minmax(0, 1fr); gap: 6px } .dt-die { flex-direction: row; justify-content: space-between; padding: 6px 10px } }
+.dt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px }
+.dt-bar input { width: 4.6rem; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 600 1rem var(--mono) }
+.dt-expr { font: 700 1rem var(--mono); margin-right: auto; min-width: 0; overflow-wrap: anywhere }
+.dt-bar .btn.primary { padding: 9px 26px; font-size: 1.05rem }
+.dt-out { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px }
+@media (max-width: 700px) { .dt-out { grid-template-columns: minmax(0, 1fr) } }
+.dt-h { font: 600 .72rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px }
+.dt-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-family: var(--mono); font-size: .95rem }
+.dt-lines li { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line) }
+.dt-lines .k { font-weight: 700; min-width: 3.6rem } .dt-lines .v { min-width: 0; overflow-wrap: anywhere } .dt-lines .s { margin-left: auto; font-weight: 700 }
+.dt-lines .crit { color: var(--crit); font-weight: 700 } .dt-lines .fumble { color: var(--fumble); font-weight: 700 }
+.dt-lines .sum { border-bottom: 0; font-size: 1.05rem } .dt-lines .sum .s { color: var(--gold) }
+.dt-hist { list-style: none; margin: 0; padding: 0; font: .85rem var(--mono); color: var(--muted); display: flex; flex-direction: column; gap: 4px }
+.dt-hist b { color: var(--ink) } .dt-hist .who { color: var(--gold); font-weight: 700 }
+.dt-empty { color: var(--muted); font-size: .9rem; margin: 0 }
 </style>
 
 <div class="app">
@@ -316,6 +353,7 @@ a.ddb:hover { color: var(--accent); text-decoration-style: solid }
       <a href="#npcs" id="tab-npcs">NPCs</a>
       <a href="#factions" id="tab-factions">Factions</a>
       <a href="#business" id="tab-tavern">Business</a>
+      <a href="#dice" id="tab-dice">Dice</a>
     </nav>
     <label class="me">You are <select id="me"></select></label>
     <span class="status" id="status" role="status">Connecting…</span>
@@ -369,6 +407,29 @@ a.ddb:hover { color: var(--accent); text-decoration-style: solid }
         <p class="lead">Track where the party stands with each faction, who your contact is, and what you owe or are owed.</p>
         <form class="addrow" id="fac-add" autocomplete="off"><input id="fac-name" aria-label="New faction name" placeholder="Add a faction" maxlength="80"><button class="btn" type="submit">Add</button></form>
         <div id="fac-list"></div>
+      </div>
+      <div id="diceview" hidden>
+        <section class="dt-tray" aria-label="Dice tray">
+          <div id="dt-stage" aria-hidden="true"></div>
+          <div class="dt-total" id="dt-total" hidden></div>
+          <p class="dt-note" id="dt-note" hidden></p>
+        </section>
+        <div class="dt-opts" role="group" aria-label="Tray appearance">
+          <label for="dt-felt">Felt <select id="dt-felt"></select></label>
+          <label for="dt-wood">Wood <select id="dt-wood"></select></label>
+          <label for="dt-emblem">Class emblem <select id="dt-emblem"></select></label>
+        </div>
+        <div class="dt-pool" id="dt-pool" role="group" aria-label="Dice to roll"></div>
+        <div class="dt-bar">
+          <span class="dt-expr" id="dt-expr"></span>
+          <label for="dt-mod">Modifier <input id="dt-mod" type="number" inputmode="numeric" step="1" min="-99" max="99" value="0"></label>
+          <button class="btn" id="dt-clear" type="button">Clear</button>
+          <button class="btn primary" id="dt-roll" type="button">Roll</button>
+        </div>
+        <div class="dt-out">
+          <div><h3 class="dt-h">This roll</h3><ul class="dt-lines" id="dt-lines" aria-live="polite"></ul><p class="dt-empty" id="dt-lines-empty">Nothing rolled yet.</p></div>
+          <div><h3 class="dt-h">Earlier rolls</h3><ol class="dt-hist" id="dt-hist"></ol><p class="dt-empty" id="dt-hist-empty">Your last ten rolls show up here, with your name if you have picked who you are.</p></div>
+        </div>
       </div>
       <div class="pane" id="tavview" hidden>
         <p class="lead">The party's business. Every field is shared, so anyone can fill in what they remember; a field saves when you leave it.</p>
@@ -535,6 +596,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   S.undo = []; S.timing = null; S.drag = false;
   function ordOf(e) { return e.ord != null ? e.ord : (e.ts || 0); }
   function allEntries() { return Array.from(S.entries.values()).sort(function (a, b) { return ordOf(b) - ordOf(a) || (b.ts || 0) - (a.ts || 0); }); }
+  window.SS_who = function () { var me = S.party.get(S.me); return me ? (me.player || me.name || '') : ''; };
   function stamp() { var me = S.party.get(S.me); return { editedBy: me ? me.id : '', editedByName: me ? (me.player || me.name || '') : '', editedAt: Date.now() }; }
   function hhmm(ts) { var d = new Date(ts), z = function (n) { return (n < 10 ? '0' : '') + n; }; return z(d.getHours()) + ':' + z(d.getMinutes()); }
   var canWrite = function () { return S.mode === 'cloud' || S.mode === 'local'; };
@@ -728,9 +790,10 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     $('sbar').hidden = !inLog; $('capture').hidden = S.view !== 'log';
     ['sdate', 'stitle', 'new-session', 'copy-recap', 'del-session-wrap'].forEach(function (k) { $(k).hidden = all; }); if (all) gb.hidden = true;
     $('rail').hidden = S.view !== 'campaign'; $('cols').classList.toggle('solo', S.view !== 'campaign');
-    var hview = all ? 'log' : S.view;
+    var hview = all ? 'log' : S.view === 'dice' ? 'tavern' : S.view;
     if (S.heroView !== hview) { S.heroView = hview; $('herobg').innerHTML = heroSVG(hview); }
-    ['npcs', 'factions', 'tavern'].forEach(function (v) { var t = $('tab-' + v); if (S.view === v) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current'); });
+    $('diceview').hidden = S.view !== 'dice'; if (S.view === 'dice' && window.DiceTray) window.DiceTray.show();
+    ['npcs', 'factions', 'tavern', 'dice'].forEach(function (v) { var t = $('tab-' + v); if (S.view === v) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current'); });
     $('npcview').hidden = S.view !== 'npcs'; $('facview').hidden = S.view !== 'factions'; $('tavview').hidden = S.view !== 'tavern';
     var side = S.view !== 'log' && S.view !== 'campaign'; $('tools').hidden = side; $('list').hidden = side; $('mapview').hidden = S.view !== 'map'; $('partyview').hidden = S.view !== 'party';
     $('text').disabled = !ok || !cur; $('add').disabled = !ok || !cur;
@@ -1482,7 +1545,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     if (hv === 'tavern') { try { history.replaceState(null, '', '#business'); } catch (e) {} }
     if (hv === 'business') hv = 'tavern';
     if (hv.indexOf('map-') === 0) { S.pending = hv.slice(4); hv = 'map'; }
-    S.view = ['campaign', 'map', 'party', 'npcs', 'factions', 'tavern'].indexOf(hv) >= 0 ? hv : 'log'; S.pedit = null; S.confirm = null; S.placing = null; render(); }
+    S.view = ['campaign', 'map', 'party', 'npcs', 'factions', 'tavern', 'dice'].indexOf(hv) >= 0 ? hv : 'log'; S.pedit = null; S.confirm = null; S.placing = null; render(); }
 
   /* ---------- events ---------- */
   $('capture').addEventListener('submit', function (ev) {
@@ -1686,6 +1749,409 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   if (window.claude && typeof window.claude.use === 'function') window.claude.use('db').then(start, function () { start(null); });
   else if (window.TABLE_NOTES_FIREBASE) bootShared();
   else start(null);
+})();
+/* ===== Dice tray: 3D dice rolled into a tray. Loads three.js and cannon.js the first time the Dice tab opens. ===== */
+(function () {
+  var started = false;
+  var LIBS = ['https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js'];
+  function loadLibs(done) {
+    var i = 0;
+    (function next() {
+      if (i >= LIBS.length) return done();
+      var sc = document.createElement('script'); sc.src = LIBS[i++]; sc.onload = next; sc.onerror = done; document.head.appendChild(sc);
+    })();
+  }
+  window.DiceTray = { show: function () { if (started) return; started = true; loadLibs(start); } };
+  function start() {
+    var $ = function (id) { return document.getElementById('dt-' + id); };
+    var KINDS = [
+      { k: 'd4', n: 4, color: '#1f8a5b', ink: '#ffffff' }, { k: 'd6', n: 6, color: '#b3261e', ink: '#ffffff' },
+      { k: 'd8', n: 8, color: '#2456b8', ink: '#ffffff' }, { k: 'd10', n: 10, color: '#6d3bb0', ink: '#ffffff' },
+      { k: 'd12', n: 12, color: '#c47a12', ink: '#1d1509' }, { k: 'd20', n: 20, color: '#ece4d2', ink: '#2a2118' },
+      { k: 'd100', n: 100, color: '#3a2466', ink: '#ffe9a8' }
+    ];
+    var KIND = {}; KINDS.forEach(function (d) { KIND[d.k] = d; });
+    var MAX = 24, W = 14, D = 9;
+    var pool = { d4: 0, d6: 2, d8: 0, d10: 0, d12: 0, d20: 1, d100: 0 };
+    var hist = [], rolling = false, shown = false;
+
+    /* ---------- controls ---------- */
+    function count() { return KINDS.reduce(function (a, d) { return a + pool[d.k] * (d.k === 'd100' ? 2 : 1); }, 0); }
+    function modVal() { var v = parseInt($('mod').value, 10); return isNaN(v) ? 0 : Math.max(-99, Math.min(99, v)); }
+    function exprText(p, m) {
+      var parts = KINDS.filter(function (d) { return p[d.k]; }).map(function (d) { return p[d.k] + d.k; });
+      return (parts.join(' + ') || 'No dice') + (m ? (m > 0 ? ' + ' : ' − ') + Math.abs(m) : '');
+    }
+    function drawPool() {
+      var full = count() >= MAX;
+      $('pool').innerHTML = KINDS.map(function (d) {
+        var room = !full && (d.k !== 'd100' || count() + 2 <= MAX);
+        return '<div class="dt-die' + (pool[d.k] ? ' on' : '') + '" style="--c:' + d.color + '"><span class="name"><span class="dot"></span>' + d.k + '</span>' +
+          '<div class="step"><button type="button" data-k="' + d.k + '" data-d="-1" aria-label="One fewer ' + d.k + '"' + (pool[d.k] ? '' : ' disabled') + '>−</button>' +
+          '<output aria-label="Number of ' + d.k + '">' + pool[d.k] + '</output>' +
+          '<button type="button" data-k="' + d.k + '" data-d="1" aria-label="One more ' + d.k + '"' + (room ? '' : ' disabled') + '>+</button></div></div>';
+      }).join('');
+      $('expr').textContent = exprText(pool, modVal());
+      $('roll').disabled = rolling || !count(); $('clear').disabled = rolling || !(count() || modVal() || shown);
+    }
+    $('pool').addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-k]'); if (!b) return;
+      var k = b.dataset.k, d = Number(b.dataset.d);
+      pool[k] = Math.max(0, pool[k] + d); drawPool();
+      var again = document.querySelector('button[data-k="' + k + '"][data-d="' + d + '"]'); if (again && !again.disabled) again.focus();
+    });
+    $('mod').addEventListener('input', drawPool);
+    $('clear').addEventListener('click', function () {
+      if (rolling) return;
+      KINDS.forEach(function (d) { pool[d.k] = 0; }); $('mod').value = 0; shown = false;
+      if (gfx) { clearDice(); gfx.renderer.render(gfx.scene, gfx.camera); }
+      $('total').hidden = true; $('lines').innerHTML = ''; $('lines-empty').hidden = false;
+      drawPool();
+    });
+    $('roll').addEventListener('click', roll);
+
+    /* ---------- dice shapes ---------- */
+    var V = function (x, y, z) { return new THREE.Vector3(x, y, z); };
+    var C = function (hex) { return new THREE.Color(hex).convertSRGBToLinear(); };
+    function rawVerts(kind) {
+      var p = (1 + Math.sqrt(5)) / 2, q = 1 / p, out = [], i, a, b, c;
+      if (kind === 'd4') return [V(1, 1, 1), V(1, -1, -1), V(-1, 1, -1), V(-1, -1, 1)];
+      if (kind === 'd6') { for (a = -1; a <= 1; a += 2) for (b = -1; b <= 1; b += 2) for (c = -1; c <= 1; c += 2) out.push(V(a, b, c)); return out; }
+      if (kind === 'd8') return [V(1, 0, 0), V(-1, 0, 0), V(0, 1, 0), V(0, -1, 0), V(0, 0, 1), V(0, 0, -1)];
+      if (kind === 'd10') { out.push(V(0, 1, 0), V(0, -1, 0)); for (i = 0; i < 10; i++) out.push(V(Math.cos(i * Math.PI / 5), 0.105 * (i % 2 ? 1 : -1), Math.sin(i * Math.PI / 5))); return out; }
+      if (kind === 'd12') {
+        for (a = -1; a <= 1; a += 2) for (b = -1; b <= 1; b += 2) { for (c = -1; c <= 1; c += 2) out.push(V(a, b, c)); out.push(V(0, a * q, b * p), V(a * q, b * p, 0), V(a * p, 0, b * q)); }
+        return out;
+      }
+      for (a = -1; a <= 1; a += 2) for (b = -1; b <= 1; b += 2) out.push(V(0, a, b * p), V(a, b * p, 0), V(a * p, 0, b));
+      return out;
+    }
+    var RADIUS = { d4: 1.15, d6: 1.0, d8: 1.0, d10: 1.0, d12: 1.0, d20: 1.08 };
+    function hullFaces(vs) {
+      var faces = [], n = vs.length, i, j, k, m;
+      for (i = 0; i < n; i++) for (j = i + 1; j < n; j++) for (k = j + 1; k < n; k++) {
+        var nrm = vs[j].clone().sub(vs[i]).cross(vs[k].clone().sub(vs[i])); if (nrm.length() < 1e-6) continue; nrm.normalize();
+        var d = nrm.dot(vs[i]), pos = 0, neg = 0, on = [];
+        for (m = 0; m < n; m++) { var s = nrm.dot(vs[m]) - d; if (s > 0.012) pos++; else if (s < -0.012) neg++; else on.push(m); }
+        if (pos && neg) continue; if (pos) nrm.negate();
+        if (faces.some(function (f) { return f.n.dot(nrm) > 0.995; })) continue;
+        var c = V(0, 0, 0); on.forEach(function (x) { c.add(vs[x]); }); c.multiplyScalar(1 / on.length);
+        var ref = vs[on[0]].clone().sub(c);
+        on.sort(function (x, y) { return ang(x) - ang(y); });
+        faces.push({ idx: on, n: nrm, c: c });
+        function ang(x) { var pv = vs[x].clone().sub(c); return Math.atan2(nrm.dot(ref.clone().cross(pv)), ref.dot(pv)); }
+      }
+      return faces;
+    }
+    var texCache = {};
+    function labelMat(text, ink, underline) {
+      var key = text + ink + (underline ? '_' : '');
+      if (texCache[key]) return texCache[key];
+      var cv = document.createElement('canvas'); cv.width = cv.height = 128; var g = cv.getContext('2d');
+      g.fillStyle = ink; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = '700 ' + (text.length > 1 ? 70 : 88) + 'px Georgia, "Times New Roman", serif'; g.fillText(text, 64, 64);
+      if (underline) g.fillRect(40, 106, 48, 8);
+      var tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
+      return (texCache[key] = new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    }
+    var planeGeo, models = {};
+    function addLabel(group, text, ink, pos, nrm, up, size, underline) {
+      var u = up.clone().sub(nrm.clone().multiplyScalar(up.dot(nrm))).normalize(), r = u.clone().cross(nrm);
+      var mesh = new THREE.Mesh(planeGeo, labelMat(text, ink, underline));
+      mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r, u, nrm));
+      mesh.position.copy(pos).add(nrm.clone().multiplyScalar(0.006)); mesh.scale.set(size, size, 1); group.add(mesh);
+    }
+    /* variant: '' normal, 'tens' the 00–90 die of a d100 pair, 'ones' its partner */
+    function model(kind, variant) {
+      var key = kind + (variant || ''); if (models[key]) return models[key];
+      var style = variant ? KIND.d100 : KIND[kind], N = KIND[kind].n;
+      var vs = rawVerts(kind), rmax = 0; vs.forEach(function (v) { rmax = Math.max(rmax, v.length()); });
+      vs.forEach(function (v) { v.multiplyScalar(RADIUS[kind] / rmax); });
+      var faces = hullFaces(vs), next = 1;
+      faces.forEach(function (f) {
+        if (f.val) return; f.val = next;
+        var opp = faces.filter(function (o) { return !o.val && o.n.dot(f.n) < -0.995; })[0]; if (opp) opp.val = N + 1 - next;
+        next++;
+      });
+      var posArr = [];
+      faces.forEach(function (f) { for (var i = 1; i < f.idx.length - 1; i++) [f.idx[0], f.idx[i], f.idx[i + 1]].forEach(function (x) { posArr.push(vs[x].x, vs[x].y, vs[x].z); }); });
+      var geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3)); geo.computeVertexNormals();
+      var mat = new THREE.MeshStandardMaterial({ color: C(variant === 'ones' ? '#6d3bb0' : style.color), roughness: 0.32, metalness: 0.08, flatShading: true });
+      var ink = variant === 'ones' ? '#ffffff' : style.ink;
+      var labels = new THREE.Group();
+      faces.forEach(function (f) {
+        var inr = Infinity, L = f.idx.length;
+        for (var i = 0; i < L; i++) { var a = vs[f.idx[i]], b = vs[f.idx[(i + 1) % L]], ab = b.clone().sub(a); inr = Math.min(inr, f.c.clone().sub(a).cross(ab).length() / ab.length()); }
+        if (kind === 'd4') {
+          f.idx.forEach(function (x) { var dir = vs[x].clone().sub(f.c); addLabel(labels, String(x + 1), ink, f.c.clone().add(dir.clone().multiplyScalar(0.48)), f.n, dir, inr * 0.95, false); });
+          return;
+        }
+        var up = vs[f.idx[0]].clone().sub(f.c), text = String(f.val);
+        if (kind === 'd6') up = vs[f.idx[0]].clone().add(vs[f.idx[1]]).multiplyScalar(0.5).sub(f.c);
+        if (kind === 'd10') { var apex = f.idx.slice().sort(function (x, y) { return Math.abs(vs[y].y) - Math.abs(vs[x].y); })[0]; up = vs[apex].clone().sub(f.c); text = variant === 'tens' ? (f.val % 10) + '0' : String(f.val % 10); }
+        var size = inr * (L === 3 ? 1.2 : L === 4 ? (kind === 'd6' ? 1.35 : 1.15) : 1.25);
+        addLabel(labels, text, ink, f.c, f.n, up, size, N > 8 && (text === '6' || text === '9'));
+      });
+      return (models[key] = { kind: kind, variant: variant || '', vs: vs, faces: faces, geo: geo, mat: mat, labels: labels, edges: new THREE.EdgesGeometry(geo, 1) });
+    }
+    function readDie(die) {
+      var q = die.mesh.quaternion, m = die.model, best = -Infinity, val = 0;
+      if (m.kind === 'd4') { m.vs.forEach(function (v, i) { var y = v.clone().applyQuaternion(q).y; if (y > best) { best = y; val = i + 1; } }); return val; }
+      m.faces.forEach(function (f) { var y = f.n.clone().applyQuaternion(q).y; if (y > best) { best = y; val = f.val; } });
+      return val;
+    }
+
+    /* ---------- class emblems: original line drawings, in a unit box centred on 0,0 (y down) ---------- */
+    function ln(g, pts) { g.beginPath(); g.moveTo(pts[0], pts[1]); for (var i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]); g.stroke(); }
+    function ring(g, x, y, r, fill) { g.beginPath(); g.arc(x, y, r, 0, 6.2832); if (fill) g.fill(); else g.stroke(); }
+    function both(g, angle, fn) { [-1, 1].forEach(function (sg) { g.save(); g.rotate(sg * angle); if (sg < 0) g.scale(-1, 1); fn(g); g.restore(); }); }
+    var EMBLEMS = {
+      Artificer: function (g) {
+        g.beginPath();
+        for (var i = 0; i < 8; i++) { var a = i * Math.PI / 4; [[-0.2, 0.62], [-0.13, 0.86], [0.13, 0.86], [0.2, 0.62]].forEach(function (p, j) { var x = Math.cos(a + p[0]) * p[1], y = Math.sin(a + p[0]) * p[1]; if (!i && !j) g.moveTo(x, y); else g.lineTo(x, y); }); }
+        g.closePath(); g.stroke(); ring(g, 0, 0, 0.28);
+      },
+      Barbarian: function (g) {
+        both(g, 0.62, function (g) { ln(g, [0, 0.8, 0, -0.78]); g.beginPath(); g.moveTo(0.03, -0.72); g.lineTo(0.4, -0.86); g.quadraticCurveTo(0.6, -0.48, 0.4, -0.1); g.lineTo(0.03, -0.26); g.closePath(); g.fill(); });
+      },
+      Bard: function (g) {
+        [-1, 1].forEach(function (sg) { g.beginPath(); g.moveTo(sg * 0.2, 0.5); g.bezierCurveTo(sg * 0.8, 0.3, sg * 0.7, -0.5, sg * 0.36, -0.76); g.stroke(); });
+        ln(g, [-0.46, -0.46, 0.46, -0.46]); ln(g, [-0.28, 0.54, 0.28, 0.54]); ln(g, [0, 0.54, 0, 0.8]); ln(g, [-0.2, 0.8, 0.2, 0.8]);
+        g.save(); g.lineWidth = 0.028; [-0.18, 0, 0.18].forEach(function (x) { ln(g, [x, -0.46, x, 0.52]); }); g.restore();
+      },
+      Cleric: function (g) {
+        ring(g, 0, 0, 0.27);
+        for (var i = 0; i < 12; i++) { var a = i * Math.PI / 6, r = i % 3 === 0 ? 0.86 : 0.64; ln(g, [Math.cos(a) * 0.42, Math.sin(a) * 0.42, Math.cos(a) * r, Math.sin(a) * r]); }
+      },
+      Druid: function (g) {
+        g.beginPath(); g.moveTo(0, -0.84); g.bezierCurveTo(0.66, -0.42, 0.62, 0.3, 0, 0.72); g.bezierCurveTo(-0.62, 0.3, -0.66, -0.42, 0, -0.84); g.stroke();
+        ln(g, [0, -0.6, 0, 0.88]);
+        g.save(); g.lineWidth = 0.032; [-0.3, -0.02, 0.26].forEach(function (y) { ln(g, [0, y + 0.16, 0.3, y - 0.08]); ln(g, [0, y + 0.16, -0.3, y - 0.08]); }); g.restore();
+      },
+      Fighter: function (g) {
+        both(g, 0.7, function (g) { g.beginPath(); g.moveTo(-0.075, 0.42); g.lineTo(-0.075, -0.68); g.lineTo(0, -0.9); g.lineTo(0.075, -0.68); g.lineTo(0.075, 0.42); g.closePath(); g.fill(); ln(g, [-0.28, 0.42, 0.28, 0.42]); ln(g, [0, 0.42, 0, 0.7]); ring(g, 0, 0.78, 0.06, true); });
+      },
+      Gunslinger: function (g) {
+        both(g, 0.74, function (g) {
+          g.translate(0, 0.3);
+          g.fillRect(-0.065, -1.12, 0.13, 1.24); ln(g, [-0.12, -1.0, 0.12, -1.0]);
+          g.save(); g.lineWidth = 0.17; g.beginPath(); g.moveTo(0, 0.08); g.bezierCurveTo(0, 0.3, 0.08, 0.42, 0.26, 0.5); g.stroke(); g.restore();
+          ring(g, 0.31, 0.52, 0.11, true);
+          g.save(); g.lineWidth = 0.035; g.beginPath(); g.arc(0.16, 0.14, 0.11, -1.4, 2.0); g.stroke(); g.restore();
+          ln(g, [-0.05, 0.06, -0.2, -0.06]); ln(g, [-0.2, -0.06, -0.13, -0.16]);
+        });
+      },
+      Monk: function (g) {
+        g.save(); g.lineWidth = 0.1; g.beginPath(); g.arc(0, 0, 0.66, 0.5, 6.0); g.stroke(); g.restore();
+        [-0.75, 0, 0.75].forEach(function (a) { g.save(); g.translate(0, 0.32); g.rotate(a); g.beginPath(); g.moveTo(0, 0); g.bezierCurveTo(-0.22, -0.24, -0.12, -0.52, 0, -0.66); g.bezierCurveTo(0.12, -0.52, 0.22, -0.24, 0, 0); g.stroke(); g.restore(); });
+      },
+      Paladin: function (g) {
+        g.beginPath(); g.moveTo(-0.58, -0.68); g.lineTo(0.58, -0.68); g.lineTo(0.58, 0); g.bezierCurveTo(0.58, 0.46, 0.22, 0.7, 0, 0.86); g.bezierCurveTo(-0.22, 0.7, -0.58, 0.46, -0.58, 0); g.closePath(); g.stroke();
+        g.beginPath(); [[0, -0.44], [0.08, -0.1], [0.34, -0.02], [0.08, 0.06], [0, 0.46], [-0.08, 0.06], [-0.34, -0.02], [-0.08, -0.1]].forEach(function (p, i) { if (i) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); }); g.closePath(); g.fill();
+      },
+      Ranger: function (g) {
+        g.beginPath(); g.arc(-0.42, 0, 0.9, -1.0, 1.0); g.stroke();
+        g.save(); g.lineWidth = 0.026; ln(g, [-0.42 + 0.9 * Math.cos(1), -0.9 * Math.sin(1), -0.42 + 0.9 * Math.cos(1), 0.9 * Math.sin(1)]); g.restore();
+        ln(g, [-0.7, 0, 0.8, 0]); ln(g, [0.62, -0.13, 0.84, 0, 0.62, 0.13]); ln(g, [-0.78, -0.12, -0.64, 0, -0.78, 0.12]); ln(g, [-0.66, -0.12, -0.52, 0, -0.66, 0.12]);
+      },
+      Rogue: function (g) {
+        g.beginPath(); g.moveTo(-0.13, -0.28); g.lineTo(0.13, -0.28); g.lineTo(0, 0.86); g.closePath(); g.stroke();
+        ln(g, [-0.36, -0.28, 0.36, -0.28]); ln(g, [0, -0.28, 0, -0.66]); ring(g, 0, -0.75, 0.08, true);
+        g.save(); g.lineWidth = 0.026; ln(g, [0, -0.16, 0, 0.5]); g.restore();
+      },
+      Sorcerer: function (g) {
+        g.beginPath(); g.moveTo(0, 0.8); g.bezierCurveTo(-0.66, 0.62, -0.58, -0.04, -0.22, -0.3); g.bezierCurveTo(-0.22, -0.06, -0.02, 0, 0.02, -0.16);
+        g.bezierCurveTo(0.06, -0.46, -0.1, -0.62, 0.06, -0.88); g.bezierCurveTo(0.58, -0.42, 0.7, 0.48, 0, 0.8); g.closePath(); g.stroke();
+        g.beginPath(); g.moveTo(0.02, 0.6); g.bezierCurveTo(-0.26, 0.48, -0.16, 0.2, 0.02, 0.06); g.bezierCurveTo(0.26, 0.24, 0.26, 0.5, 0.02, 0.6); g.closePath(); g.fill();
+      },
+      Warlock: function (g) {
+        g.beginPath(); g.moveTo(-0.86, 0); g.quadraticCurveTo(0, -0.66, 0.86, 0); g.quadraticCurveTo(0, 0.66, -0.86, 0); g.closePath(); g.stroke();
+        ring(g, 0, 0, 0.27); g.beginPath(); g.ellipse(0, 0, 0.06, 0.2, 0, 0, 6.2832); g.fill();
+        g.save(); g.lineWidth = 0.032; [[-0.4, 0.5, -0.5, 0.74], [0, 0.56, 0, 0.84], [0.4, 0.5, 0.5, 0.74]].forEach(function (l) { ln(g, l); }); g.restore();
+      },
+      Wizard: function (g) {
+        g.beginPath(); g.moveTo(-0.46, 0.42); g.lineTo(-0.04, -0.72); g.quadraticCurveTo(0.14, -0.9, 0.36, -0.66); g.quadraticCurveTo(0.16, -0.7, 0.12, -0.54); g.lineTo(0.46, 0.42); g.stroke();
+        g.beginPath(); g.ellipse(0, 0.46, 0.84, 0.2, 0, 0, 6.2832); g.stroke();
+        g.beginPath(); for (var i = 0; i < 10; i++) { var a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.07 : 0.17; g[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, -0.08 + Math.sin(a) * r); } g.closePath(); g.fill();
+      }
+    };
+
+    /* ---------- scene ---------- */
+    var gfx = null;
+    function initGfx() {
+      var stage = $('stage');
+      var renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.setClearColor('#1a120b');
+      stage.appendChild(renderer.domElement);
+      var scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(36, 1.5, 0.5, 200);
+      scene.add(new THREE.HemisphereLight(C('#fff1d6'), C('#5a4a3a'), 0.9));
+      var sun = new THREE.DirectionalLight(C('#fff4e0'), 1.15); sun.position.set(-7, 18, 7); sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048); var sc = sun.shadow.camera; sc.left = -11; sc.right = 11; sc.top = 9; sc.bottom = -9; sc.near = 1; sc.far = 50; sun.shadow.bias = -0.0006; sun.shadow.radius = 3;
+      scene.add(sun);
+      var lamp = new THREE.PointLight(C('#ffcf8a'), 0.5, 40); lamp.position.set(6, 9, -3); scene.add(lamp);
+
+      /* felt: flat colour with a little woven noise; wood: base colour with grain strokes. Both repaint in place. */
+      var fc = document.createElement('canvas'); fc.width = fc.height = 256; var fg = fc.getContext('2d');
+      var feltTex = new THREE.CanvasTexture(fc); feltTex.wrapS = feltTex.wrapT = THREE.RepeatWrapping; feltTex.repeat.set(5, 3.2); feltTex.encoding = THREE.sRGBEncoding;
+      function paintFelt(color) {
+        fg.fillStyle = color; fg.fillRect(0, 0, 256, 256);
+        for (var i = 0; i < 9000; i++) { fg.fillStyle = 'rgba(' + (Math.random() < .5 ? '255,255,255' : '0,0,0') + ',' + (Math.random() * 0.06) + ')'; fg.fillRect(Math.random() * 256, Math.random() * 256, 1.5, 1.5); }
+        feltTex.needsUpdate = true;
+      }
+      var felt = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: feltTex, roughness: 0.95 }));
+      felt.rotation.x = -Math.PI / 2; felt.receiveShadow = true; scene.add(felt);
+      /* class emblem: line art stitched into the middle of the felt */
+      var ec = document.createElement('canvas'); ec.width = ec.height = 512; var eg = ec.getContext('2d');
+      var embTex = new THREE.CanvasTexture(ec); embTex.encoding = THREE.sRGBEncoding; embTex.anisotropy = 4;
+      var emb = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 5.4), new THREE.MeshStandardMaterial({ map: embTex, transparent: true, opacity: 0.6, depthWrite: false, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+      emb.rotation.x = -Math.PI / 2; emb.position.y = 0.004; emb.receiveShadow = true; emb.visible = false; scene.add(emb);
+      function paintEmblem(name, feltHex) {
+        var draw = EMBLEMS[name]; emb.visible = !!draw; if (!draw) return;
+        var c = new THREE.Color(feltHex), lum = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+        var ink = lum > 0.5 ? 'rgb(52,34,14)' : 'rgb(244,222,160)';
+        eg.setTransform(1, 0, 0, 1, 0, 0); eg.clearRect(0, 0, 512, 512);
+        eg.setTransform(200, 0, 0, 200, 256, 256); eg.strokeStyle = eg.fillStyle = ink; eg.lineCap = eg.lineJoin = 'round';
+        eg.lineWidth = 0.022; eg.beginPath(); eg.arc(0, 0, 1.22, 0, 6.2832); eg.stroke();
+        eg.lineWidth = 0.012; eg.beginPath(); eg.arc(0, 0, 1.14, 0, 6.2832); eg.stroke();
+        eg.lineWidth = 0.055; draw(eg);
+        embTex.needsUpdate = true;
+      }
+      var wc = document.createElement('canvas'); wc.width = 256; wc.height = 64; var wg = wc.getContext('2d');
+      var woodTex = new THREE.CanvasTexture(wc); woodTex.wrapS = THREE.RepeatWrapping; woodTex.repeat.set(2, 1); woodTex.encoding = THREE.sRGBEncoding;
+      function paintWood(w) {
+        wg.fillStyle = w.base; wg.fillRect(0, 0, 256, 64);
+        for (var i = 0; i < 70; i++) { wg.strokeStyle = 'rgba(' + (Math.random() < .5 ? w.dark : w.light) + ',' + (0.08 + Math.random() * w.grain) + ')'; wg.lineWidth = 0.5 + Math.random() * 1.5; var y = Math.random() * 64; wg.beginPath(); wg.moveTo(0, y); wg.bezierCurveTo(80, y + Math.random() * 6 - 3, 170, y + Math.random() * 6 - 3, 256, y); wg.stroke(); }
+        woodTex.needsUpdate = true;
+      }
+      var wood = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.55 }), T = 0.7, H = 1.25;
+      [[W + 2 * T, T, 0, -(D + T) / 2], [W + 2 * T, T, 0, (D + T) / 2], [T, D, -(W + T) / 2, 0], [T, D, (W + T) / 2, 0]].forEach(function (b) {
+        var wall = new THREE.Mesh(new THREE.BoxGeometry(b[0], H, b[1]), wood); wall.position.set(b[2], H / 2 - 0.02, b[3]); wall.castShadow = wall.receiveShadow = true; scene.add(wall);
+      });
+      var table = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: C('#2a1c10'), roughness: 0.9 })); table.rotation.x = -Math.PI / 2; table.position.y = -0.03; table.receiveShadow = true; scene.add(table);
+
+      var world = new CANNON.World(); world.gravity.set(0, -42, 0); world.allowSleep = true; world.broadphase = new CANNON.NaiveBroadphase(); world.solver.iterations = 14;
+      var mDie = new CANNON.Material('die'), mFelt = new CANNON.Material('felt'), mWall = new CANNON.Material('wall');
+      world.addContactMaterial(new CANNON.ContactMaterial(mDie, mFelt, { friction: 0.35, restitution: 0.32 }));
+      world.addContactMaterial(new CANNON.ContactMaterial(mDie, mWall, { friction: 0.1, restitution: 0.55 }));
+      world.addContactMaterial(new CANNON.ContactMaterial(mDie, mDie, { friction: 0.15, restitution: 0.4 }));
+      var plane = function (mat, pos, axis, angle) { var b = new CANNON.Body({ mass: 0, material: mat, shape: new CANNON.Plane() }); b.position.set(pos[0], pos[1], pos[2]); b.quaternion.setFromAxisAngle(new CANNON.Vec3(axis[0], axis[1], axis[2]), angle); world.addBody(b); };
+      plane(mFelt, [0, 0, 0], [1, 0, 0], -Math.PI / 2);
+      plane(mWall, [-W / 2, 0, 0], [0, 1, 0], Math.PI / 2); plane(mWall, [W / 2, 0, 0], [0, 1, 0], -Math.PI / 2);
+      plane(mWall, [0, 0, -D / 2], [0, 1, 0], 0); plane(mWall, [0, 0, D / 2], [0, 1, 0], Math.PI);
+
+      planeGeo = new THREE.PlaneGeometry(1, 1);
+      var edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22 });
+      function fit() {
+        var w = stage.clientWidth || 600, h = stage.clientHeight || 400; renderer.setSize(w, h, false); camera.aspect = w / h;
+        var dir = V(0, 1, 0.34).normalize(), pts = [];
+        [-1, 1].forEach(function (a) { [-1, 1].forEach(function (b) { pts.push(V(a * (W / 2 + T), H, b * (D / 2 + T)), V(a * (W / 2 + T), 0, b * (D / 2 + T))); }); });
+        for (var dist = 8; dist < 90; dist += 0.25) {
+          camera.position.copy(dir).multiplyScalar(dist); camera.lookAt(0, 0, 0.25); camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
+          if (pts.every(function (p) { var s = p.clone().project(camera); return Math.abs(s.x) < 0.985 && Math.abs(s.y) < 0.985; })) break;
+        }
+        renderer.render(scene, camera);
+      }
+      if (window.ResizeObserver) new ResizeObserver(fit).observe(stage); else window.addEventListener('resize', fit);
+      fit();
+      return { renderer: renderer, scene: scene, camera: camera, world: world, mDie: mDie, edgeMat: edgeMat, dice: [], fit: fit, paintFelt: paintFelt, paintWood: paintWood, paintEmblem: paintEmblem };
+    }
+    function clearDice() { var g = gfx; g.dice.forEach(function (d) { g.scene.remove(d.mesh); g.world.remove(d.body); }); g.dice = []; }
+    function spawn(list) {
+      var g = gfx; clearDice();
+      var n = list.length, cols = Math.min(5, Math.ceil(Math.sqrt(n))), rows = Math.ceil(n / cols), R = Math.random;
+      list.forEach(function (item, i) {
+        var m = model(item.kind, item.variant), mesh = new THREE.Mesh(m.geo, m.mat); mesh.castShadow = true; mesh.receiveShadow = true;
+        mesh.add(m.labels.clone()); mesh.add(new THREE.LineSegments(m.edges, g.edgeMat)); g.scene.add(mesh);
+        var shape = new CANNON.ConvexPolyhedron(m.vs.map(function (v) { return new CANNON.Vec3(v.x, v.y, v.z); }), m.faces.map(function (f) { return f.idx.slice(); }));
+        var body = new CANNON.Body({ mass: 1, material: g.mDie, shape: shape, linearDamping: 0.08, angularDamping: 0.08 });
+        var col = i % cols, row = Math.floor(i / cols);
+        body.position.set(-W / 2 + 1.7 + col * 2.2 + R() * 0.2, 2.6 + ((col + row) % 2) * 2.5 + R(), (row - (rows - 1) / 2) * 1.75 + (R() - 0.5) * 0.2);
+        body.quaternion.setFromEuler(R() * 6.28, R() * 6.28, R() * 6.28);
+        body.velocity.set(7 + R() * 9, -3 - R() * 3, (R() - 0.5) * 10);
+        body.angularVelocity.set((R() - 0.5) * 36, (R() - 0.5) * 36, (R() - 0.5) * 36);
+        body.allowSleep = true; body.sleepSpeedLimit = 0.25; body.sleepTimeLimit = 0.35;
+        g.world.addBody(body); g.dice.push({ mesh: mesh, body: body, model: m, item: item });
+      });
+    }
+    function sync() { gfx.dice.forEach(function (d) { d.mesh.position.copy(d.body.position); d.mesh.quaternion.copy(d.body.quaternion); }); gfx.renderer.render(gfx.scene, gfx.camera); }
+    function settled() { return gfx.dice.every(function (d) { return d.body.sleepState === CANNON.Body.SLEEPING; }); }
+
+    /* ---------- rolling ---------- */
+    function roll() {
+      if (rolling || !count()) return;
+      var p = {}, m = modVal(), list = []; KINDS.forEach(function (d) { p[d.k] = pool[d.k]; });
+      KINDS.forEach(function (d) { for (var i = 0; i < p[d.k]; i++) { if (d.k === 'd100') list.push({ kind: 'd10', variant: 'tens', of: 'd100' }, { kind: 'd10', variant: 'ones', of: 'd100' }); else list.push({ kind: d.k, of: d.k }); } });
+      rolling = true; drawPool(); $('total').hidden = true;
+      if (!gfx) { list.forEach(function (it) { it.val = 1 + Math.floor(Math.random() * KIND[it.kind].n); }); return finish(p, m, list); }
+      spawn(list);
+      var done = function () { sync(); gfx.dice.forEach(function (d) { d.item.val = readDie(d); }); finish(p, m, list); };
+      if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { for (var s = 0; s < 900 && !settled(); s++) gfx.world.step(1 / 60); return done(); }
+      /* Fixed steps only: a click's first frame can carry a timestamp older than the click itself. */
+      var t0 = 0, last = 0, acc = 0; sync();
+      requestAnimationFrame(function frame(now) {
+        if (!t0) { t0 = last = now; }
+        acc += Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
+        for (var n = 0; acc >= 1 / 60 && n < 3; n++) { gfx.world.step(1 / 60); acc -= 1 / 60; }
+        sync();
+        if (settled() || now - t0 > 9000) return done();
+        requestAnimationFrame(frame);
+      });
+    }
+    function finish(p, m, list) {
+      var lines = [], total = m, flag = '';
+      KINDS.forEach(function (d) {
+        if (!p[d.k]) return;
+        var vals = [];
+        if (d.k === 'd100') { var t = list.filter(function (x) { return x.variant === 'tens'; }), o = list.filter(function (x) { return x.variant === 'ones'; }); t.forEach(function (x, i) { var v = (x.val % 10) * 10 + (o[i].val % 10); vals.push(v || 100); }); }
+        else vals = list.filter(function (x) { return x.of === d.k; }).map(function (x) { return x.val; });
+        var sum = vals.reduce(function (a, b) { return a + b; }, 0); total += sum;
+        if (d.k === 'd20' && p.d20 === 1) flag = vals[0] === 20 ? 'crit' : vals[0] === 1 ? 'fumble' : '';
+        lines.push({ k: p[d.k] + d.k, vals: vals, sum: sum, n: d.n, d20: d.k === 'd20' });
+      });
+      $('lines').innerHTML = lines.map(function (l) {
+        return '<li><span class="k">' + l.k + '</span><span class="v">' + l.vals.map(function (v) { return l.d20 && v === 20 ? '<span class="crit">20</span>' : l.d20 && v === 1 ? '<span class="fumble">1</span>' : v; }).join(', ') + '</span><span class="s">' + l.sum + '</span></li>';
+      }).join('') + (m ? '<li><span class="k">Modifier</span><span class="s">' + (m > 0 ? '+' : '−') + Math.abs(m) + '</span></li>' : '') +
+        '<li class="sum"><span class="k">Total</span>' + (flag ? '<span class="' + flag + '">' + (flag === 'crit' ? 'Natural 20' : 'Natural 1') + '</span>' : '') + '<span class="s">' + total + '</span></li>';
+      $('lines-empty').hidden = true;
+      var tb = $('total'); tb.className = 'dt-total' + (flag ? ' ' + flag : ''); tb.innerHTML = '<small>Total</small>' + total; tb.hidden = false;
+      hist.unshift({ who: whoName(), e: exprText(p, m), t: total, d: lines.map(function (l) { return l.vals.join(','); }).join(' | ') }); hist = hist.slice(0, 11);
+      $('hist').innerHTML = hist.slice(1).map(function (h) { return '<li>' + (h.who ? '<span class="who">' + esc(h.who) + '</span> · ' : '') + '<b>' + h.t + '</b> · ' + h.e + ' <span>(' + h.d + ')</span></li>'; }).join('');
+      $('hist-empty').hidden = hist.length > 1;
+      rolling = false; shown = true; drawPool();
+    }
+
+    try { if (!window.THREE || !window.CANNON) throw new Error('libraries'); gfx = initGfx(); }
+    catch (e) { gfx = null; var nt = $('note'); nt.textContent = 'The 3D tray could not start in this browser, so rolls are shown as numbers only.'; nt.hidden = false; }
+    function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function whoName() { return window.SS_who ? window.SS_who() : ''; }
+
+    /* ---------- tray appearance ---------- */
+    var FELTS = [['Forest green', '#1e5a44'], ['Burgundy', '#6a1f2b'], ['Royal blue', '#1f3f7a'], ['Royal purple', '#47276b'], ['Charcoal', '#2e2f33'], ['Sand', '#b39a6b'], ['Black', '#141414']];
+    var WOODS = [
+      ['Oak', { base: '#a47a48', dark: '70,45,20', light: '215,180,130', grain: 0.14 }], ['Walnut', { base: '#5b3d26', dark: '30,18,8', light: '140,100,60', grain: 0.14 }],
+      ['Cherry', { base: '#8a4a2c', dark: '60,25,12', light: '190,120,80', grain: 0.12 }], ['Mahogany', { base: '#5e2619', dark: '30,8,4', light: '150,70,50', grain: 0.12 }],
+      ['Maple', { base: '#d2b17c', dark: '130,95,55', light: '240,220,180', grain: 0.10 }], ['Ebony', { base: '#231c18', dark: '0,0,0', light: '90,75,65', grain: 0.12 }]
+    ];
+    function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+    function look(redraw) {
+      var f = FELTS[$('felt').selectedIndex] || FELTS[0], w = WOODS[$('wood').selectedIndex] || WOODS[1];
+      if (!gfx) return; gfx.paintFelt(f[1]); gfx.paintWood(w[1]); gfx.paintEmblem($('emblem').value, f[1]); if (redraw) gfx.renderer.render(gfx.scene, gfx.camera);
+    }
+    var CLASSES = [['None']].concat(Object.keys(EMBLEMS).map(function (k) { return [k]; }));
+    [['felt', FELTS, 'Forest green'], ['wood', WOODS, 'Walnut'], ['emblem', CLASSES, 'None']].forEach(function (o) {
+      var sel = $(o[0]), saved = lsGet('dice-tray-' + o[0]);
+      sel.innerHTML = o[1].map(function (x) { return '<option>' + x[0] + '</option>'; }).join('');
+      sel.value = o[1].some(function (x) { return x[0] === saved; }) ? saved : o[2];
+      sel.disabled = !gfx;
+      sel.addEventListener('change', function () { lsSet('dice-tray-' + o[0], sel.value); look(!rolling); });
+    });
+    look(false);
+    drawPool();
+    if (gfx) roll();
+  }
+  if (location.hash === '#dice') window.DiceTray.show();
 })();
 </script>
 
