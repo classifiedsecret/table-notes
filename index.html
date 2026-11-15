@@ -627,8 +627,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     if (S.mode === 'connecting') { el.innerHTML = '<div class="empty"><strong>Loading your notes…</strong></div>'; return; }
     if (S.view === 'campaign') {
       var es = allEntries().filter(match), any = false;
-      TYPES.forEach(function (t) {
-        if (t.k === 'note') return;
+      TYPES.slice(1).concat(TYPES[0]).forEach(function (t) {   /* plain notes last */
         var g = es.filter(function (e) { return e.type === t.k; });
         if (!g.length) return; any = true;
         var shut = !!S.shut[t.k] && !q;   /* a search opens every section so matches are never hidden */
