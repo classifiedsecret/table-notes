@@ -418,6 +418,7 @@ a.ddb:hover { color: var(--accent); text-decoration-style: solid }
           <label for="dt-felt">Felt <select id="dt-felt"></select></label>
           <label for="dt-wood">Wood <select id="dt-wood"></select></label>
           <label for="dt-emblem">Class emblem <select id="dt-emblem"></select></label>
+          <label for="dt-tower">Dice tower <select id="dt-tower"></select></label>
         </div>
         <div class="dt-pool" id="dt-pool" role="group" aria-label="Dice to roll"></div>
         <div class="dt-bar">
@@ -1792,7 +1793,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
           '<button type="button" data-k="' + d.k + '" data-d="1" aria-label="One more ' + d.k + '"' + (room ? '' : ' disabled') + '>+</button></div></div>';
       }).join('');
       $('expr').textContent = exprText(pool, modVal());
-      $('roll').disabled = rolling || !count(); $('clear').disabled = rolling || !(count() || modVal() || shown);
+      $('tower').disabled = rolling || !gfx; $('roll').disabled = rolling || !count(); $('clear').disabled = rolling || !(count() || modVal() || shown);
     }
     $('pool').addEventListener('click', function (ev) {
       var b = ev.target.closest('button[data-k]'); if (!b) return;
@@ -2034,6 +2035,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
       var mDie = new CANNON.Material('die'), mFelt = new CANNON.Material('felt'), mWall = new CANNON.Material('wall');
       world.addContactMaterial(new CANNON.ContactMaterial(mDie, mFelt, { friction: 0.35, restitution: 0.32 }));
       world.addContactMaterial(new CANNON.ContactMaterial(mDie, mWall, { friction: 0.1, restitution: 0.55 }));
+      var mTower = new CANNON.Material('tower'); world.addContactMaterial(new CANNON.ContactMaterial(mDie, mTower, { friction: 0, restitution: 0.5 }));   /* slick, so dice never perch on a slope */
       world.addContactMaterial(new CANNON.ContactMaterial(mDie, mDie, { friction: 0.15, restitution: 0.4 }));
       var plane = function (mat, pos, axis, angle) { var b = new CANNON.Body({ mass: 0, material: mat, shape: new CANNON.Plane() }); b.position.set(pos[0], pos[1], pos[2]); b.quaternion.setFromAxisAngle(new CANNON.Vec3(axis[0], axis[1], axis[2]), angle); world.addBody(b); };
       plane(mFelt, [0, 0, 0], [1, 0, 0], -Math.PI / 2);
@@ -2042,23 +2044,95 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
 
       planeGeo = new THREE.PlaneGeometry(1, 1);
       var edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22 });
+      /* ---- dice tower: a shaft in the back-left corner; dice hit a baffle, then a chute that spills them out of a raised spout ---- */
+      var TW = { x: -W / 2 + 2.6, z: -D / 2 + 1.9, ix: 2.3, iz: 1.6, t: 0.3, h: 8.0, openLo: 2.3, openHi: 5.9 }, tower = null;
+      var TOWERS = {
+        'Oak keep': { wall: '#8a623a', dark: '60,38,16', light: '200,160,110', pattern: 'planks', baffle: '#6b4526', trim: '#4a2f18', top: 'merlons' },
+        'Stone turret': { wall: '#8d8f92', dark: '40,42,46', light: '215,218,222', pattern: 'blocks', baffle: '#5d6166', trim: '#6e7277', top: 'merlons' },
+        "Wizard's spire": { wall: '#3d2a6e', dark: '18,10,40', light: '120,95,190', pattern: 'stars', baffle: '#2a1c52', trim: '#d9a441', top: 'posts' },
+        'Iron forge': { wall: '#34373c', dark: '8,8,10', light: '110,115,125', pattern: 'rivets', baffle: '#b3541e', trim: '#b08a3c', top: 'band' }
+      };
+      function towerTex(st) {
+        var cv = document.createElement('canvas'); cv.width = cv.height = 256; var g = cv.getContext('2d'), i, x, y;
+        g.fillStyle = st.wall; g.fillRect(0, 0, 256, 256);
+        if (st.pattern === 'planks') {
+          for (i = 0; i < 90; i++) { g.strokeStyle = 'rgba(' + (Math.random() < .5 ? st.dark : st.light) + ',' + (0.06 + Math.random() * 0.12) + ')'; g.lineWidth = 0.5 + Math.random() * 1.5; x = Math.random() * 256; g.beginPath(); g.moveTo(x, 0); g.bezierCurveTo(x + Math.random() * 6 - 3, 80, x + Math.random() * 6 - 3, 170, x, 256); g.stroke(); }
+          g.strokeStyle = 'rgba(' + st.dark + ',0.55)'; g.lineWidth = 3; for (x = 0; x <= 256; x += 64) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 256); g.stroke(); }
+        } else if (st.pattern === 'blocks') {
+          for (i = 0; i < 5000; i++) { g.fillStyle = 'rgba(' + (Math.random() < .5 ? st.dark : st.light) + ',' + (Math.random() * 0.08) + ')'; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+          g.strokeStyle = 'rgba(' + st.dark + ',0.6)'; g.lineWidth = 3;
+          for (y = 0; y < 4; y++) { g.beginPath(); g.moveTo(0, y * 64); g.lineTo(256, y * 64); g.stroke(); for (x = (y % 2) * 64; x <= 256; x += 128) { g.beginPath(); g.moveTo(x, y * 64); g.lineTo(x, y * 64 + 64); g.stroke(); } }
+        } else if (st.pattern === 'stars') {
+          g.fillStyle = 'rgba(' + st.light + ',0.75)';
+          for (i = 0; i < 46; i++) { x = Math.random() * 256; y = Math.random() * 256; var r = 0.8 + Math.random() * 2.4; g.beginPath(); for (var k = 0; k < 8; k++) { var a = k * Math.PI / 4, rr = k % 2 ? r * 0.35 : r * 1.6; g[k ? 'lineTo' : 'moveTo'](x + Math.cos(a) * rr, y + Math.sin(a) * rr); } g.closePath(); g.fill(); }
+        } else {
+          for (i = 0; i < 4000; i++) { g.fillStyle = 'rgba(' + (Math.random() < .5 ? st.dark : st.light) + ',' + (Math.random() * 0.07) + ')'; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+          g.strokeStyle = 'rgba(' + st.dark + ',0.7)'; g.lineWidth = 3; g.strokeRect(1.5, 1.5, 253, 253); g.beginPath(); g.moveTo(0, 128); g.lineTo(256, 128); g.stroke();
+          g.fillStyle = 'rgba(' + st.light + ',0.85)'; for (x = 20; x < 256; x += 54) [14, 114, 142, 242].forEach(function (yy) { g.beginPath(); g.arc(x, yy, 4.5, 0, 6.2832); g.fill(); });
+        }
+        var tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.encoding = THREE.sRGBEncoding; return tex;
+      }
+      function setTower(name) {
+        if (tower) { scene.remove(tower.group); tower.bodies.forEach(function (b) { world.remove(b); }); tower = null; }
+        var st = TOWERS[name];
+        if (st) {
+          var group = new THREE.Group(), bodies = [], x0 = TW.x, z0 = TW.z, IX = TW.ix, IZ = TW.iz, t = TW.t, Ht = TW.h;
+          var tex = towerTex(st), wallMat = function (rx, ry) { var m = tex.clone(); m.needsUpdate = true; m.repeat.set(rx, ry); return new THREE.MeshStandardMaterial({ map: m, roughness: 0.7 }); };
+          var glass = new THREE.MeshStandardMaterial({ color: C('#cfe6ff'), transparent: true, opacity: 0.13, roughness: 0.15, depthWrite: false });
+          var bafMat = new THREE.MeshStandardMaterial({ color: C(st.baffle), roughness: 0.6 }), trimMat = new THREE.MeshStandardMaterial({ color: C(st.trim), roughness: 0.4, metalness: st.top === 'merlons' ? 0 : 0.5 });
+          var box = function (sx, sy, sz, x, y, z, rot, mat, solid) {
+            var mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat); mesh.position.set(x0 + x, y, z0 + z); mesh.rotation.z = rot || 0;
+            if (mat !== glass) { mesh.castShadow = true; mesh.receiveShadow = true; } group.add(mesh);
+            if (solid) { var b = new CANNON.Body({ mass: 0, material: mTower, shape: new CANNON.Box(new CANNON.Vec3(sx / 2, sy / 2, sz / 2)) }); b.position.set(x0 + x, y, z0 + z); b.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), rot || 0); world.addBody(b); bodies.push(b); }
+          };
+          var slope = function (ax, ay, bx, by, mat) { var L = Math.hypot(bx - ax, by - ay); box(L, 0.35, 2 * IZ, (ax + bx) / 2, (ay + by) / 2, 0, Math.atan2(by - ay, bx - ax), mat, true); };
+          box(t, Ht, 2 * IZ + 2 * t, -IX - t / 2, Ht / 2, 0, 0, wallMat(1, 2), true);                                   /* back */
+          box(t, Ht - TW.openHi, 2 * IZ + 2 * t, IX + t / 2, (Ht + TW.openHi) / 2, 0, 0, wallMat(1, 0.6), true);         /* front, above the spout */
+          box(t, TW.openLo, 2 * IZ + 2 * t, IX + t / 2, TW.openLo / 2, 0, 0, wallMat(1, 0.65), true);                    /* front, base below the spout */
+          box(2 * IX, Ht, t, 0, Ht / 2, -IZ - t / 2, 0, wallMat(1.4, 2), true);                                         /* far side */
+          box(2 * IX, Ht, t, 0, Ht / 2, IZ + t / 2, 0, glass, true);                                                    /* near side: glass, so the tumble shows */
+          slope(IX, 7.1, 0.6, 6.5, bafMat); slope(-IX, 4.6, IX + 0.3, 2.6, bafMat);
+          var ox = IX + t, oz = IZ + t, i;
+          if (st.top === 'merlons') { for (i = -2; i <= 2; i++) { box(0.55, 0.5, t + 0.08, i * 1.15, Ht + 0.25, -oz + t / 2, 0, trimMat); box(0.55, 0.5, t + 0.08, i * 1.15, Ht + 0.25, oz - t / 2, 0, trimMat); } for (i = -1; i <= 1; i++) { box(t + 0.08, 0.5, 0.55, -ox + t / 2, Ht + 0.25, i * 1.1, 0, trimMat); box(t + 0.08, 0.5, 0.55, ox - t / 2, Ht + 0.25, i * 1.1, 0, trimMat); } }
+          else {
+            [Ht - 0.12, TW.openLo - 0.14].forEach(function (y) { box(2 * ox + 0.12, 0.24, 0.1, 0, y, -oz - 0.02, 0, trimMat); box(2 * ox + 0.12, 0.24, 0.1, 0, y, oz + 0.02, 0, trimMat); box(0.1, 0.24, 2 * oz + 0.12, -ox - 0.02, y, 0, 0, trimMat); box(0.1, 0.24, 2 * oz + 0.12, ox + 0.02, y, 0, 0, trimMat); });
+            if (st.top === 'posts') [-1, 1].forEach(function (a) { [-1, 1].forEach(function (b) { box(0.34, 0.9, 0.34, a * (ox - 0.1), Ht + 0.45, b * (oz - 0.1), 0, trimMat); var cone = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.8, 4), trimMat); cone.position.set(x0 + a * (ox - 0.1), Ht + 1.3, z0 + b * (oz - 0.1)); cone.rotation.y = Math.PI / 4; cone.castShadow = true; group.add(cone); }); });
+          }
+          scene.add(group); tower = { group: group, bodies: bodies, name: name };
+        }
+        emb.position.x = tower ? 1.0 : 0; emb.position.z = tower ? 0.5 : 0;
+        fit();
+      }
       function fit() {
         var w = stage.clientWidth || 600, h = stage.clientHeight || 400; renderer.setSize(w, h, false); camera.aspect = w / h;
         var dir = V(0, 1, 0.34).normalize(), pts = [];
         [-1, 1].forEach(function (a) { [-1, 1].forEach(function (b) { pts.push(V(a * (W / 2 + T), H, b * (D / 2 + T)), V(a * (W / 2 + T), 0, b * (D / 2 + T))); }); });
-        for (var dist = 8; dist < 90; dist += 0.25) {
-          camera.position.copy(dir).multiplyScalar(dist); camera.lookAt(0, 0, 0.25); camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
-          if (pts.every(function (p) { var s = p.clone().project(camera); return Math.abs(s.x) < 0.985 && Math.abs(s.y) < 0.985; })) break;
+        if (tower) [-1, 1].forEach(function (a) { [-1, 1].forEach(function (b) { pts.push(V(TW.x + a * (TW.ix + TW.t), TW.h + 0.7, TW.z + b * (TW.iz + TW.t))); }); });
+        /* pull back until everything fits, re-centring the view on what has to be shown (the tower makes it lopsided) */
+        var tgt = V(0, 0, 0.25), th = Math.tan(camera.fov * Math.PI / 360);
+        for (var dist = tower ? 18 : 8; dist < 90; dist += 0.25) {
+          var ok = false; tgt.set(0, 0, 0.25);
+          for (var it = 0; it < (tower ? 5 : 1); it++) {
+            camera.position.copy(dir).multiplyScalar(dist).add(tgt); camera.lookAt(tgt); camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
+            var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+            pts.forEach(function (p) { var q = p.clone().project(camera); x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y); });
+            ok = x0 > -0.985 && x1 < 0.985 && y0 > -0.985 && y1 < 0.985;
+            if (ok || !tower) break;
+            var cl = function (v) { return Math.max(-6, Math.min(6, v)); };
+            tgt.x = cl(tgt.x + (x0 + x1) / 2 * dist * th * camera.aspect * 0.8); tgt.z = cl(tgt.z - (y0 + y1) / 2 * dist * th * 0.8);
+          }
+          if (ok) break;
         }
         renderer.render(scene, camera);
       }
       if (window.ResizeObserver) new ResizeObserver(fit).observe(stage); else window.addEventListener('resize', fit);
       fit();
-      return { renderer: renderer, scene: scene, camera: camera, world: world, mDie: mDie, edgeMat: edgeMat, dice: [], fit: fit, paintFelt: paintFelt, paintWood: paintWood, paintEmblem: paintEmblem };
+      return { renderer: renderer, scene: scene, camera: camera, world: world, mDie: mDie, edgeMat: edgeMat, dice: [], fit: fit, paintFelt: paintFelt, paintWood: paintWood, paintEmblem: paintEmblem, setTower: setTower, TW: TW, hasTower: function () { return !!tower; }, queue: [], steps: 0 };
     }
-    function clearDice() { var g = gfx; g.dice.forEach(function (d) { g.scene.remove(d.mesh); g.world.remove(d.body); }); g.dice = []; }
+    function clearDice() { var g = gfx; g.queue = []; g.dice.forEach(function (d) { g.scene.remove(d.mesh); g.world.remove(d.body); }); g.dice = []; }
     function spawn(list) {
       var g = gfx; clearDice();
+      var inTower = g.hasTower(); g.queue = []; g.steps = 0;
       var n = list.length, cols = Math.min(5, Math.ceil(Math.sqrt(n))), rows = Math.ceil(n / cols), R = Math.random;
       list.forEach(function (item, i) {
         var m = model(item.kind, item.variant), mesh = new THREE.Mesh(m.geo, m.mat); mesh.castShadow = true; mesh.receiveShadow = true;
@@ -2071,11 +2145,21 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
         body.velocity.set(7 + R() * 9, -3 - R() * 3, (R() - 0.5) * 10);
         body.angularVelocity.set((R() - 0.5) * 36, (R() - 0.5) * 36, (R() - 0.5) * 36);
         body.allowSleep = true; body.sleepSpeedLimit = 0.25; body.sleepTimeLimit = 0.35;
-        g.world.addBody(body); g.dice.push({ mesh: mesh, body: body, model: m, item: item });
+        var die = { mesh: mesh, body: body, model: m, item: item }; g.dice.push(die);
+        if (inTower) {
+          body.position.set(g.TW.x + 1.3 + (R() - 0.5), g.TW.h + 1.7, g.TW.z + (R() - 0.5) * 0.5); body.velocity.set((R() - 0.5) * 2, -8, (R() - 0.5) * 2);
+          body.angularVelocity.set((R() - 0.5) * 24, (R() - 0.5) * 24, (R() - 0.5) * 24); mesh.visible = false; g.queue.push(die);
+        } else g.world.addBody(body);
       });
     }
     function sync() { gfx.dice.forEach(function (d) { d.mesh.position.copy(d.body.position); d.mesh.quaternion.copy(d.body.quaternion); }); gfx.renderer.render(gfx.scene, gfx.camera); }
-    function settled() { return gfx.dice.every(function (d) { return d.body.sleepState === CANNON.Body.SLEEPING; }); }
+    /* one physics step; in tower mode the next waiting die is dropped in every 14 steps so they fall in single file */
+    function tick() {
+      var g = gfx;
+      if (g.queue.length && g.steps % 14 === 0) { var d = g.queue.shift(); g.world.addBody(d.body); d.mesh.visible = true; }
+      g.steps++; g.world.step(1 / 60);
+    }
+    function settled() { return !gfx.queue.length && gfx.dice.every(function (d) { return d.body.sleepState === CANNON.Body.SLEEPING; }); }
 
     /* ---------- rolling ---------- */
     function roll() {
@@ -2086,15 +2170,15 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
       if (!gfx) { list.forEach(function (it) { it.val = 1 + Math.floor(Math.random() * KIND[it.kind].n); }); return finish(p, m, list); }
       spawn(list);
       var done = function () { sync(); gfx.dice.forEach(function (d) { d.item.val = readDie(d); }); finish(p, m, list); };
-      if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { for (var s = 0; s < 900 && !settled(); s++) gfx.world.step(1 / 60); return done(); }
+      if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { for (var s = 0; s < 900 + list.length * 20 && !settled(); s++) tick(); return done(); }
       /* Fixed steps only: a click's first frame can carry a timestamp older than the click itself. */
-      var t0 = 0, last = 0, acc = 0; sync();
+      var t0 = 0, last = 0, acc = 0, limit = gfx.hasTower() ? 13000 + list.length * 250 : 9000; sync();
       requestAnimationFrame(function frame(now) {
         if (!t0) { t0 = last = now; }
         acc += Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
-        for (var n = 0; acc >= 1 / 60 && n < 3; n++) { gfx.world.step(1 / 60); acc -= 1 / 60; }
+        for (var n = 0; acc >= 1 / 60 && n < 3; n++) { tick(); acc -= 1 / 60; }
         sync();
-        if (settled() || now - t0 > 9000) return done();
+        if (settled() || now - t0 > limit) return done();
         requestAnimationFrame(frame);
       });
     }
@@ -2147,6 +2231,18 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
       sel.disabled = !gfx;
       sel.addEventListener('change', function () { lsSet('dice-tray-' + o[0], sel.value); look(!rolling); });
     });
+    (function () {
+      var sel = $('tower'), names = ['None', 'Oak keep', 'Stone turret', "Wizard's spire", 'Iron forge'], saved = lsGet('dice-tray-tower');
+      sel.innerHTML = names.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('');
+      sel.value = names.indexOf(saved) >= 0 ? saved : 'None'; sel.disabled = !gfx;
+      var apply = function () {
+        if (!gfx) return;
+        clearDice(); shown = false; $('total').hidden = true; $('lines').innerHTML = ''; $('lines-empty').hidden = false;
+        gfx.setTower(sel.value); look(true); drawPool();
+      };
+      sel.addEventListener('change', function () { if (rolling) { sel.value = lsGet('dice-tray-tower') || 'None'; return; } lsSet('dice-tray-tower', sel.value); apply(); });
+      if (gfx && sel.value !== 'None') gfx.setTower(sel.value);
+    })();
     look(false);
     drawPool();
     if (gfx) roll();
