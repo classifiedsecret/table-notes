@@ -14,7 +14,7 @@ uniform float flash : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 outline_color : source_color = vec4(0.0);
 uniform float frame_w = 0.0;
 void fragment() {
-	vec4 c = texture(TEXTURE, UV) * COLOR;
+	vec4 c = COLOR;
 	if (c.a < 0.1 && frame_w > 0.0 && outline_color.a > 0.0) {
 		vec2 px = TEXTURE_PIXEL_SIZE;
 		float lx = mod(floor(UV.x / px.x), frame_w);
@@ -24,13 +24,12 @@ void fragment() {
 		a = max(a, texture(TEXTURE, UV - vec2(0.0, px.y)).a);
 		a = max(a, texture(TEXTURE, UV + vec2(0.0, px.y)).a);
 		if (a > 0.5) {
-			COLOR = vec4(outline_color.rgb, outline_color.a * COLOR.a);
-		} else {
-			COLOR = c;
+			c = outline_color;
 		}
 	} else {
-		COLOR = vec4(mix(c.rgb, flash_color.rgb, flash), c.a);
+		c.rgb = mix(c.rgb, flash_color.rgb, flash);
 	}
+	COLOR = c;
 }
 """
 

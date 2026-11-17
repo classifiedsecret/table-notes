@@ -87,6 +87,7 @@ func _ready() -> void:
 	add_child(shape)
 
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
+	z_index = 5   # in front of the inn's counters, couches and patrons
 	visual = Node2D.new()
 	visual.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(visual)

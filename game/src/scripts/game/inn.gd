@@ -342,7 +342,7 @@ func _physics_process(_delta: float) -> void:
 	var p := pl.global_position
 	var line_y := STAIR_FOOT.y + (p.x - STAIR_FOOT.x) * (STAIR_TOP.y - STAIR_FOOT.y) / (STAIR_TOP.x - STAIR_FOOT.x)
 	if not _on_stairs:
-		var at_foot := absf(p.y - FLOOR_Y) < 3.0 and p.x > STAIR_FOOT.x - 24.0 and p.x < STAIR_FOOT.x + 18.0 and Input.is_action_pressed("move_up")
+		var at_foot := p.y > FLOOR_Y - 40.0 and p.y < FLOOR_Y + 3.0 and p.x > STAIR_FOOT.x - 24.0 and p.x < STAIR_FOOT.x + 18.0 and Input.is_action_pressed("move_up")
 		var at_top := absf(p.y - UP_Y) < 3.0 and p.x > STAIR_TOP.x - 10.0 and p.x < STAIR_TOP.x + 6.0
 		_on_stairs = at_foot or at_top
 	else:

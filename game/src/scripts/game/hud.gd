@@ -159,7 +159,7 @@ func build(g: Node) -> void:
 	dfoot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	doors_panel.visible = false
 
-	tavern_panel = _panel(Vector2(40, 22), Vector2(400, 222), 0.97)
+	tavern_panel = _panel(Vector2(40, 12), Vector2(400, 240), 0.97)
 	tavern_title = _label(tavern_panel, Vector2(0, 6), "THE CELLAR STAIR", 24, Color(1, 0.88, 0.55), true)
 	tavern_title.size = Vector2(400, 24)
 	tavern_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
