@@ -133,7 +133,7 @@ func _make_tileset() -> TileSet:
 	src.create_tile(LIP)
 	var alt := src.create_alternative_tile(LIP, 1)
 	var pd := src.get_tile_data(LIP, alt)
-	pd.texture_origin = Vector2i(0, -12)
+	pd.texture_origin = Vector2i(0, 12)
 	pd.add_collision_polygon(1)
 	pd.set_collision_polygon_points(1, 0, PackedVector2Array([Vector2(-8, -8), Vector2(8, -8), Vector2(8, -3), Vector2(-8, -3)]))
 	pd.set_collision_polygon_one_way(1, 0, true)

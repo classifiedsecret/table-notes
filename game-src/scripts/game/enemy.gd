@@ -18,6 +18,7 @@ var _flash := 0.0
 var _struck := false
 var _show_bar := 0.0
 var _jump_cd := 0.5
+var _drop_t := 0.0
 
 var visual: Node2D
 var sprite: AnimatedSprite2D
@@ -99,6 +100,10 @@ func _physics_process(delta: float) -> void:
 	_t += delta
 	_cd = maxf(0.0, _cd - delta)
 	_jump_cd = maxf(0.0, _jump_cd - delta)
+	if _drop_t > 0.0:
+		_drop_t -= delta
+		if _drop_t <= 0.0:
+			collision_mask |= Room.LAYER_PLATFORM
 	_flash = maxf(0.0, _flash - delta * 6.0)
 	_show_bar = maxf(0.0, _show_bar - delta)
 	(sprite.material as ShaderMaterial).set_shader_parameter("flash", _flash)
@@ -122,12 +127,18 @@ func _physics_process(delta: float) -> void:
 				if close and _cd <= 0.0 and is_on_floor():
 					_go(State.WINDUP)
 					velocity.x = 0.0
-				elif absf(dx) > 14.0 and (_ground_ahead() or dy > 8.0):
+				elif absf(dx) > 14.0 and (_ground_ahead() or dy > 8.0 or (absf(dy) < 12.0 and absf(dx) > 30.0)):
 					velocity.x = move_toward(velocity.x, facing * speed, 700.0 * delta)
 				else:
 					velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
 				# Goblins are nimble: hop up ledges, out of pits and onto platforms after the hero.
-				if is_on_floor() and _jump_cd <= 0.0 and (is_on_wall() or (dy < -20.0 and absf(dx) < 56.0)):
+				# Drop through a platform when the hero is below.
+				if is_on_floor() and dy > 20.0 and absf(dx) < 80.0 and _on_platform():
+					collision_mask &= ~Room.LAYER_PLATFORM
+					_drop_t = 0.25
+					position.y += 2.0
+				var gap_jump := not _ground_ahead() and absf(dy) < 12.0 and absf(dx) > 30.0
+				if is_on_floor() and _jump_cd <= 0.0 and (is_on_wall() or gap_jump or (dy < -20.0 and absf(dx) < 56.0)):
 					velocity.y = -300.0
 					velocity.x = facing * speed
 					_jump_cd = 1.2
@@ -180,6 +191,24 @@ func _physics_process(delta: float) -> void:
 	if state != State.DEAD:
 		sprite.play("run" if absf(velocity.x) > 10.0 else "idle")
 	bar.call("set_values", hp, max_hp, ac, _show_bar > 0.0 or hp < max_hp)
+
+
+func _on_platform() -> bool:
+	var room: Room = game.room
+	var y := floori((global_position.y + 2.0) / Room.T)
+	if y < 0 or y >= room.h:
+		return false
+	var on_plat := false
+	for ox in [-5.0, 0.0, 5.0]:
+		var x := floori((global_position.x + ox) / Room.T)
+		if x < 0 or x >= room.w:
+			continue
+		var ch := room.rows[y][x]
+		if ch == "#":
+			return false
+		if ch == "=":
+			on_plat = true
+	return on_plat
 
 
 func _ground_ahead() -> bool:

@@ -39,6 +39,12 @@ const GOBLIN_WARRIOR := {
 	"windup": 0.55, "cooldown": 1.3, "xp": 50,
 }
 
+## House rules for attack rolls (your table's call):
+## a roll that misses the target's AC still lands a glancing blow for 1d4, no modifiers;
+## a natural 1 always misses and the attacker takes 1d4 damage.
+const GLANCING := {"count": 1, "sides": 4, "bonus": 0}
+const FUMBLE_SELF := {"count": 1, "sides": 4, "bonus": 0}
+
 ## Spike pit in the test room: DEX save DC 12, 2d4 piercing, half on a success.
 const SPIKES := {"dc": 12, "count": 2, "sides": 4, "bonus": 0, "type": "piercing"}
 

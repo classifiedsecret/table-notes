@@ -104,12 +104,12 @@ func build(g: Node) -> void:
 	center_body = _label(center_panel, Vector2(16, 40), "", 8, Color(0.92, 0.92, 0.88))
 	center_body.size = Vector2(348, 166)
 	center_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	center_foot = _label(center_panel, Vector2(16, 176), "", 8, Color(0.6, 0.58, 0.66))
+	center_foot = _label(center_panel, Vector2(16, 180), "", 8, Color(0.6, 0.58, 0.66))
 	center_foot.size = Vector2(348, 26)
 	center_foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	(center_panel.get_theme_stylebox("panel") as StyleBoxFlat).bg_color = Color(0.07, 0.06, 0.09, 0.96)
 
-	hints = _label(root, Vector2(0, 259), "Move A/D or arrows   Jump Space   Attack J   Dodge K   Rage L   Drop S+Space   F1 miss rule   F2 test death saves", 8, Color(0.7, 0.68, 0.75))
+	hints = _label(root, Vector2(0, 259), "Move A/D or arrows   Jump Space   Attack J   Dodge K   Rage L   Drop S+Space   F2 test death saves", 8, Color(0.7, 0.68, 0.75))
 	hints.size = Vector2(480, 10)
 	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
@@ -157,7 +157,7 @@ func refresh(p: Player, stats: Dictionary, wave: int, enemies_left: int) -> void
 	var rolls: int = stats.rolls
 	var pct := 0 if rolls == 0 else roundi(100.0 * stats.hits / rolls)
 	stats_label.text = "Your attacks %d  hits %d (%d%%)  crits %d" % [rolls, stats.hits, pct, stats.crits]
-	rule_label.text = "Miss rule (F1): %s" % ("minimum damage" if game.miss_min_damage else "no damage (5e)")
+	rule_label.text = "Glancing %d   Fumbles %d (took %d)" % [stats.glances, stats.fumbles, stats.self]
 
 
 func add_log(line: String) -> void:

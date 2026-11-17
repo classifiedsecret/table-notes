@@ -175,8 +175,9 @@ func _physics_process(delta: float) -> void:
 			if _state_time >= DODGE_TIME:
 				_set_state(State.NORMAL)
 		State.HURT:
-			velocity.x = move_toward(velocity.x, 0, FRICTION * 0.5 * delta)
-			if _state_time >= 0.22:
+			if is_on_floor():
+				velocity.x = move_toward(velocity.x, 0, FRICTION * 0.5 * delta)
+			if _state_time >= 0.22 and (is_on_floor() or _state_time >= 0.45):
 				_set_state(State.NORMAL)
 
 	if state != State.DODGE and state != State.HURT and _buffer > 0.0 and _coyote > 0.0:
@@ -217,11 +218,21 @@ func _move(input_x: float, delta: float, control: float) -> void:
 
 
 func _on_platform() -> bool:
-	var below := global_position + Vector2(0, 2)
-	var x := floori(below.x / Room.T)
-	var y := floori(below.y / Room.T)
 	var room: Room = game.room
-	return y >= 0 and y < room.h and room.rows[y][x] == "="
+	var y := floori((global_position.y + 2.0) / Room.T)
+	if y < 0 or y >= room.h:
+		return false
+	var on_plat := false
+	for ox in [-5.0, 0.0, 5.0]:
+		var x := floori((global_position.x + ox) / Room.T)
+		if x < 0 or x >= room.w:
+			continue
+		var ch := room.rows[y][x]
+		if ch == "#":
+			return false
+		if ch == "=":
+			on_plat = true
+	return on_plat
 
 
 func _set_state(s: int) -> void:
@@ -292,13 +303,26 @@ func _roll_attack_against(e: Enemy) -> void:
 	var wpn: Dictionary = stats.weapon
 	var atk := Rules.attack(game.dice, wpn.attack, e.ac, mode)
 	var dmg := {}
-	var glancing: bool = not atk.hit and not atk.fumble and game.miss_min_damage
-	if atk.hit or glancing:
+	var glancing: bool = not atk.hit and not atk.fumble
+	if atk.hit:
 		var bonus: int = wpn.bonus + (stats.rage_damage if raging() else 0)
-		dmg = Rules.damage(game.dice, wpn.count, wpn.sides, bonus, atk.crit, false, glancing)
+		dmg = Rules.damage(game.dice, wpn.count, wpn.sides, bonus, atk.crit)
+	elif glancing:
+		var gl: Dictionary = Creatures.GLANCING
+		dmg = Rules.damage(game.dice, gl.count, gl.sides, gl.bonus)
 	game.show_attack(self, e, "Greataxe", atk, dmg, reasons, glancing)
 	if atk.hit or glancing:
 		e.take_hit(dmg.total, atk.crit, facing, glancing)
+	elif atk.fumble:
+		_fumble_self()
+
+
+## Natural 1: the swing goes wrong and Boar-vhal takes 1d4.
+func _fumble_self() -> void:
+	var f: Dictionary = Creatures.FUMBLE_SELF
+	var d := Rules.damage(game.dice, f.count, f.sides, f.bonus)
+	game.show_fumble(self, d)
+	take_damage(d.total, false, -facing)
 
 
 # ---------------- defence ----------------
@@ -459,7 +483,7 @@ func _check_spikes() -> void:
 	var feet := Rect2(global_position + Vector2(-4, -6), Vector2(8, 6))
 	for r: Rect2 in game.room.spike_rects:
 		if feet.intersects(r):
-			_spike_cd = 1.0
+			_spike_cd = 1.4
 			var sv := Rules.save(game.dice, stats.dex_save, Creatures.SPIKES.dc)
 			var dmg := Rules.damage(game.dice, Creatures.SPIKES.count, Creatures.SPIKES.sides, 0, false,
 				raging())
@@ -468,7 +492,19 @@ func _check_spikes() -> void:
 			if total > 0:
 				take_damage(total, false, 0.0)
 			if not is_down():
-				velocity.y = -260.0
+				# Throw Boar-vhal up and toward the nearer edge so the pit can't chain-kill him.
+				var cx := r.position.x + r.size.x / 2.0
+				var left_edge := r.position.x
+				var right_edge := r.position.x + r.size.x
+				for o: Rect2 in game.room.spike_rects:
+					left_edge = minf(left_edge, o.position.x) if absf(o.position.y - r.position.y) < 1.0 and o.position.x + o.size.x >= left_edge - 1.0 else left_edge
+					right_edge = maxf(right_edge, o.position.x + o.size.x) if absf(o.position.y - r.position.y) < 1.0 and o.position.x <= right_edge + 1.0 else right_edge
+				var mid := (left_edge + right_edge) / 2.0
+				var dir := -1.0 if global_position.x < mid else 1.0
+				facing = int(dir)
+				_set_state(State.HURT)
+				velocity = Vector2(dir * 130.0, -330.0)
+				_iframes = maxf(_iframes, 0.5)
 			return
 
 
