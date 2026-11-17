@@ -40,15 +40,20 @@ var tavern_opts: Label
 var tavern_lines: Array[Label] = []
 var tavern_help: Label
 var tavern_foot: Label
-var hints: Label
+var hints: PanelContainer      # key hints, stacked in the bottom-left corner
+var _hint_keys: Label
+var _hint_acts: Label
+var _inn_mode := false
+var _hero_key := "boarvhal"
+var _game: Node
 var tavern_title: Label
 var tavern_sub: Label
 var stats_panel: Control
 var dlg_panel: PanelContainer
 var dlg_name: Label
 var dlg_text: Label
-const HINTS_RUN := "MOVE A/D  JUMP SPACE  ATTACK J  DODGE K  RAGE L  RECKLESS R  ECHO U  USE E  POTION H  LOG TAB"
-const HINTS_INN := "MOVE A/D  JUMP SPACE  TALK E  CLIMB STAIRS W  DROP S+SPACE  CELLAR: FAR RIGHT  MUSIC M"
+const HINTS_INN := [["A/D", "MOVE"], ["SPACE", "JUMP"], ["E", "TALK"], ["W", "CLIMB STAIRS"], ["S+SPACE", "DROP DOWN"],
+	["M", "MUSIC ON/OFF"], ["WHEEL", "MUSIC VOL"], ["ESC", "PAUSE"], ["", "CELLAR: FAR RIGHT"]]
 
 var _log: Array[String] = []
 var _banner_t := 0.0
@@ -59,6 +64,7 @@ var _ds_final := ""
 
 
 func build(g: Node) -> void:
+	_game = g
 	game = g
 	layer = 10
 	root = Control.new()
@@ -79,8 +85,8 @@ func build(g: Node) -> void:
 	bonus_label = _label(hero, Vector2(6, 45), "", 8, Color(0.7, 0.9, 0.7))
 	purse_label = _label(hero, Vector2(6, 54), "", 8, Color(0.95, 0.85, 0.55))
 
-	room_label = _label(root, Vector2(0, 248), "", 8, Color(1, 0.9, 0.65))
-	room_label.size = Vector2(480, 10)
+	room_label = _label(root, Vector2(104, 256), "", 8, Color(1, 0.9, 0.65))
+	room_label.size = Vector2(372, 10)
 	room_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	var sp := _panel(Vector2(286, 4), Vector2(190, 22))
@@ -99,8 +105,9 @@ func build(g: Node) -> void:
 	banner_label = _label(root, Vector2(0, 70), "", 24, Color.WHITE, true)
 	banner_label.size = Vector2(480, 24)
 	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	toast_label = _label(root, Vector2(0, 236), "", 8, Color(1, 0.95, 0.8))
-	toast_label.size = Vector2(480, 10)
+	toast_label = _label(root, Vector2(104, 236), "", 8, Color(1, 0.95, 0.8))
+	toast_label.size = Vector2(372, 10)
+	toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	prompt_label = _label(root, Vector2(0, 224), "", 8, Color(0.6, 1.0, 0.7))
 	prompt_label.size = Vector2(480, 10)
@@ -112,18 +119,24 @@ func build(g: Node) -> void:
 	note_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note_panel.visible = false
 
-	ds_panel = _panel(Vector2(165, 92), Vector2(150, 62), 0.96)
-	var t := _label(ds_panel, Vector2(0, 3), "DEATH SAVES", 8, Color(1, 0.6, 0.55))
-	t.size = Vector2(150, 10)
+	# Death saves sit on their own top layer so nothing (battle UI, banners) draws over them.
+	ds_panel = _panel(Vector2(120, 88), Vector2(240, 66), 0.98)
+	var top := CanvasLayer.new()
+	top.layer = 25
+	add_child(top)
+	ds_panel.get_parent().remove_child(ds_panel)
+	top.add_child(ds_panel)
+	var t := _label(ds_panel, Vector2(0, 4), "DEATH SAVES", 8, Color(1, 0.6, 0.55))
+	t.size = Vector2(240, 10)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	ds_roll = _label(ds_panel, Vector2(0, 11), "", 24, Color.WHITE, true)
-	ds_roll.size = Vector2(150, 24)
+	ds_roll = _label(ds_panel, Vector2(0, 13), "", 24, Color.WHITE, true)
+	ds_roll.size = Vector2(240, 24)
 	ds_roll.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	ds_marks = _label(ds_panel, Vector2(0, 37), "", 8, Color.WHITE)
-	ds_marks.size = Vector2(150, 10)
+	ds_marks = _label(ds_panel, Vector2(0, 40), "", 8, Color.WHITE)
+	ds_marks.size = Vector2(240, 10)
 	ds_marks.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var dt := _label(ds_panel, Vector2(0, 48), "D20: 10+ SUCCEEDS, 1 COUNTS TWICE, 20 REVIVES", 8, Color(0.7, 0.7, 0.75))
-	dt.size = Vector2(150, 10)
+	var dt := _label(ds_panel, Vector2(0, 52), "D20: 10+ SUCCEEDS, 1 COUNTS TWICE, 20 REVIVES", 8, Color(0.7, 0.7, 0.75))
+	dt.size = Vector2(240, 10)
 	dt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ds_panel.visible = false
 
@@ -179,16 +192,19 @@ func build(g: Node) -> void:
 	tavern_foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tavern_panel.visible = false
 
-	dlg_panel = _panel(Vector2(70, 196), Vector2(340, 40), 0.95)
+	dlg_panel = _panel(Vector2(134, 196), Vector2(340, 40), 0.95)
 	dlg_name = _label(dlg_panel, Vector2(8, 3), "", 8, Color(1, 0.85, 0.45))
 	dlg_text = _label(dlg_panel, Vector2(8, 13), "", 8, Color(0.94, 0.94, 0.9))
 	dlg_text.size = Vector2(324, 24)
 	dlg_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	dlg_panel.visible = false
 
-	hints = _label(root, Vector2(0, 259), HINTS_RUN, 8, Color(0.7, 0.68, 0.75))
-	hints.size = Vector2(480, 10)
-	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hints = _panel(Vector2(4, 180), Vector2(96, 86), 0.45)
+	_hint_keys = _label(hints, Vector2(5, 3), "", 8, Color(1, 0.85, 0.45))
+	_hint_acts = _label(hints, Vector2(45, 3), "", 8, Color(0.82, 0.8, 0.86))
+	for l in [_hint_keys, _hint_acts]:
+		l.label_settings.line_spacing = -1.0
+	_show_hints(Kits.hints("boarvhal"))
 
 
 func _panel(pos: Vector2, size: Vector2, alpha := 0.78) -> PanelContainer:
@@ -249,6 +265,8 @@ func refresh(p: Player, stats: Dictionary, g: Node) -> void:
 		r += "  RECKLESS"
 	if is_instance_valid(p.echo):
 		r += "  ECHO"
+	if h.key != "boarvhal":
+		r = p.kit.status_line()
 	rage_label.text = r
 	bonus_label.text = "BONUS ACTION READY" if p.bonus_cd <= 0.0 else "BONUS ACTION IN %dS" % ceili(p.bonus_cd)
 	bonus_label.label_settings.font_color = Color(0.7, 0.95, 0.7) if p.bonus_cd <= 0.0 else Color(0.6, 0.6, 0.65)
@@ -260,11 +278,44 @@ func refresh(p: Player, stats: Dictionary, g: Node) -> void:
 	rule_label.text = "GLANCING %d   FUMBLES %d (TOOK %d)" % [stats.get("glances", 0), stats.get("fumbles", 0), stats.get("self", 0)]
 
 
+## Key hints as a stacked list: keys in gold on the left, what they do on the right.
+func _show_hints(list: Array) -> void:
+	var ks: Array[String] = []
+	var acts: Array[String] = []
+	for h in list:
+		ks.append(str(h[0]))
+		acts.append(str(h[1]))
+	_hint_keys.text = "\n".join(ks)
+	_hint_acts.text = "\n".join(acts)
+	var h := 6.0 + 9.0 * list.size()
+	var w := 45.0 + _hint_acts.label_settings.font.get_multiline_string_size(_hint_acts.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x + 6.0
+	hints.position = Vector2(4, 266.0 - h)
+	hints.size = Vector2(w, h)
+	hints.reset_size()
+	hints.size = Vector2(w, h)
+
+
+## The hint list fades when the hero walks behind it.
+func _fade_hints() -> void:
+	if hints == null or _game == null or not is_instance_valid(_game.player):
+		return
+	var sp: Vector2 = _game.player.get_global_transform_with_canvas().origin
+	var behind := Rect2(hints.position - Vector2(6, 0), hints.size + Vector2(12, 30)).has_point(sp)
+	hints.modulate.a = lerpf(hints.modulate.a, 0.22 if behind else 1.0, 0.25)
+
+
+func set_hero_hints(key: String) -> void:
+	_hero_key = key
+	if not _inn_mode:
+		_show_hints(Kits.hints(key))
+
+
 ## In the inn the combat readouts are hidden and the key hints change.
 func set_inn_mode(on: bool) -> void:
+	_inn_mode = on
 	stats_panel.visible = not on
 	log_panel.visible = not on
-	hints.text = HINTS_INN if on else HINTS_RUN
+	_show_hints(HINTS_INN if on else Kits.hints(_hero_key))
 	if not on:
 		hide_dialogue()
 
@@ -313,7 +364,7 @@ func add_log(line: String) -> void:
 
 
 func toggle_log() -> void:
-	if hints.text == HINTS_INN:
+	if _inn_mode:
 		return
 	log_panel.visible = not log_panel.visible
 
@@ -411,6 +462,7 @@ func death_saves(visible_now: bool, ds: Rules.DeathSaves, last: Dictionary = {})
 
 
 func _process(delta: float) -> void:
+	_fade_hints()
 	if _banner_t > 0.0:
 		_banner_t -= delta
 		banner_label.modulate.a = clampf(_banner_t / 0.4, 0.0, 1.0)

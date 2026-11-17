@@ -16,4 +16,5 @@ const SIZES := {
 	"npc_patron_a": Vector2i(16, 23),
 	"npc_patron_b": Vector2i(16, 23),
 	"npc_patron_c": Vector2i(16, 23),
+	"npc_boarvhal": Vector2i(16, 28),
 }

@@ -29,6 +29,9 @@ var board: Label
 var _chat_t := 4.0
 var _chat_queue: Array = []
 var _hidden_key := ""
+var keg: Sprite2D
+var _mug: Sprite2D
+var _drink_t := 2.0
 
 ## Party members and the DM. Lines are short and in character; easy to edit.
 const CAST := [
@@ -56,6 +59,13 @@ const CAST := [
 		"Breathe in. Breathe out. Punch goblin.",
 		"Stillness first, Boar-vhal. Then fury.",
 		"I'm meditating. You are standing in my light."]},
+	{"key": "npc_boarvhal", "name": "Boar-vhal", "match": "boar", "x": 698.0, "y": 208.0, "sit": true, "face": -1, "lines": [
+		"KEG! Kieran, this one's empty too.",
+		"Goliaths don't get drunk. We get... enthusiastic.",
+		"I'm not drinking. I'm hydrating for the cellar.",
+		"You go on down. I'll guard the ale.",
+		"Tell the goblins I'm busy. Busy drinking.",
+	]},
 	{"key": "npc_dm", "name": "Hooded Stranger", "match": "dungeon master", "x": 230.0, "y": 208.0, "sit": true, "face": 1, "lines": [
 		"Roll for initiative.",
 		"Are you sure you want to do that?",
@@ -73,7 +83,7 @@ const STAFF := {
 		"Mind the tray!",
 		"Table two wants another round. Table two always wants another round.",
 		"The hooded one in the corner hasn't ordered in hours. Just keeps rolling dice."]},
-	"dishwasher": {"key": "npc_dishwasher", "name": "Dishwasher", "x": 744.0, "y": 208.0, "lines": [
+	"dishwasher": {"key": "npc_dishwasher", "name": "Dishwasher", "x": 782.0, "y": 208.0, "lines": [
 		"So. Many. Mugs.",
 		"If you bring the goblins' cups back, I'm not washing them."]},
 }
@@ -88,7 +98,7 @@ const PATRONS := [
 	{"key": "npc_patron_b", "name": "Patron", "x": 428.0, "y": 208.0, "sit": true, "face": -1, "lines": [
 		"I heard the owners eat goblins.",
 		"Don't spill my drink and we'll get along fine."]},
-	{"key": "npc_patron_c", "name": "Patron", "x": 716.0, "y": 208.0, "sit": true, "face": -1, "lines": [
+	{"key": "npc_patron_c", "name": "Patron", "x": 728.0, "y": 208.0, "sit": true, "face": -1, "lines": [
 		"It's not a costume.",
 		"Best stew in Waterdeep. Don't tell the cook I said so."]},
 ]
@@ -107,6 +117,9 @@ const CHATTER := [
 	[["npc_galinnadin", "*counts coins that are not his*"]],
 	[["npc_kieran", "Who ordered the stew?"], ["npc_patron_c", "Me. Obviously me."]],
 	[["npc_dishwasher", "MORE MUGS?"]],
+	[["npc_boarvhal", "*drains the keg* ANOTHER!"], ["npc_kieran", "That's your third keg, Boar-vhal."]],
+	[["npc_boarvhal", "*glug glug glug*"]],
+	[["npc_lyburnum", "Boar-vhal, that's a keg, not a mug."], ["npc_boarvhal", "It's a mug if you're tall enough."]],
 ]
 
 
@@ -188,7 +201,9 @@ func _furnish() -> void:
 		_spr("bar", Vector2(x + 8, FLOOR_Y), 3)
 	_spr("bar_end", Vector2(731, FLOOR_Y), 3)
 	_spr("stool", Vector2(626, FLOOR_Y), 4)
-	_spr("stool", Vector2(716, FLOOR_Y), 4)
+	_spr("stool", Vector2(728, FLOOR_Y), 4)
+	_spr("stool", Vector2(698, FLOOR_Y), 4)
+	keg = _spr("barrel", Vector2(708, FLOOR_Y - 26), 4)   # Boar-vhal's keg, on the counter
 	_spr("mug", Vector2(650, FLOOR_Y - 25), 4)
 	_spr("doors_leaf_closed", Vector2(776, FLOOR_Y), -6)
 	_label("KITCHEN", Vector2(756, 162), Color(0.8, 0.75, 0.6))
@@ -281,14 +296,19 @@ func _add(d: Dictionary) -> InnNPC:
 	return n
 
 
-## Hides the character the player is ("You are" in Session Scribe), e.g. Ceridwen for Jessica, the stranger for the DM.
-func hide_player_character(party_name: String) -> void:
-	var nm := party_name.to_lower()
-	for c in CAST:
-		if nm != "" and nm.contains(c.match) and c.key != "npc_dm":   # the stranger stays: he gives the quest
-			_hidden_key = c.key
+## The hero being played leaves their seat; everyone else stays. When someone other than
+## Boar-vhal is the hero, Boar-vhal is at the bar working through a keg of ale.
+func set_playing(hero_key: String) -> void:
+	_hidden_key = "npc_" + hero_key
 	for n in npcs:
 		n.visible = n.key != _hidden_key
+	var boar := _by_key("npc_boarvhal")
+	if boar and _mug == null:
+		_mug = Sprite2D.new()
+		_mug.texture = InnProps.tex("mug")
+		_mug.scale = Vector2(1.6, 1.6)   # a goliath-sized tankard
+		_mug.position = Vector2(-7, -12)
+		boar.add_child(_mug)
 
 
 ## Staff from Session Scribe's Business tab: names by role (barkeep, server, dishwasher).
@@ -377,6 +397,7 @@ func at_cellar(p: Vector2) -> bool:
 func _process(delta: float) -> void:
 	if not visible:
 		return
+	_physics_process_drink(delta)
 	_chat_t -= delta
 	if _chat_t <= 0.0 and _chat_queue.is_empty():
 		_chat_t = randf_range(5.0, 9.0)
@@ -394,6 +415,23 @@ func _process(delta: float) -> void:
 		if who and who.visible:
 			who.say(step[1])
 		_chat_t = 2.4 if not _chat_queue.is_empty() else randf_range(5.0, 9.0)
+
+
+func _physics_process_drink(delta: float) -> void:
+	var boar := _by_key("npc_boarvhal")
+	if not boar or not boar.visible or _mug == null:
+		return
+	_drink_t -= delta
+	if _drink_t <= 0.0:
+		_drink_t = randf_range(3.0, 5.5)
+		var tw := create_tween()
+		tw.tween_property(_mug, "position", Vector2(-4, -21), 0.35)
+		tw.parallel().tween_property(_mug, "rotation", 1.1, 0.35)
+		tw.tween_interval(0.9)
+		tw.tween_property(_mug, "position", Vector2(-7, -12), 0.3)
+		tw.parallel().tween_property(_mug, "rotation", 0.0, 0.3)
+		if randf() < 0.3:
+			boar.say("*glug*", 1.4)
 
 
 func _by_key(k: String) -> InnNPC:

@@ -1,6 +1,6 @@
 class_name Hero
 extends RefCounted
-## A persistent hero: saved between runs. Stats are derived from level (2014 Barbarian table, SRD 5.1).
+## A persistent hero: saved between runs. Stats come from the hero kit and level (see Kits).
 
 const XP_THRESHOLDS := [0, 300, 900, 2700, 6500]   # XP needed for levels 1..5
 const MAX_LEVEL := 5
@@ -25,29 +25,43 @@ var quest_given := false   # the Hooded Stranger has given the cellar quest
 var tier := 1
 
 
-func str_score() -> int:
-	return 17 + (2 if level >= 4 else 0)   # Ability Score Improvement at 4
+## Which party member this is (see Kits.ORDER).
+var key := "boarvhal"
 
 
-func str_mod() -> int:
-	return Rules.ability_mod(str_score())
+func set_key(k: String) -> void:
+	key = k if Kits.has(k) else "boarvhal"
+	name = Kits.info(key).name
+	title = Kits.info(key).title
+
+
+func short() -> String:
+	return Kits.info(key).short
+
+
+func pronoun(which: String) -> String:
+	return Kits.info(key).get(which, "they")
+
+
+## Strength saving throw bonus (used against shoves).
+func str_save() -> int:
+	return int(combat_stats().str_save)
 
 
 func proficiency() -> int:
-	return 2 if level < 5 else 3
+	return Kits.prof(level)
 
 
 func max_hp() -> int:
-	# 12 + CON at 1st level, then the fixed average 7 + CON per level.
-	return 15 + (level - 1) * 10
+	return int(combat_stats().hp)
 
 
 func ac() -> int:
-	return 14   # Unarmored Defense: 10 + DEX 1 + CON 3
+	return int(combat_stats().ac)
 
 
 func rage_uses() -> int:
-	return 2 if level < 3 else 3
+	return int(combat_stats().rage_uses)
 
 
 func next_level_xp() -> int:
@@ -55,36 +69,22 @@ func next_level_xp() -> int:
 
 
 func has_reckless() -> bool:
-	return level >= 2
+	return key == "boarvhal" and level >= 2
 
 
 func has_echo() -> bool:
-	return level >= 3
+	return key == "boarvhal" and level >= 3
 
 
 func has_extra_attack() -> bool:
-	return level >= 5
+	return bool(combat_stats().extra_attack)
 
 
 ## Combat numbers in the shape the real-time and turn-based layers use.
 func combat_stats() -> Dictionary:
-	var atk := str_mod() + proficiency()
-	return {
-		"name": name,
-		"title": "%s %d" % [title, level],
-		"ac": ac(),
-		"hp": max_hp(),
-		"speed_ft": 30 + (10 if level >= 5 else 0),   # Fast Movement at 5
-		"proficiency": proficiency(),
-		"weapon": {"name": "Greataxe", "attack": atk, "count": 1, "sides": 12, "bonus": str_mod(), "type": "slashing"},
-		"rage_uses": rage_uses(),
-		"rage_damage": 2,
-		"rage_seconds": 60.0,
-		"dex_save": 1,
-		"athletics": str_mod() + proficiency(),
-		"hit_die": 12,
-		"con_mod": 3,
-	}
+	var s := Kits.stats(key, level)
+	s.name = name
+	return s
 
 
 ## Adds XP and returns the number of levels gained.
@@ -98,18 +98,13 @@ func add_xp(amount: int) -> int:
 
 
 func level_features(lv: int) -> String:
-	match lv:
-		2: return "Reckless Attack (R / right trigger): advantage on your attacks, but enemies get advantage on you. Danger Sense: advantage on Dexterity saves."
-		3: return "Echo (U / right bumper): leave a shimmering double of yourself. Goblins next to it are flanked, so you attack them with advantage. Press again to swap places. Rage uses: 3."
-		4: return "Ability Score Improvement: Strength 19. +1 to hit and damage."
-		5: return "Extra Attack: much faster axe swings. Fast Movement: +10 ft speed. Proficiency +3."
-	return ""
+	return Kits.level_features(key, lv)
 
 
 func to_dict() -> Dictionary:
 	return {"id": id, "owner": owner, "name": name, "level": level, "xp": xp, "gold": gold, "potions": potions,
 		"runs": runs, "clears": clears, "deaths": deaths, "kills": kills, "best_depth": best_depth,
-		"nat20s": nat20s, "biggest_hit": biggest_hit, "tier_unlocked": tier_unlocked, "tier": tier, "quest_given": quest_given, "class": "barbarian", "updated": Time.get_unix_time_from_system()}
+		"nat20s": nat20s, "biggest_hit": biggest_hit, "tier_unlocked": tier_unlocked, "tier": tier, "quest_given": quest_given, "class": key, "updated": Time.get_unix_time_from_system()}
 
 
 func load_dict(d: Dictionary) -> void:

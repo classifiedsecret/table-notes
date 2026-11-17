@@ -27,6 +27,7 @@ var hud: Hud
 var battle: Node
 var inn: Inn
 var music: Music
+var pause_menu: PauseMenu
 var _talking: InnNPC
 var _confirm_exit := false
 var _quest_i := -1      # >= 0 while the Hooded Stranger is giving the quest
@@ -54,6 +55,8 @@ var _cb_staff: JavaScriptObject
 var _cb_biz: JavaScriptObject
 var save_mode := "local"
 var _loaded := false
+var _me_key := ""          # the hero matching Session Scribe's "You are", if any
+var _switching := false    # loading another hero's save
 var bot := OS.get_cmdline_user_args().has("--bot")
 var _face_log := false
 var _bot_t := 0.0
@@ -81,7 +84,11 @@ func _ready() -> void:
 	battle = preload("res://scripts/game/battle.gd").new()
 	add_child(battle)
 	music = Music.new()
+	music.game = self
 	add_child(music)
+	pause_menu = PauseMenu.new()
+	add_child(pause_menu)
+	pause_menu.setup(self)
 	music.play("tavern", 2.0)
 	inn = Inn.new()
 	add_child(inn)
@@ -103,14 +110,14 @@ func _setup_input() -> void:
 		"jump": [KEY_SPACE, KEY_W, KEY_UP], "attack": [KEY_J, KEY_Z], "dodge": [KEY_K, KEY_SHIFT, KEY_C],
 		"rage": [KEY_L, KEY_Q], "toggle_log": [KEY_TAB, KEY_I], "confirm": [KEY_ENTER, KEY_KP_ENTER],
 		"interact": [KEY_E, KEY_F], "potion": [KEY_H], "reckless": [KEY_R], "echo": [KEY_U],
-		"back": [KEY_ESCAPE, KEY_BACKSPACE], "test_down": [KEY_F2], "music": [KEY_M],
+		"back": [KEY_ESCAPE, KEY_BACKSPACE], "test_down": [KEY_F2], "music": [KEY_M], "form": [KEY_Y],
 	}
 	var pads := {"jump": [JOY_BUTTON_A], "attack": [JOY_BUTTON_X], "dodge": [JOY_BUTTON_B],
 		"rage": [JOY_BUTTON_Y], "toggle_log": [JOY_BUTTON_BACK], "confirm": [JOY_BUTTON_START, JOY_BUTTON_A],
 		"interact": [JOY_BUTTON_LEFT_SHOULDER], "echo": [JOY_BUTTON_RIGHT_SHOULDER], "potion": [JOY_BUTTON_DPAD_UP],
 		"back": [JOY_BUTTON_B],
 		"move_left": [JOY_BUTTON_DPAD_LEFT], "move_right": [JOY_BUTTON_DPAD_RIGHT], "move_down": [JOY_BUTTON_DPAD_DOWN],
-		"move_up": [JOY_BUTTON_DPAD_UP]}
+		"move_up": [JOY_BUTTON_DPAD_UP], "form": [JOY_BUTTON_LEFT_STICK]}
 	for action: String in keys:
 		if not InputMap.has_action(action):
 			InputMap.add_action(action, 0.35)
@@ -140,50 +147,92 @@ func accepting_input() -> bool:
 
 # ---------------- hero saves ----------------
 
-func _hero_id() -> String:
+func _hero_id(key: String) -> String:
 	var me := ""
 	if _bridge:
 		me = str(_bridge.me())
 	var slug := me.to_lower().strip_edges().replace(" ", "-")
-	return (slug if slug != "" else "guest") + "_boarvhal"
+	return (slug if slug != "" else "guest") + "_" + key
 
 
+## Who "You are" on Session Scribe decides the starting hero; then that hero's save loads.
 func _on_whoami(args: Array) -> void:
-	if args.size() == 0 or args[0] == null:
-		return
-	var d = JSON.parse_string(str(args[0]))
-	if typeof(d) == TYPE_DICTIONARY:
-		hero.owner = str(d.get("player", d.get("name", "")))
-		inn.hide_player_character(str(d.get("name", "")))
-		if phase == Phase.CARD and _loaded:
-			_refresh_tavern()
+	var member := ""
+	if args.size() > 0 and args[0] != null:
+		var d = JSON.parse_string(str(args[0]))
+		if typeof(d) == TYPE_DICTIONARY:
+			hero.owner = str(d.get("player", d.get("name", "")))
+			member = str(d.get("name", ""))
+	_me_key = Kits.key_for_name(member)
+	_load_hero_key(_me_key if _me_key != "" else "boarvhal")
+
+
+func _hero_arg() -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--hero="):
+			return a.substr(7)
+	if OS.has_feature("web"):
+		var q = JavaScriptBridge.eval("window.location.search", true)
+		if q is String and (q as String).contains("hero="):
+			return (q as String).get_slice("hero=", 1).get_slice("&", 0)
+	return ""
 
 
 func _load_hero() -> void:
 	if OS.has_feature("web"):
 		_bridge = JavaScriptBridge.get_interface("VDSave")
 	if _bridge:
-		hero.id = _hero_id()
 		_cb_load = JavaScriptBridge.create_callback(_on_hero_loaded)
 		_cb_save = JavaScriptBridge.create_callback(_on_hero_saved)
-		_bridge.loadDoc("vd_heroes", hero.id, _cb_load)
 		_cb_who = JavaScriptBridge.create_callback(_on_whoami)
-		_bridge.whoami(_cb_who)
+		if _hero_arg() != "":
+			_load_hero_key(_hero_arg())
+		else:
+			_bridge.whoami(_cb_who)
 	else:
-		var txt := FileAccess.get_file_as_string("user://hero.json") if not bot else ""
+		_load_hero_key(_hero_arg() if Kits.has(_hero_arg()) else "boarvhal")
+
+
+## Loads one hero's save (or starts them fresh) and makes them the hero being played.
+func _load_hero_key(key: String) -> void:
+	var owner := hero.owner
+	var heard := hero.quest_given
+	hero = Hero.new()
+	hero.set_key(key)
+	hero.owner = owner
+	hero.quest_given = heard
+	player.hero = hero
+	_switching = true
+	if _bridge:
+		hero.id = _hero_id(key)
+		_bridge.loadDoc("vd_heroes", hero.id, _cb_load)
+	else:
+		hero.id = "local_" + key
+		var path := "user://hero.json" if key == "boarvhal" else "user://hero_%s.json" % key
+		var txt := FileAccess.get_file_as_string(path) if not bot else ""
 		_on_hero_loaded([txt if txt != "" else null])
 
 
 func _on_hero_loaded(args: Array) -> void:
+	var heard := hero.quest_given
 	if args.size() > 0 and args[0] != null:
 		var d = JSON.parse_string(str(args[0]))
 		if typeof(d) == TYPE_DICTIONARY:
 			hero.load_dict(d)
+	hero.quest_given = hero.quest_given or heard   # you, the player, already heard the Stranger
 	save_mode = str(_bridge.mode()) if _bridge else "local"
+	var first := not _loaded
 	_loaded = true
+	_switching = false
 	player.apply_hero(hero)
 	player.hp = player.max_hp
 	player.hp_changed.emit()
+	inn.set_playing(hero.key)
+	hud.set_hero_hints(hero.key)
+	if not first:
+		if phase == Phase.CARD:
+			_refresh_tavern()
+		return
 	_load_party_data()
 	if _arg("lv5"):
 		hero.level = 5
@@ -193,8 +242,9 @@ func _on_hero_loaded(args: Array) -> void:
 		hero.tier_unlocked = 3
 		hero.tier = 3
 	if _arg("boss"):
-		hero.level = 2
-		hero.xp = 300
+		if not _arg("lv5"):
+			hero.level = 2
+			hero.xp = 300
 		_start_run()
 		depth = ROOMS_BEFORE_BOSS
 		_enter_room("boss")
@@ -279,7 +329,7 @@ func save_hero() -> void:
 	if _bridge:
 		_bridge.saveDoc("vd_heroes", hero.id, json, _cb_save)
 	elif not bot:
-		var f := FileAccess.open("user://hero.json", FileAccess.WRITE)
+		var f := FileAccess.open("user://hero.json" if hero.key == "boarvhal" else "user://hero_%s.json" % hero.key, FileAccess.WRITE)
 		if f:
 			f.store_string(json)
 
@@ -303,6 +353,7 @@ func _save_run_record(result: String) -> void:
 func _tavern_options() -> Array:
 	return [
 		["Descend into the %s" % BIOME, "start"],
+		["Hero: %s  - press to change" % hero.short(), "hero"],
 		["Difficulty: %s (%s)%s" % [Creatures.TIERS[hero.tier].name, Creatures.TIERS[hero.tier].levels, "  - press to change" if hero.tier_unlocked > 1 else "  - clear it to unlock Tier II"], "tier"],
 		["Buy a Potion of Healing (%d gp)" % POTION_PRICE, "potion"],
 		["Back to the taproom", "back"],
@@ -317,11 +368,15 @@ func _open_tavern() -> void:
 func _refresh_tavern() -> void:
 	var opts: Array = _tavern_options()
 	var next := hero.next_level_xp()
-	var sheet := "%s, level %d %s\nHP %d   AC %d   Greataxe +%d (1d12%+d)\nXP %d%s   Gold %d   Potions %d\nRuns %d   Boss kills %d   Deaths %d   Goblins slain %d" % [
-		hero.name, hero.level, hero.title, hero.max_hp(), hero.ac(), hero.combat_stats().weapon.attack, hero.str_mod(),
+	var w: Dictionary = hero.combat_stats().weapon
+	var wtxt := "%s +%d (%dd%d%s)" % [w.name, w.attack, w.count, w.sides, ("%+d" % w.bonus) if int(w.bonus) != 0 else " " + str(w.type)]
+	var sheet := "%s, level %d %s\nHP %d   AC %d   %s\nXP %d%s   Gold %d   Potions %d\nRuns %d   Boss kills %d   Deaths %d   Goblins slain %d" % [
+		hero.name, hero.level, hero.title, hero.max_hp(), hero.ac(), wtxt,
 		hero.xp, (" / %d" % next) if next > 0 else " (max level)", hero.gold, hero.potions,
 		hero.runs, hero.clears, hero.deaths, hero.kills]
 	var who := ("Playing as %s. " % hero.owner) if hero.owner != "" else ""
+	if _switching:
+		who = "Fetching %s's records... " % hero.short()
 	var saves := "Progress saves to your party's records." if save_mode == "shared" else "Progress saves in this browser. Open Session Scribe and enter the campaign passphrase to share it with the party."
 	hud.show_tavern(sheet, opts.map(func(o): return o[0]), _menu_pick, who + saves)
 	hud.set_tavern_title("THE CELLAR STAIR", "A SINKHOLE HAS OPENED UNDER THE GRYPHON'S ROOST. GOBLINS ARE CLIMBING OUT OF THE DARK.")
@@ -344,9 +399,17 @@ func _tavern_input() -> void:
 		sfx.play("step", -8.0)
 		_refresh_tavern()
 	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("interact"):
+		if _switching:
+			return
 		match opts[_menu_pick][1]:
 			"start":
 				_start_run()
+			"hero":
+				save_hero()
+				var i := Kits.ORDER.find(hero.key)
+				_load_hero_key(Kits.ORDER[(i + 1) % Kits.ORDER.size()])
+				sfx.play("step", -6.0)
+				_refresh_tavern()
 			"tier":
 				if hero.tier_unlocked > 1:
 					hero.tier = hero.tier % hero.tier_unlocked + 1
@@ -392,8 +455,10 @@ func _start_run() -> void:
 	player.hp = player.max_hp
 	player.rage_uses = player.stats.rage_uses
 	player.used_second_wind = false
+	player.kit.long_rest()
 	player.hp_changed.emit()
-	log_line("Delve %d begins." % hero.runs)
+	hud.set_hero_hints(hero.key)
+	log_line("Delve %d begins with %s." % [hero.runs, hero.short()])
 	_enter_room("combat")
 
 
@@ -669,6 +734,12 @@ func note_swing(_connected: bool) -> void:
 # ---------------- frame ----------------
 
 func _process(delta: float) -> void:
+	if Input.is_action_just_pressed("back") and not get_tree().paused and _loaded:
+		if phase == Phase.TAVERN and _talking:
+			_close_talk()
+		elif (phase == Phase.TAVERN and not _confirm_exit) or phase == Phase.RUN or (phase == Phase.BATTLE and int(battle.mode) == 1):
+			pause_menu.open()
+			return
 	if bot:
 		_bot(delta)
 	match phase:
@@ -689,7 +760,7 @@ func _process(delta: float) -> void:
 					toast("THE CELLAR DOOR IS BARRED. THE HOODED STRANGER WANTS A WORD FIRST.")
 					if bot: print("[bot] cellar barred at x %d" % player.global_position.x)
 					_barred_t = 3.0
-			elif _loaded and inn.at_cellar(player.global_position):
+			elif _loaded and not _switching and inn.at_cellar(player.global_position):
 				_close_talk()
 				_open_card()
 			_update_talk()
@@ -855,7 +926,7 @@ func end_run(result: String) -> void:
 	else:
 		hero.deaths += 1
 		hero.potions = mini(hero.potions, run_potions)
-		body = "%s\n\nThe party carries Boar-vhal back to the tavern. Gold found this run is lost (%d gp). XP is kept." % [result, run_gold]
+		body = "%s\n\nThe party carries %s back to the tavern. Gold found this run is lost (%d gp). XP is kept." % [result, hero.short(), run_gold]
 	var rolls: int = stats.get("rolls", 0)
 	var pct := 0 if rolls == 0 else roundi(100.0 * stats.hits / rolls)
 	body += "\n\nRooms: %d   Goblins slain: %d   XP earned: %d\nAttack rolls %d, hits %d (%d%%), glancing %d, crits %d, natural 1s %d" % [
@@ -897,8 +968,8 @@ func show_attack(attacker: Node2D, target: Node2D, weapon: String, atk: Dictiona
 		mode_txt = "DIS"
 	sfx.play("die", -12.0, 0.15)
 
-	var who_a: String = "Boar-vhal" if by_player else attacker.data.name
-	var who_t: String = target.data.name if by_player else "Boar-vhal"
+	var who_a: String = hero.short() if by_player else attacker.data.name
+	var who_t: String = target.data.name if by_player else hero.short()
 	var line := ""
 	if by_player:
 		line = "%s %s vs %s: d20 %s +%d = %d, %s" % [who_a, weapon, who_t, dice_txt, atk.bonus, atk.total, verdict]
@@ -961,12 +1032,12 @@ func _away_dir(target: Node2D, source: Node2D) -> Vector2:
 	return Vector2(side * 1.4, lift)
 
 
-func show_fumble(p: Node2D, dmg: Dictionary) -> void:
+func show_fumble(p: Node2D, dmg: Dictionary, what := "greataxe swing") -> void:
 	stats.self += dmg.total
 	var t := get_tree().create_timer(0.25)
 	t.timeout.connect(func():
 		FloatText.fling(self, p.global_position + Vector2(0, -14), Vector2(-p.facing * 1.4, -0.7), str(dmg.total), "", Color(1, 0.4, 0.3), 0, 1.1))
-	log_line("Natural 1: the greataxe swing goes wrong. Boar-vhal takes %d (1d4)." % dmg.total)
+	log_line("Natural 1: the %s goes wrong. %s takes %d (1d4)." % [str(what).to_lower(), hero.short(), dmg.total])
 
 
 func show_save(target: Node2D, label: String, sv: Dictionary, total: int, dmg: Dictionary) -> void:
@@ -1015,7 +1086,20 @@ func _bot_battle() -> void:
 		1:  # MENU
 			var want := "end"
 			var adjacent: bool = absi(b._hero().col - b._boss_c().get("col", -99)) <= 1
-			for id in ["rage", "reckless", "attack", "move"]:
+			var prefs := ["heal", "hands", "rage", "reckless", "summon", "spirit", "bless", "smite", "aura", "entangle", "moonbeam", "bear",
+				"missile", "ray", "foresight", "attack", "move"]
+			if player.hp > player.max_hp / 2:
+				prefs.erase("heal")
+				prefs.erase("hands")
+			if b.conc == "moonbeam":
+				prefs.erase("moonbeam")
+			if b.conc == "entangle" or player.kit.form != "":
+				prefs.erase("entangle")
+			if player.kit.smite_on:
+				prefs.erase("smite")
+			if player.kit.foresight_armed >= 0:
+				prefs.erase("foresight")
+			for id in prefs:
 				if id == "move" and adjacent:
 					continue
 				for i in b.menu_items.size():
@@ -1054,8 +1138,8 @@ func _bot(delta: float) -> void:
 		print("[battle] music %s mode %s turn %d round %d hp %d" % [music.current, battle.mode, battle.turn_index, battle.round_no, player.hp])
 	if _stat_t > 3.0:
 		_stat_t = 0.0
-		print("[bot] music %s phase %s depth %d room %s lvl %d xp %d hp %d/%d enemies %d p=%s" % [music.current, Phase.keys()[phase], depth, room_type, hero.level, hero.xp, player.hp, player.max_hp, living_enemies().size(), str(player.global_position.round())])
-	for a in ["move_left", "move_right", "attack", "dodge", "rage", "confirm", "interact", "potion"]:
+		print("[bot] exit %s music %s phase %s depth %d room %s lvl %d xp %d hp %d/%d enemies %d p=%s" % [str(room.exit_pos), music.current, Phase.keys()[phase], depth, room_type, hero.level, hero.xp, player.hp, player.max_hp, living_enemies().size(), str(player.global_position.round())])
+	for a in ["move_left", "move_right", "attack", "dodge", "rage", "confirm", "interact", "potion", "form"]:
 		Input.action_release(a)
 	if player.velocity.y >= 0.0 or phase != Phase.RUN:
 		Input.action_release("jump")
@@ -1079,6 +1163,13 @@ func _bot(delta: float) -> void:
 			return
 	if player.is_down():
 		return
+	if _arg("abtest") and phase == Phase.RUN:
+		# Ability test: press L, R, U, Y in turn near the first goblins.
+		var acts := ["rage", "reckless", "echo", "form"]
+		var i := int(_bot_t / 1.5) % 4
+		if fmod(_bot_t, 1.5) < 0.05:
+			player.hp = mini(player.hp, player.max_hp - 5)
+			Input.action_press(acts[i])
 	if player.hp < player.max_hp / 3 and run_potions > 0:
 		Input.action_press("potion")
 	var es := living_enemies()
@@ -1095,9 +1186,14 @@ func _bot(delta: float) -> void:
 				Input.action_press("interact")
 			break
 	var dx := tx - player.global_position.x
-	if e and absf(dx) < 20.0 and absf(e.global_position.y - player.global_position.y) < 20.0:
+	var kind := str(player.current_weapon().get("kind", "melee"))
+	var reach := 20.0 if kind == "melee" else (60.0 if kind == "whip" else 170.0)
+	if e and absf(dx) < reach and absf(e.global_position.y - player.global_position.y) < 20.0:
+		player.facing = 1 if dx > 0 else -1
 		if int(_bot_t * 10) % 4 == 0:
 			Input.action_press("attack")
+		if hero.key != "boarvhal" and int(_bot_t * 2) % 9 == 0:
+			Input.action_press(["rage", "reckless", "echo", "form"][int(_bot_t) % 4])
 	else:
 		Input.action_press("move_right" if dx > 0 else "move_left")
 		var ahead := player.global_position + Vector2(signf(dx) * 20.0, 4.0)

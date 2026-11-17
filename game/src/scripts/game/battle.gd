@@ -31,6 +31,11 @@ var reckless_on := false
 var rage_rounds := 0
 var echo_col := -1
 var echo_node: Node2D
+var conc := ""            # "entangle" or "moonbeam" while Suilean concentrates
+var beam_col := -1
+var sw_rounds := 0        # Spiritual Weapon rounds left
+var sw_node: Node2D
+var pending := ""         # an action waiting for a target ("attack", "ray", "spirit", "moonbeam", "entangle")
 
 var menu_items: Array = []    # [label, id, enabled]
 var menu_pick := 0
@@ -61,6 +66,10 @@ func start(g: Node) -> void:
 	echo_col = -1
 	reckless_on = false
 	rage_rounds = 0
+	conc = ""
+	beam_col = -1
+	sw_rounds = 0
+	pending = ""
 	h_prone = false
 	h_dodging = false
 	_build_ui()
@@ -74,7 +83,12 @@ func start(g: Node) -> void:
 	if p.raging():
 		rage_rounds = ceili(p.rage_time / 6.0)
 	combatants.clear()
-	_add(p, p.hero.name.split(" ")[0], "hero", 1)
+	_add(p, p.short_name(), "hero", 1 if p.hero.key != "ceridwen" and p.hero.key != "suilean" else 2)
+	p.kit.end_zone(p.kit.concentration)
+	if is_instance_valid(p.kit.spirit):
+		sw_rounds = 10
+		p.kit.end_zone(p.kit.spirit)
+		_make_spirit_node()
 	for s in room.spawns:
 		if s[0] == "B":
 			boss = game.spawn_monster("boss", s[1])
@@ -112,7 +126,7 @@ func _add(node: Node2D, nm: String, side: String, dex: int) -> void:
 	var col := clampi(floori(node.global_position.x / T), min_col, max_col)
 	while _occupied(col, null):
 		col += 1 if side == "foe" else -1
-	var c := {"node": node, "name": nm, "side": side, "col": col, "init": 0, "dex": dex}
+	var c := {"node": node, "name": nm, "side": side, "col": col, "init": 0, "dex": dex, "restrained": false, "frightened": false}
 	combatants.append(c)
 	node.global_position = Vector2(col * T + 8, floor_y)
 
@@ -192,10 +206,13 @@ func _finish(victory: bool) -> void:
 	queue_redraw()
 	if is_instance_valid(echo_node):
 		echo_node.queue_free()
+	if is_instance_valid(sw_node):
+		sw_node.queue_free()
 	if ui:
 		ui.queue_free()
 		ui = null
 	game.hud.hints.visible = true
+	game.hud.room_label.visible = true
 	var hp_node: Player = game.player
 	hp_node.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	hp_node.reset_physics_interpolation()
@@ -207,7 +224,7 @@ func _finish(victory: bool) -> void:
 			var tw := e.create_tween()
 			tw.tween_property(e, "modulate:a", 0.0, 0.6)
 			tw.tween_callback(e.queue_free)
-		game.log_line("The Bugbear Chief falls in round %d. The goblins scatter into the dark. (Boar-vhal at %d HP)" % [round_no, game.player.hp])
+		game.log_line("The Bugbear Chief falls in round %d. The goblins scatter into the dark. (%s at %d HP)" % [round_no, game.player.short_name(), game.player.hp])
 		game.banner("VICTORY", Color(1, 0.85, 0.3))
 		game.on_battle_end(true)
 
@@ -218,7 +235,13 @@ func _hero_turn_start() -> void:
 	h_bonus = 1
 	h_attacks = 0
 	h_dodging = false
-	h_move = int(p.stats.speed_ft / 5)
+	h_move = int(p.form_data.get("speed_ft", p.stats.speed_ft)) / 5
+	if sw_rounds > 0:
+		sw_rounds -= 1
+		if sw_rounds == 0:
+			game.log_line("The spectral mace fades.")
+			if is_instance_valid(sw_node):
+				sw_node.queue_free()
 	if p.is_down():
 		mode = Mode.BUSY
 		_info("Down! Rolling a death save...")
@@ -226,16 +249,7 @@ func _hero_turn_start() -> void:
 		var r := Rules.death_save(game.dice)
 		var outcome := p.death_saves.apply(r)
 		game.show_death_save(r, outcome)
-		if outcome == "revive":
-			p._rise("Natural 20! Boar-vhal surges back up with 1 HP.")
-		elif outcome == "stable":
-			if not p.used_second_wind:
-				p.used_second_wind = true
-				p._rise("Three successes. Boar-vhal grits his teeth and rises with 1 HP (once per run).")
-			else:
-				p._die("Stable, but out cold. The party drags Boar-vhal back to the tavern.")
-		elif outcome == "dead":
-			p._die("Three failures. Boar-vhal has fallen.")
+		p.resolve_death_save(outcome)
 		await get_tree().create_timer(1.0).timeout
 		if p.state == Player.State.DEAD:
 			_finish(false)
@@ -247,25 +261,78 @@ func _hero_turn_start() -> void:
 	if h_prone:
 		h_prone = false
 		h_move = maxi(0, h_move - h_move / 2)
-		game.log_line("Boar-vhal stands up (half his movement).")
+		game.log_line("%s stands up (half %s movement)." % [p.short_name(), p.hero.pronoun("his")])
 	_open_menu()
 
 
+func _weapon() -> Dictionary:
+	return game.player.current_weapon()
+
+
+## How far the current attack reaches, in 5-foot squares.
+func _reach_cols(wpn: Dictionary) -> int:
+	match str(wpn.get("kind", "melee")):
+		"bolt": return 24
+		"whip": return 6
+	return REACH_HERO
+
+
 func _open_menu() -> void:
+	if not active:
+		return
 	mode = Mode.MENU
+	pending = ""
 	var p: Player = game.player
+	var k: HeroKit = p.kit
+	var key: String = p.hero.key
+	var wpn := _weapon()
 	menu_items.clear()
-	var in_reach := _targets_in_reach().size() > 0
-	menu_items.append(["Attack with greataxe" + (" (%d left)" % h_attacks if h_attacks > 0 else ""), "attack", (h_action > 0 or h_attacks > 0) and in_reach])
+	var in_reach := _targets_in_reach(_reach_cols(wpn)).size() > 0
+	var can_act := h_action > 0 and h_attacks == 0
+	var spell_ok := k.form == ""
+	menu_items.append(["%s" % wpn.name + (" (%d left)" % h_attacks if h_attacks > 0 else ""), "attack", (h_action > 0 or h_attacks > 0) and in_reach])
 	menu_items.append(["Move (%d ft left)" % (h_move * 5), "move", h_move > 0])
-	menu_items.append(["Dash (action: double move)", "dash", h_action > 0 and h_attacks == 0])
-	menu_items.append(["Dodge (action)", "dodge", h_action > 0 and h_attacks == 0])
-	if p.hero.has_reckless():
-		menu_items.append(["Reckless Attack: " + ("ON" if reckless_on else "OFF"), "reckless", true])
-	menu_items.append(["Rage (bonus action, %d left)" % p.rage_uses, "rage", h_bonus > 0 and p.rage_uses > 0 and rage_rounds == 0])
-	if p.hero.has_echo():
-		menu_items.append(["Echo (bonus action)", "echo", h_bonus > 0])
-	menu_items.append(["Drink potion (action, %d)" % game.run_potions, "potion", h_action > 0 and game.run_potions > 0 and h_attacks == 0])
+	match key:
+		"ceridwen":
+			menu_items.append(["Magic Missile (%d slots)" % (k.slots[0] + k.slots[1]), "missile", can_act and k.slots[0] + k.slots[1] > 0])
+			if k.s.abilities.has("R"):
+				menu_items.append(["Scorching Ray (%d 2nd)" % k.slots[1], "ray", can_act and k.slots[1] > 0])
+			if not k.foresight.is_empty():
+				menu_items.append(["Foresight: " + ("ready %d" % k.foresight[k.foresight_armed] if k.foresight_armed >= 0 else "%s" % " / ".join(k.foresight.map(func(v): return str(v)))), "foresight", true])
+		"erwar":
+			menu_items.append(["Healing Word (bonus)", "heal", h_bonus > 0 and k.slots[0] + k.slots[1] > 0 and p.hp < p.max_hp])
+			if k.s.abilities.has("R"):
+				if sw_rounds > 0:
+					menu_items.append(["Spectral mace attack (bonus)", "spirit", h_bonus > 0 and _targets_in_reach(5).size() > 0])
+				else:
+					menu_items.append(["Spiritual Weapon (bonus)", "summon", h_bonus > 0 and k.slots[1] > 0])
+			if int(k.s.channel) > 0:
+				menu_items.append(["War Blessing: " + ("READY" if k.blessing_armed else "%d left" % k.channel), "bless", not k.blessing_armed and k.channel > 0])
+		"lyburnum":
+			menu_items.append(["Lay on Hands (%d HP pool)" % k.lay_pool, "hands", can_act and k.lay_pool > 0 and p.hp < p.max_hp])
+			if k.s.abilities.has("R"):
+				menu_items.append(["Divine Smite: " + ("ON" if k.smite_on else "OFF"), "smite", k.smite_on or k.slots[0] + k.slots[1] > 0])
+			if k.s.abilities.has("U"):
+				menu_items.append(["Dread Aura (%d left)" % k.channel, "aura", can_act and k.channel > 0])
+		"suilean":
+			if spell_ok:
+				menu_items.append(["Entangle (slot)", "entangle", can_act and k.slots[0] + k.slots[1] > 0])
+				if k.s.abilities.has("R"):
+					menu_items.append(["Moonbeam: move it" if conc == "moonbeam" else "Moonbeam (2nd slot)", "moonbeam", can_act and (conc == "moonbeam" or k.slots[1] > 0)])
+			if k.s.abilities.has("U"):
+				if k.form == "":
+					menu_items.append(["Wild Shape: Bear (%d)" % k.wild_uses, "bear", can_act and k.wild_uses > 0])
+					menu_items.append(["Wild Shape: Spider (%d)" % k.wild_uses, "spider", can_act and k.wild_uses > 0])
+				else:
+					menu_items.append(["Return to elf form (bonus)", "revert", h_bonus > 0])
+		_:
+			if p.hero.has_reckless():
+				menu_items.append(["Reckless Attack: " + ("ON" if reckless_on else "OFF"), "reckless", true])
+			menu_items.append(["Rage (bonus action, %d left)" % p.rage_uses, "rage", h_bonus > 0 and p.rage_uses > 0 and rage_rounds == 0])
+			if p.hero.has_echo():
+				menu_items.append(["Echo (bonus action)", "echo", h_bonus > 0])
+	menu_items.append(["Dash / Dodge (action)", "dashdodge", can_act])
+	menu_items.append(["Drink potion (action, %d)" % game.run_potions, "potion", can_act and game.run_potions > 0])
 	menu_items.append(["End turn", "end", true])
 	menu_pick = clampi(menu_pick, 0, menu_items.size() - 1)
 	if not menu_items[menu_pick][2]:
@@ -339,7 +406,7 @@ func _process(_delta: float) -> void:
 				target_pick = (target_pick + 1) % target_list.size()
 				queue_redraw()
 			elif _confirm():
-				_do_attack(target_list[target_pick])
+				_target_chosen(target_list[target_pick])
 			elif Input.is_action_just_pressed("back") or Input.is_action_just_pressed("dodge"):
 				_open_menu()
 	_camera()
@@ -356,32 +423,41 @@ func _camera() -> void:
 	game.camera.global_position = Vector2(x, floor_y - 60.0)
 
 
+func _ask_target(action: String, reach: int, hint: String) -> void:
+	target_list = _targets_in_reach(reach)
+	if target_list.is_empty():
+		game.toast("No foe in range.")
+		return
+	pending = action
+	target_pick = 0
+	mode = Mode.TARGET
+	_info("LEFT/RIGHT: CHOOSE TARGET    ATTACK: %s    ESC: BACK" % hint)
+	queue_redraw()
+
+
 func _choose(item: Array) -> void:
 	if not item[2]:
 		game.sfx.play("deflect", -12.0)
 		return
 	var p: Player = game.player
+	var k: HeroKit = p.kit
 	match item[1]:
 		"attack":
-			target_list = _targets_in_reach()
-			target_pick = 0
-			mode = Mode.TARGET
-			_info("LEFT/RIGHT: CHOOSE TARGET    ATTACK: SWING    ESC: BACK")
-			queue_redraw()
+			_ask_target("attack", _reach_cols(_weapon()), "STRIKE")
 		"move":
 			cursor_col = _hero().col
 			mode = Mode.MOVE
 			_info("LEFT/RIGHT: CHOOSE A SQUARE    ATTACK: MOVE THERE    ESC: BACK")
 			queue_redraw()
-		"dash":
+		"dashdodge":
+			# Dash if there is ground to cover, otherwise Dodge.
 			h_action = 0
-			h_move += int(p.stats.speed_ft / 5)
-			game.log_line("Action: Dash.")
-			_open_menu()
-		"dodge":
-			h_action = 0
-			h_dodging = true
-			game.log_line("Action: Dodge. Attacks against Boar-vhal have disadvantage until his next turn.")
+			if _targets_in_reach(1).is_empty():
+				h_move += int(p.form_data.get("speed_ft", p.stats.speed_ft)) / 5
+				game.log_line("Action: Dash.")
+			else:
+				h_dodging = true
+				game.log_line("Action: Dodge. Attacks against %s have disadvantage until the next turn." % p.short_name())
 			_open_menu()
 		"reckless":
 			reckless_on = not reckless_on
@@ -404,10 +480,70 @@ func _choose(item: Array) -> void:
 			game.run_potions -= 1
 			var faces: Array[int] = game.dice.roll(2, 4)
 			var heal: int = faces[0] + faces[1] + 2
-			p.hp = mini(p.max_hp, p.hp + heal)
-			p.hp_changed.emit()
+			p.heal(heal)
 			game.toast("Potion of Healing: +%d HP" % heal)
 			game.log_line("Action: Potion of Healing, 2d4 %s +2 = %d." % [str(faces), heal])
+			_open_menu()
+		"missile":
+			await _magic_missile()
+		"ray":
+			_ask_target("ray", 24, "SCORCHING RAY")
+		"foresight":
+			k._cycle_foresight()
+			_open_menu()
+		"heal":
+			h_bonus = 0
+			var lvl := k._spend_slot(1)
+			var d := Rules.damage(game.dice, lvl, 4, int(k.s.spell_mod))
+			p.heal(int(d.total))
+			SpellFx.rise(game, p.global_position + Vector2(0, -6), Color(1.0, 0.95, 0.6))
+			game.log_line("Bonus action: Healing Word, %dd4 %s %+d = %d HP." % [lvl, str(d.faces), d.bonus, d.total])
+			game.toast("Healing Word: +%d HP" % d.total)
+			_open_menu()
+		"summon":
+			h_bonus = 0
+			k._spend_slot(2)
+			sw_rounds = 10
+			_make_spirit_node()
+			game.banner("SPIRITUAL WEAPON", Color(0.6, 0.85, 1.0))
+			game.log_line("Bonus action: Spiritual Weapon. A spectral mace appears (bonus action to attack each turn).")
+			var near := _targets_in_reach(5)
+			if not near.is_empty():
+				await _spirit_strike(near[0])
+			_open_menu()
+		"spirit":
+			_ask_target("spirit", 5, "SPECTRAL MACE")
+		"bless":
+			k._war_blessing()
+			_open_menu()
+		"hands":
+			h_action = 0
+			var amt := mini(k.lay_pool, p.max_hp - p.hp)
+			k.lay_pool -= amt
+			p.heal(amt)
+			SpellFx.rise(game, p.global_position + Vector2(0, -6), Color(1.0, 0.95, 0.6))
+			game.log_line("Action: Lay on Hands, %d HP (%d left in the pool)." % [amt, k.lay_pool])
+			_open_menu()
+		"smite":
+			k._toggle_smite()
+			_open_menu()
+		"aura":
+			await _dread_aura()
+		"entangle":
+			_ask_target("entangle", 18, "CENTRE THE VINES")
+		"moonbeam":
+			_ask_target("moonbeam", 24, "PLACE THE BEAM")
+		"bear", "spider":
+			h_action = 0
+			k._wild_shape(item[1])
+			conc = ""
+			beam_col = -1
+			_clear_restraints()
+			h_move = mini(h_move, int(p.form_data.speed_ft) / 5)
+			_open_menu()
+		"revert":
+			h_bonus = 0
+			k.end_form(true)
 			_open_menu()
 		"end":
 			mode = Mode.BUSY
@@ -417,13 +553,32 @@ func _choose(item: Array) -> void:
 			_next_turn()
 
 
-func _targets_in_reach() -> Array:
+func _target_chosen(t: Dictionary) -> void:
+	match pending:
+		"attack": await _do_attack(t)
+		"ray": await _scorching_ray(t)
+		"spirit":
+			h_bonus = 0
+			mode = Mode.BUSY
+			await _spirit_strike(t)
+			_open_menu()
+		"entangle": await _entangle(t)
+		"moonbeam": await _moonbeam(t)
+		_: _open_menu()
+
+
+func _targets_in_reach(reach := REACH_HERO) -> Array:
 	var hc := _hero()
 	var out := []
 	for c in combatants:
-		if c.side == "foe" and _alive(c) and absi(c.col - hc.col) <= REACH_HERO:
+		if c.side == "foe" and _alive(c) and absi(c.col - hc.col) <= reach:
 			out.append(c)
+	out.sort_custom(func(x, y): return absi(x.col - hc.col) < absi(y.col - hc.col))
 	return out
+
+
+func _foe_adjacent() -> bool:
+	return not _targets_in_reach(1).is_empty()
 
 
 func _do_move(col: int) -> void:
@@ -477,65 +632,282 @@ func _do_attack(t: Dictionary) -> void:
 	mode = Mode.BUSY
 	var p: Player = game.player
 	var hc := _hero()
+	var wpn := _weapon()
 	if h_attacks == 0:
 		h_action = 0
-		h_attacks = 2 if p.hero.has_extra_attack() else 1
+		h_attacks = 2 if (p.hero.has_extra_attack() and p.kit.form == "") or p.kit.form == "bear" else 1
 	h_attacks -= 1
-	var e: Enemy = t.node
-	_face_nearest(p, hc)
 	p.facing = 1 if t.col > hc.col else -1
 	p.visual.scale.x = p.facing
-	var tw := create_tween()
-	tw.tween_property(p.weapon_pivot, "rotation", -2.3, 0.12)
-	tw.tween_property(p.weapon_pivot, "rotation", 1.95, 0.08)
-	tw.tween_property(p.weapon_pivot, "rotation", -0.55, 0.25)
-	game.sfx.play("swing", -4.0)
-	await get_tree().create_timer(0.2).timeout
-	var adv := 0
-	var reasons: Array[String] = []
-	if reckless_on:
-		adv += 1
-		reasons.append("reckless")
-	if echo_col >= 0 and absi(echo_col - t.col) <= 1:
-		adv += 1
-		reasons.append("flanked by your echo")
-	var atk := Rules.attack(game.dice, p.stats.weapon.attack, e.ac, Dice.combine(adv, 0))
-	var glancing: bool = not atk.hit and not atk.fumble
-	var dmg := {}
-	if atk.hit:
-		dmg = Rules.damage(game.dice, 1, 12, int(p.stats.weapon.bonus) + (2 if rage_rounds > 0 else 0), atk.crit)
-	elif glancing:
-		dmg = Rules.damage(game.dice, 1, 4, 0)
-	game.show_attack(p, e, "Greataxe", atk, dmg, reasons, glancing)
-	if not dmg.is_empty():
-		e.hp = maxi(0, e.hp - int(dmg.total))
-		e._flash = 1.0
-		e._show_bar = 99.0
-		if e.hp <= 0:
-			e._die(p.facing)
-			if e == boss:
-				await get_tree().create_timer(0.8).timeout
-				_check_end()
-				return
-		elif e == boss and not boss_fury_used and e.hp <= e.max_hp / 2:
-			boss_fury_used = true
-			boss_intent = "fury"
-			game.log_line("The Bugbear Chief roars, bloodied and furious.")
-			game.banner("THE CHIEF IS ENRAGED", Color(1, 0.5, 0.35))
-			_show_intent()
-	elif atk.fumble:
-		var f := Rules.damage(game.dice, 1, 4, 0)
-		game.show_fumble(p, f)
-		p.hp = maxi(0, p.hp - int(f.total))
-		p.hp_changed.emit()
-		if p.hp <= 0:
-			p._go_down()
+	var kind := str(wpn.get("kind", "melee"))
+	if kind == "bolt":
+		var bolt := Node2D.new()
+		bolt.set_script(preload("res://scripts/game/arrow_fx.gd"))
+		bolt.modulate = Color(1.0, 0.55, 0.2)
+		bolt.global_position = p.global_position + Vector2(p.facing * 8, -14)
+		game.add_child(bolt)
+		var tw := create_tween()
+		tw.tween_property(bolt, "global_position", t.node.global_position + Vector2(0, -10), 0.25)
+		game.sfx.play("swing", -8.0, 0.3)
+		await tw.finished
+		bolt.queue_free()
+	elif kind == "whip":
+		SpellFx.line(game, p.global_position + Vector2(p.facing * 8, -14), t.node.global_position + Vector2(0, -10), HeroKit.SPELL_COLORS.nature, 0.3, true)
+		game.sfx.play("swing", -6.0, 0.3)
+		await get_tree().create_timer(0.15).timeout
+	else:
+		if p.kit.form == "":
+			var tw := create_tween()
+			tw.tween_property(p.weapon_pivot, "rotation", -2.3, 0.12)
+			tw.tween_property(p.weapon_pivot, "rotation", 1.95, 0.08)
+			tw.tween_property(p.weapon_pivot, "rotation", -0.55, 0.25)
+		game.sfx.play("swing", -4.0)
+		await get_tree().create_timer(0.2).timeout
+	var atk := await _hero_roll(t, wpn, wpn.name)
+	# Thorn Whip pulls the foe up to 10 feet closer.
+	if kind == "whip" and atk.get("hit", false) and _alive(t) and t.node != boss:
+		var dir := 1 if hc.col > t.col else -1
+		var nc: int = t.col
+		for i in 2:
+			if absi(hc.col - (nc + dir)) >= 1 and not _occupied(nc + dir, t):
+				nc += dir
+		if nc != t.col:
+			await _foe_slide(t, nc)
 	await get_tree().create_timer(0.45).timeout
 	if p.is_down():
 		mode = Mode.BUSY
 		_next_turn()
 		return
 	_open_menu()
+
+
+## One attack roll by the hero at a foe, with every turn-based modifier and class rider.
+func _hero_roll(t: Dictionary, wpn: Dictionary, label: String) -> Dictionary:
+	var p: Player = game.player
+	var k: HeroKit = p.kit
+	var e: Enemy = t.node
+	var adv := 0
+	var dis := 0
+	var reasons: Array[String] = []
+	var ranged := str(wpn.get("kind", "")) == "bolt" or bool(wpn.get("ray", false))
+	if reckless_on and not ranged:
+		adv += 1
+		reasons.append("reckless")
+	if echo_col >= 0 and absi(echo_col - t.col) <= 1 and not ranged:
+		adv += 1
+		reasons.append("flanked by your echo")
+	if t.restrained:
+		adv += 1
+		reasons.append("target restrained")
+	if ranged and _foe_adjacent():
+		dis += 1
+		reasons.append("casting in melee")
+	var forced := k.take_foresight()
+	var atk := Rules.attack(game.dice, wpn.attack, e.ac, Dice.combine(adv, dis), forced)
+	if not atk.hit:
+		k.try_blessing(atk, e.ac)
+	var glancing: bool = not atk.hit and not atk.fumble
+	var dmg := {}
+	if atk.hit:
+		var bonus: int = int(wpn.bonus) + (2 if rage_rounds > 0 and k.form == "" and not wpn.get("spell", false) else 0)
+		dmg = Rules.damage(game.dice, wpn.count, wpn.sides, bonus, atk.crit)
+		if atk.crit and k.s.get("savage", false) and k.form == "" and not wpn.get("spell", false):
+			var extra: int = game.dice.die(wpn.sides)
+			dmg.faces.append(extra)
+			dmg.total += extra
+		if str(wpn.get("kind", "")) == "melee" and not wpn.get("spell", false):
+			var sm := k.smite_damage(atk.crit)
+			if not sm.is_empty():
+				dmg.total += int(sm.total)
+				reasons.append("Divine Smite +%d" % sm.total)
+		if wpn.has("poison_dc"):
+			var sv := Rules.save(game.dice, e.save_bonus("con"), int(wpn.poison_dc))
+			var pd := Rules.damage(game.dice, 2, 6, 0)
+			var pt: int = pd.total if not sv.success else floori(pd.total / 2.0)
+			dmg.total += pt
+			game.log_line("Poison bite: %s CON save %d vs DC %d, %d poison." % [e.data.name, sv.total, sv.dc, pt])
+	elif glancing:
+		dmg = Rules.damage(game.dice, 1, 4, 0)
+	game.show_attack(p, e, label, atk, dmg, reasons, glancing)
+	if not dmg.is_empty():
+		await _hurt_foe(t, int(dmg.total))
+	elif atk.fumble:
+		var f := Rules.damage(game.dice, 1, 4, 0)
+		game.show_fumble(p, f, label)
+		p.take_damage(int(f.total), false, 0.0)
+	return atk
+
+
+## Damage to a foe in the battle; handles the chief's fury and death.
+func _hurt_foe(t: Dictionary, amount: int) -> void:
+	var e: Enemy = t.node
+	if amount <= 0 or not _alive(t):
+		return
+	e.hp = maxi(0, e.hp - amount)
+	e._flash = 1.0
+	e._show_bar = 99.0
+	if e.hp <= 0:
+		e._die(game.player.facing)
+		if e == boss:
+			await get_tree().create_timer(0.8).timeout
+			_check_end()
+	elif e == boss and not boss_fury_used and e.hp <= e.max_hp / 2:
+		boss_fury_used = true
+		boss_intent = "fury"
+		game.log_line("The Bugbear Chief roars, bloodied and furious.")
+		game.banner("THE CHIEF IS ENRAGED", Color(1, 0.5, 0.35))
+		_show_intent()
+
+
+func _foe_damage_text(t: Dictionary, amount: int, col: Color) -> void:
+	FloatText.fling(game, t.node.global_position + Vector2(0, -18), Vector2(randf_range(-1.2, 1.2), -0.8), str(amount), "", col, 0, 1.1)
+
+
+# ---------------- class actions in the battle ----------------
+
+func _magic_missile() -> void:
+	var p: Player = game.player
+	var k: HeroKit = p.kit
+	mode = Mode.BUSY
+	h_action = 0
+	var lvl := k._spend_slot(1)
+	var targets := _targets_in_reach(24)
+	var darts := 3 + (lvl - 1)
+	game.log_line("Action: Magic Missile, %d darts of force (1d4+1 each, never miss)." % darts)
+	p.cast_pose()
+	for i in darts:
+		var t: Dictionary = targets[0] if targets.size() > 0 else {}
+		for c in targets:
+			if c.node == boss:
+				t = c
+		if t.is_empty() or not _alive(t):
+			break
+		SpellFx.line(game, p.global_position + Vector2(p.facing * 8, -14), t.node.global_position + Vector2(0, -10), HeroKit.SPELL_COLORS.force, 0.2)
+		var d := Rules.damage(game.dice, 1, 4, 1)
+		_foe_damage_text(t, int(d.total), Color(0.8, 0.7, 1.0))
+		game.sfx.play("hit", -6.0)
+		game.log_line("Magic Missile dart: %d force to %s." % [d.total, t.name])
+		await _hurt_foe(t, int(d.total))
+		await get_tree().create_timer(0.18).timeout
+	if active:
+		_open_menu()
+
+
+func _scorching_ray(t: Dictionary) -> void:
+	var p: Player = game.player
+	mode = Mode.BUSY
+	h_action = 0
+	p.kit._spend_slot(2)
+	p.cast_pose()
+	game.log_line("Action: Scorching Ray, three rays of fire.")
+	var wpn := {"name": "Scorching Ray", "attack": int(p.kit.s.spell_attack), "count": 2, "sides": 6, "bonus": 0, "type": "fire", "spell": true, "ray": true}
+	for i in 3:
+		if not _alive(t) or not active:
+			break
+		SpellFx.line(game, p.global_position + Vector2(p.facing * 8, -14), t.node.global_position + Vector2(0, -10), HeroKit.SPELL_COLORS.fire, 0.22)
+		await _hero_roll(t, wpn, "Scorching Ray")
+		await get_tree().create_timer(0.3).timeout
+	if active:
+		_open_menu()
+
+
+func _make_spirit_node() -> void:
+	if is_instance_valid(sw_node):
+		sw_node.queue_free()
+	sw_node = Sprite2D.new()
+	(sw_node as Sprite2D).texture = Art.region("weapon_mace")
+	sw_node.modulate = Color(0.6, 0.85, 1.0, 0.85)
+	sw_node.z_index = 6
+	var hc := _hero()
+	sw_node.global_position = Vector2(hc.col * T + 8 - 14, floor_y - 30)
+	game.add_child(sw_node)
+
+
+func _spirit_strike(t: Dictionary) -> void:
+	var p: Player = game.player
+	if is_instance_valid(sw_node):
+		var tw := create_tween()
+		tw.tween_property(sw_node, "global_position", t.node.global_position + Vector2(-8 * signf(t.node.global_position.x - p.global_position.x), -18), 0.2)
+		tw.tween_property(sw_node, "rotation", 1.6, 0.08)
+		tw.tween_property(sw_node, "rotation", 0.0, 0.2)
+		await tw.finished
+	var wpn := {"name": "Spiritual Weapon", "attack": int(p.kit.s.spell_attack), "count": 1, "sides": 8, "bonus": int(p.kit.s.spell_mod), "type": "force", "spell": true, "kind": "spirit"}
+	await _hero_roll(t, wpn, "Spiritual Weapon")
+	await get_tree().create_timer(0.3).timeout
+
+
+func _dread_aura() -> void:
+	var p: Player = game.player
+	var k: HeroKit = p.kit
+	mode = Mode.BUSY
+	h_action = 0
+	k.channel -= 1
+	SpellFx.burst(game, p.global_position + Vector2(0, -12), Color(0.75, 0.4, 0.9), 96.0, 0.7)
+	game.banner("DREAD AURA", Color(0.8, 0.5, 1.0))
+	game.sfx.play("thud", -2.0)
+	for c in _targets_in_reach(6):
+		var sv := k.enemy_save(c.node, "wis", "the fear")
+		if not sv.success:
+			c.frightened = true
+			FloatText.fling(game, c.node.global_position + Vector2(0, -26), Vector2(0, -1), "FRIGHTENED", "", Color(0.8, 0.55, 1.0), 0, 0.9)
+	await get_tree().create_timer(0.6).timeout
+	_open_menu()
+
+
+func _entangle(t: Dictionary) -> void:
+	var p: Player = game.player
+	var k: HeroKit = p.kit
+	mode = Mode.BUSY
+	h_action = 0
+	k._spend_slot(1)
+	conc = "entangle"
+	beam_col = -1
+	p.cast_pose()
+	game.log_line("Action: Entangle around %s (Strength save DC %d or restrained; concentration)." % [t.name, k.s.spell_dc])
+	for c in combatants:
+		if c.side == "foe" and _alive(c) and absi(c.col - t.col) <= 2:
+			SpellFx.burst(game, c.node.global_position + Vector2(0, -4), HeroKit.SPELL_COLORS.nature, 12.0, 0.5)
+			if not k.enemy_save(c.node, "str", "the vines").success:
+				c.restrained = true
+				FloatText.fling(game, c.node.global_position + Vector2(0, -26), Vector2(0, -1), "RESTRAINED", "", Color(0.55, 0.9, 0.45), 0, 0.9)
+	await get_tree().create_timer(0.6).timeout
+	_open_menu()
+
+
+func _moonbeam(t: Dictionary) -> void:
+	var p: Player = game.player
+	var k: HeroKit = p.kit
+	mode = Mode.BUSY
+	h_action = 0
+	if conc != "moonbeam":
+		k._spend_slot(2)
+		_clear_restraints()
+	conc = "moonbeam"
+	beam_col = t.col
+	p.cast_pose()
+	game.log_line("Action: Moonbeam on %s's square. Foes starting a turn in it take 2d10 radiant (CON save DC %d for half)." % [t.name, k.s.spell_dc])
+	await get_tree().create_timer(0.4).timeout
+	_open_menu()
+
+
+func _clear_restraints() -> void:
+	for c in combatants:
+		c.restrained = false
+
+
+## Damage to the hero during the battle may break concentration.
+func _hero_hit(amount: int) -> void:
+	if conc == "" or amount <= 0:
+		return
+	var p: Player = game.player
+	var dc := maxi(10, floori(amount / 2.0))
+	var sv := Rules.save(game.dice, int(p.kit.s.con_save), dc)
+	game.log_line("Concentration: CON save %d vs DC %d, %s." % [sv.total, dc, "held" if sv.success else "lost"])
+	if not sv.success:
+		game.toast("Concentration broken!")
+		conc = ""
+		beam_col = -1
+		_clear_restraints()
 
 
 func _place_echo() -> void:
@@ -593,13 +965,33 @@ func _foe_turn(c: Dictionary) -> void:
 	var e: Enemy = c.node
 	var hc := _hero()
 	var p: Player = game.player
+	var k: HeroKit = p.kit
+	# Moonbeam burns whoever starts a turn in the light.
+	if conc == "moonbeam" and absi(c.col - beam_col) <= 0:
+		var sv := k.enemy_save(e, "con", "half the light")
+		var d := Rules.damage(game.dice, 2, 10, 0)
+		var total: int = d.total if not sv.success else floori(d.total / 2.0)
+		_foe_damage_text(c, total, Color(0.85, 0.92, 1.0))
+		game.log_line("Moonbeam: %d radiant to %s." % [total, c.name])
+		await _hurt_foe(c, total)
+		await get_tree().create_timer(0.4).timeout
+		if not _alive(c):
+			return
 	if p.is_down():
-		game.log_line("%s jeers at the fallen Goliath." % c.name)
+		game.log_line("%s jeers at the fallen %s." % [c.name, p.short_name()])
+		return
+	# Restrained: the chief spends his action tearing free; goblins stay put.
+	if c.restrained and e == boss:
+		var chk := Rules.save(game.dice, e.save_bonus("str"), int(k.s.spell_dc))
+		game.log_line("Bugbear Chief strains against the vines: STR %d vs DC %d, %s." % [chk.total, chk.dc, "breaks free" if chk.success else "still held"])
+		if chk.success:
+			c.restrained = false
+		await _end_foe_turn(c)
 		return
 	var dist := absi(hc.col - c.col)
 	if e == boss:
 		var reach: int = boss.data.reach
-		if dist > reach:
+		if dist > reach and not c.frightened:
 			await _foe_move_toward(c, hc, reach)
 			dist = absi(hc.col - c.col)
 		if dist <= reach:
@@ -615,9 +1007,10 @@ func _foe_turn(c: Dictionary) -> void:
 				_:
 					await _foe_attack(c, e.data.weapon)
 		_pick_intent()
+		await _end_foe_turn(c)
 	else:
 		# Goblin archer: step away if cornered, then shoot.
-		if dist <= 1:
+		if dist <= 1 and not c.restrained:
 			var away := 1 if c.col >= hc.col else -1
 			var target: int = c.col
 			for i in 6:
@@ -629,6 +1022,15 @@ func _foe_turn(c: Dictionary) -> void:
 				game.log_line("%s disengages (Nimble Escape)." % c.name)
 				await _foe_slide(c, target)
 		await _foe_shoot(c)
+		await _end_foe_turn(c)
+
+
+## A frightened foe repeats its Wisdom save at the end of each of its turns.
+func _end_foe_turn(c: Dictionary) -> void:
+	if c.frightened and _alive(c):
+		var sv: Dictionary = game.player.kit.enemy_save(c.node, "wis", "and shakes off the fear")
+		if sv.success:
+			c.frightened = false
 
 
 func _foe_move_toward(c: Dictionary, hc: Dictionary, reach: int) -> void:
@@ -669,7 +1071,7 @@ func _foe_attack(c: Dictionary, wpn: Dictionary) -> void:
 	tw.tween_property(e.weapon_pivot, "rotation", 0.5, 0.25)
 	await get_tree().create_timer(0.33).timeout
 	game.sfx.play("swing", -6.0)
-	await _resolve_foe_attack(e, wpn, false)
+	await _resolve_foe_attack(e, wpn, false, c)
 
 
 func _foe_shoot(c: Dictionary) -> void:
@@ -685,10 +1087,10 @@ func _foe_shoot(c: Dictionary) -> void:
 	await tw.finished
 	arrow.queue_free()
 	var adjacent := absi(_hero().col - c.col) <= 1
-	await _resolve_foe_attack(e, e.data.weapon, adjacent)
+	await _resolve_foe_attack(e, e.data.weapon, adjacent, c)
 
 
-func _resolve_foe_attack(e: Enemy, wpn: Dictionary, disadvantage: bool) -> void:
+func _resolve_foe_attack(e: Enemy, wpn: Dictionary, disadvantage: bool, c: Dictionary = {}) -> void:
 	var p: Player = game.player
 	var adv := 0
 	var dis := 0
@@ -709,7 +1111,13 @@ func _resolve_foe_attack(e: Enemy, wpn: Dictionary, disadvantage: bool) -> void:
 	if disadvantage:
 		dis += 1
 		reasons.append("shooting in melee")
-	var atk := Rules.attack(game.dice, wpn.attack, p.ac, Dice.combine(adv, dis))
+	if c.get("frightened", false):
+		dis += 1
+		reasons.append("frightened")
+	if c.get("restrained", false):
+		dis += 1
+		reasons.append("restrained")
+	var atk := Rules.attack(game.dice, wpn.attack, p.ac, Dice.combine(adv, dis), p.kit.take_foresight())
 	var dmg := {}
 	if atk.hit:
 		var resisted: bool = rage_rounds > 0 and wpn.type in ["bludgeoning", "piercing", "slashing"]
@@ -717,6 +1125,7 @@ func _resolve_foe_attack(e: Enemy, wpn: Dictionary, disadvantage: bool) -> void:
 	game.show_attack(e, p, wpn.name, atk, dmg, reasons, false)
 	if atk.hit:
 		p.take_damage(int(dmg.total), atk.crit, 0.0)
+		_hero_hit(int(dmg.total))
 	else:
 		game.sfx.play("deflect", -4.0)
 	await get_tree().create_timer(0.4).timeout
@@ -726,7 +1135,7 @@ func _boss_shove(c: Dictionary, hc: Dictionary) -> void:
 	var p: Player = game.player
 	var dc: int = boss.data.shove_dc
 	var mode_s := Dice.Mode.ADVANTAGE if rage_rounds > 0 else Dice.Mode.NORMAL
-	var sv := Rules.save(game.dice, p.hero.str_mod(), dc, mode_s)
+	var sv := Rules.save(game.dice, p.hero.str_save(), dc, mode_s)
 	game.sfx.play("thud", -2.0)
 	game.log_line("Bugbear Chief shoves: Strength save d20 %s %+d = %d vs DC %d, %s." % [
 		("%d|%d" % [sv.rolls[0], sv.rolls[1]]) if sv.rolls.size() > 1 else str(sv.kept), sv.bonus, sv.total, dc, "resisted" if sv.success else "failed"])
@@ -747,7 +1156,7 @@ func _boss_shove(c: Dictionary, hc: Dictionary) -> void:
 	h_prone = true
 	p.sprite.play("hit")
 	FloatText.fling(game, p.global_position + Vector2(0, -24), Vector2(0, -1), "PRONE", "", Color(1.0, 0.6, 0.4), 0, 1.0)
-	game.log_line("Boar-vhal is knocked prone (melee attacks against him have advantage until he stands).")
+	game.log_line("%s is knocked prone (melee attacks have advantage until %s stands)." % [p.short_name(), p.hero.pronoun("he")])
 
 
 # ---------------- presentation ----------------
@@ -763,7 +1172,7 @@ func _build_ui() -> void:
 	menu_panel = _panel(Vector2(4, 72), Vector2(186, 100))
 	menu_label = _label(menu_panel, Vector2(6, 4), 8, Color.WHITE)
 	menu_lines.clear()
-	for i in 12:
+	for i in 14:
 		var l := _label(menu_panel, Vector2(6, 3 + i * 10), 8, Color.WHITE)
 		l.visible = false
 		menu_lines.append(l)
@@ -778,6 +1187,7 @@ func _build_ui() -> void:
 	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	game.hud.hints.visible = false
+	game.hud.room_label.visible = false
 	_show_intent()
 
 
@@ -803,11 +1213,13 @@ func _label(parent: Node, pos: Vector2, size: int, color: Color) -> Label:
 
 
 func _info(t: String) -> void:
-	if info_label:
+	if is_instance_valid(info_label):
 		info_label.text = t.to_upper()
 
 
 func _refresh_order() -> void:
+	if not active or not is_instance_valid(order_label):
+		return
 	var lines: Array[String] = ["ROUND %d  INITIATIVE" % round_no]
 	for i in combatants.size():
 		var c: Dictionary = combatants[i]
@@ -848,3 +1260,9 @@ func _draw() -> void:
 		draw_rect(Rect2(t.col * T - 2, floor_y - h, T + 4, h), Color(1, 0.4, 0.3, 0.95), false, 1.0)
 	if mode != Mode.IDLE:
 		draw_rect(Rect2(hc.col * T + 2, floor_y + 1, T - 4, 2), Color(1, 0.9, 0.4, 0.9))
+	if conc == "moonbeam" and beam_col >= 0:
+		draw_rect(Rect2(beam_col * T, floor_y - 120, T, 120), Color(0.8, 0.9, 1.0, 0.18))
+	for c in combatants:
+		if c.side == "foe" and _alive(c) and c.restrained:
+			for i in 4:
+				draw_line(Vector2(c.col * T + 3 + i * 3, floor_y), Vector2(c.col * T + 4 + i * 3, floor_y - 8), Color(0.35, 0.65, 0.25), 1.5)

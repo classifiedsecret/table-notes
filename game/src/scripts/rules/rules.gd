@@ -10,8 +10,11 @@ static func ability_mod(score: int) -> int:
 
 ## Attack roll against Armor Class.
 ## Natural 20 always hits and is a critical; natural 1 always misses.
-static func attack(dice: Dice, attack_bonus: int, target_ac: int, mode: int = Dice.Mode.NORMAL) -> Dictionary:
+## `forced` (1-20) replaces the d20 entirely, for Foresight dice.
+static func attack(dice: Dice, attack_bonus: int, target_ac: int, mode: int = Dice.Mode.NORMAL, forced := 0) -> Dictionary:
 	var d := dice.d20(mode)
+	if forced > 0:
+		d = {"rolls": [forced], "kept": forced, "mode": Dice.Mode.NORMAL}
 	var nat: int = d.kept
 	var total := nat + attack_bonus
 	var crit := nat == 20

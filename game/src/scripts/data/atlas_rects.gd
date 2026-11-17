@@ -50,4 +50,8 @@ const RECTS := {
 	"doors_frame_right": Rect2(64, 240, 16, 32),
 	"doors_frame_top": Rect2(32, 224, 32, 16),
 	"doors_leaf_closed": Rect2(32, 240, 32, 32),
+	"weapon_red_magic_staff": Rect2(324, 129, 8, 30),
+	"weapon_mace": Rect2(339, 39, 10, 24),
+	"weapon_knight_sword": Rect2(339, 98, 10, 29),
+	"weapon_green_magic_staff": Rect2(340, 129, 8, 30),
 }

@@ -1,6 +1,6 @@
 class_name Enemy
 extends CharacterBody2D
-## Goblin in real time: chase, telegraphed wind-up, strike rolled against Boar-vhal's AC.
+## Goblin in real time: chase, telegraphed wind-up, strike rolled against the hero's AC.
 
 enum State { CHASE, WINDUP, STRIKE, RECOVER, STAGGER, RETREAT, DEAD }
 
@@ -19,6 +19,14 @@ var _struck := false
 var _show_bar := 0.0
 var _jump_cd := 0.5
 var _drop_t := 0.0
+var restrained_t := 0.0    # Entangle: can't move; attacks against it have advantage
+var frightened_t := 0.0    # Dread Aura: flees from the hero and won't attack
+
+## Saving throw bonuses (SRD 5.2 goblins, bugbear).
+const SAVES := {
+	"Goblin": {"str": -1, "dex": 2, "con": 0, "wis": -1},
+	"Bugbear": {"str": 2, "dex": 2, "con": 1, "wis": 0},
+}
 
 var visual: Node2D
 var sprite: AnimatedSprite2D
@@ -87,6 +95,25 @@ func hurt_rect() -> Rect2:
 	return Rect2(global_position + Vector2(-6, -14), Vector2(12, 14))
 
 
+func save_bonus(ability: String) -> int:
+	var fam := "Bugbear" if str(data.get("name", "")).contains("Bugbear") else "Goblin"
+	return int(data.get("saves", {}).get(ability, SAVES[fam].get(ability, 0)))
+
+
+func restrain(secs: float) -> void:
+	restrained_t = maxf(restrained_t, secs)
+	velocity.x = 0.0
+	FloatText.fling(game, global_position + Vector2(0, -22), Vector2(0, -1), "RESTRAINED", "", Color(0.55, 0.9, 0.45), 0, 0.9)
+
+
+func frighten(secs: float) -> void:
+	frightened_t = maxf(frightened_t, secs)
+	if state == State.WINDUP:
+		warn.visible = false
+		_go(State.CHASE)
+	FloatText.fling(game, global_position + Vector2(0, -22), Vector2(0, -1), "FRIGHTENED", "", Color(0.8, 0.55, 1.0), 0, 0.9)
+
+
 func is_dead() -> bool:
 	return state == State.DEAD
 
@@ -112,12 +139,24 @@ func _physics_process(delta: float) -> void:
 	var dx := p.global_position.x - global_position.x
 	var dy := p.global_position.y - global_position.y
 	var dir := signf(dx)
+	restrained_t = maxf(0.0, restrained_t - delta)
+	frightened_t = maxf(0.0, frightened_t - delta)
+	visual.modulate = Color(0.75, 1.0, 0.7) if restrained_t > 0.0 else (Color(0.85, 0.7, 1.0) if frightened_t > 0.0 else Color.WHITE)
 
 	match state:
 		State.DEAD:
 			velocity.x = move_toward(velocity.x, 0.0, 400.0 * delta)
 		State.CHASE:
-			if data.get("ranged", false) and not p.is_down() and game.accepting_input():
+			if frightened_t > 0.0 and state != State.DEAD:
+				# Flee from the hero; no attacks while terrified.
+				if dir != 0.0:
+					facing = -int(dir)
+				var away := -dir if dir != 0.0 else 1.0
+				if restrained_t <= 0.0 and (_ground_ahead_dir(away) or not is_on_floor()):
+					velocity.x = move_toward(velocity.x, away * speed * 0.9, 700.0 * delta)
+				else:
+					velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
+			elif data.get("ranged", false) and not p.is_down() and game.accepting_input():
 				_archer_chase(delta, dx, dy)
 			elif p.is_down():
 				_go(State.RETREAT)
@@ -209,6 +248,10 @@ func _physics_process(delta: float) -> void:
 		if push != 0.0 and (_ground_ahead_dir(signf(push)) or not is_on_floor()):
 			velocity.x = clampf(velocity.x + push * delta * 10.0, -speed * 1.3, speed * 1.3)
 
+	if restrained_t > 0.0 and state != State.DEAD:
+		velocity.x = 0.0
+		if velocity.y < 0.0:
+			velocity.y = 0.0
 	var g: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 	velocity.y = minf(420.0, velocity.y + g * delta)
 	move_and_slide()
