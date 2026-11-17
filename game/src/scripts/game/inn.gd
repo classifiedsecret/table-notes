@@ -7,6 +7,7 @@ extends Node2D
 const FLOOR_Y := 208.0
 const UP_Y := 96.0
 const CELLAR_X := 984.0
+const EXIT_X := 40.0
 const LAYER_STAIRS := 8
 const STAIR_FOOT := Vector2(896, 208)
 const STAIR_TOP := Vector2(784, 96)
@@ -149,7 +150,7 @@ func _furnish() -> void:
 			_spr("plank", Vector2(x + 8, UP_Y + 4), -4)
 	# Ground floor, left to right.
 	_spr("doors_leaf_closed", Vector2(40, FLOOR_Y), -6)
-	_label("WAY OUT", Vector2(24, 158), Color(0.8, 0.75, 0.6))
+	_label("EXIT", Vector2(31, 158), Color(0.8, 0.75, 0.6))
 	_spr("window", Vector2(84, 166), -6)
 	_spr("curtain", Vector2(104, FLOOR_Y), -5)
 	_spr("curtain", Vector2(216, FLOOR_Y), -5)
@@ -362,6 +363,11 @@ func _physics_process(_delta: float) -> void:
 	for n in npcs:
 		if n.tag:
 			n.tag.visible = absf(n.global_position.x - p.x) < 90.0 and absf(n.global_position.y - p.y) < 60.0
+
+
+## The front door (far left) leads back to Session Scribe.
+func at_exit(p: Vector2) -> bool:
+	return absf(p.x - EXIT_X) < 14.0 and absf(p.y - FLOOR_Y) < 4.0
 
 
 func at_cellar(p: Vector2) -> bool:

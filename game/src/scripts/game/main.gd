@@ -28,6 +28,7 @@ var battle: Node
 var inn: Inn
 var music: Music
 var _talking: InnNPC
+var _confirm_exit := false
 var _quest_i := -1      # >= 0 while the Hooded Stranger is giving the quest
 var _barred_t := 0.0
 var hero := Hero.new()
@@ -361,8 +362,7 @@ func _tavern_input() -> void:
 				player.facing = -1
 				player.reset_physics_interpolation()
 			"leave":
-				if OS.has_feature("web"):
-					JavaScriptBridge.eval("window.location.href = '../'")
+				_leave_to_site()
 			"potion":
 				if hero.gold >= POTION_PRICE:
 					hero.gold -= POTION_PRICE
@@ -546,6 +546,12 @@ func room_cleared() -> bool:
 
 func try_interact() -> void:
 	if phase == Phase.TAVERN:
+		if _confirm_exit:
+			_leave_to_site()
+			return
+		if inn.at_exit(player.global_position):
+			_ask_exit()
+			return
 		var n := inn.nearest(player.global_position)
 		if n:
 			_talk(n)
@@ -667,6 +673,11 @@ func _process(delta: float) -> void:
 		_bot(delta)
 	match phase:
 		Phase.TAVERN:
+			if _confirm_exit:
+				if Input.is_action_just_pressed("confirm"):
+					_leave_to_site()
+				elif Input.is_action_just_pressed("back") or not inn.at_exit(player.global_position):
+					_cancel_exit()
 			if inn.dm:
 				inn.dm.set_marker(_loaded and not hero.quest_given)
 			_barred_t = maxf(0.0, _barred_t - delta)
@@ -756,8 +767,35 @@ func peaceful() -> bool:
 	return phase == Phase.TAVERN
 
 
+func _ask_exit() -> void:
+	_close_talk()
+	_confirm_exit = true
+	player.velocity.x = 0.0
+	hud.show_confirm("Exit", "Leave the Gryphon's Roost and return to Session Scribe? Your hero is saved.")
+
+
+func _cancel_exit() -> void:
+	if _confirm_exit:
+		_confirm_exit = false
+		hud.hide_dialogue()
+
+
+func _leave_to_site() -> void:
+	_confirm_exit = false
+	hud.hide_dialogue()
+	save_hero()
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.location.href = 'https://session-scribe.com/'")
+	else:
+		toast("Session Scribe opens here in the web version.")
+
+
 func _current_prompt() -> String:
 	if phase == Phase.TAVERN:
+		if _confirm_exit:
+			return ""
+		if inn.at_exit(player.global_position):
+			return "E: EXIT TO SESSION SCRIBE"
 		var n := inn.nearest(player.global_position)
 		return ("E: TALK TO %s" % n.display_name.to_upper()) if n else ""
 	if phase != Phase.RUN:

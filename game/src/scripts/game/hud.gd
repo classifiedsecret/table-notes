@@ -280,6 +280,13 @@ func show_dialogue(who: String, text: String) -> void:
 	dlg_text.text = text.to_upper()
 
 
+## A yes/no question in the dialogue box.
+func show_confirm(title: String, text: String) -> void:
+	dlg_panel.visible = true
+	dlg_name.text = title.to_upper() + "   E / ENTER: YES    ESC: NO"
+	dlg_text.text = text.to_upper()
+
+
 func hide_dialogue() -> void:
 	dlg_panel.visible = false
 
