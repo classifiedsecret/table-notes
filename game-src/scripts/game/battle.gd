@@ -41,6 +41,7 @@ var target_pick := 0
 var ui: CanvasLayer
 var order_label: Label
 var menu_label: Label
+var menu_panel: Control
 var info_label: Label
 var intent_label: Label
 var _hint := ""
@@ -271,6 +272,7 @@ func _render_menu() -> void:
 		var prefix := "> " if i == menu_pick else "  "
 		lines.append(prefix + (str(it[0]) if it[2] else "(" + str(it[0]) + ")"))
 	menu_label.text = "\n".join(lines).to_upper()
+	menu_panel.size.y = 10.0 + 12.0 * lines.size()
 	var res := "ACTION %s   BONUS %s   MOVE %d FT" % ["READY" if h_action > 0 else "USED", "READY" if h_bonus > 0 else "USED", h_move * 5]
 	_info(res + "\nUP/DOWN, ATTACK TO CONFIRM, ESC BACK")
 
@@ -283,7 +285,7 @@ func _process(_delta: float) -> void:
 			if Input.is_action_just_pressed("move_down"):
 				menu_pick = (menu_pick + 1) % menu_items.size()
 				_render_menu()
-			elif Input.is_action_just_pressed("move_up") and not Input.is_action_just_pressed("jump"):
+			elif Input.is_action_just_pressed("move_up"):
 				menu_pick = (menu_pick - 1 + menu_items.size()) % menu_items.size()
 				_render_menu()
 			elif _confirm():
@@ -724,8 +726,8 @@ func _build_ui() -> void:
 	add_child(ui)
 	var top := _panel(Vector2(166, 4), Vector2(116, 52))
 	order_label = _label(top, Vector2(5, 3), 8, Color(0.92, 0.9, 0.85))
-	var menu := _panel(Vector2(4, 72), Vector2(186, 100))
-	menu_label = _label(menu, Vector2(6, 4), 8, Color.WHITE)
+	menu_panel = _panel(Vector2(4, 72), Vector2(186, 100))
+	menu_label = _label(menu_panel, Vector2(6, 4), 8, Color.WHITE)
 	intent_label = _label(ui, Vector2(196, 60), 8, Color(1, 0.6, 0.45))
 	intent_label.size = Vector2(280, 10)
 	intent_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
