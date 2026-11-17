@@ -1,9 +1,22 @@
 extends Node2D
-## M1 feel prototype: Boar-vhal against waves of goblins in one test room.
+## Vanguard's Descent: tavern hub, Goblin Warren runs, door choices, the turn-based boss, saves.
 
-enum Phase { TITLE, PLAY, OVER }
+enum Phase { TAVERN, RUN, DOORS, BATTLE, OVER }
 
-static var skip_title := false
+const BIOME := "Goblin Warren"
+const ROOMS_BEFORE_BOSS := 5
+const ROOM_POOL := {
+	"combat": ["warren_combat_1", "warren_combat_2", "warren_combat_3"],
+	"gauntlet": ["warren_gauntlet_1", "warren_gauntlet_2"],
+	"treasure": ["warren_treasure_1"],
+	"campfire": ["warren_campfire_1"],
+	"elite": ["warren_elite_1"],
+}
+const ROOM_LABEL := {"combat": "COMBAT", "gauntlet": "GAUNTLET", "treasure": "TREASURE", "campfire": "CAMPFIRE", "elite": "ELITE", "boss": "BOSS"}
+const ROOM_HINT := {"combat": "Goblins. The door bars until they fall.", "gauntlet": "Traps and spikes. Few foes.",
+	"treasure": "A locked chest, lightly guarded.", "campfire": "A safe fire for a short rest.",
+	"elite": "A tougher pack. Bigger rewards.", "boss": "The Bugbear Chief's hall."}
+const POTION_PRICE := 50
 
 var dice: Dice
 var sfx: Sfx
@@ -11,116 +24,71 @@ var room: Room
 var player: Player
 var camera: Camera2D
 var hud: Hud
-var phase := Phase.TITLE
-var wave := 0
+var battle: Node
+var hero := Hero.new()
+var phase := Phase.TAVERN
 var enemies: Array[Enemy] = []
-var stats := {"swings": 0, "rolls": 0, "hits": 0, "crits": 0, "fumbles": 0, "glances": 0, "self": 0, "taken": 0, "kills": 0}
-var _wave_timer := -1.0
-var _door_toggle := 0
+var props: Array[Node2D] = []
+var stats := {"swings": 0, "rolls": 0, "hits": 0, "crits": 0, "fumbles": 0, "glances": 0, "self": 0, "taken": 0, "kills": 0, "nat20s": 0, "xp": 0}
+var run_gold := 0
+var run_potions := 0
+var hit_dice := 1
+var depth := 0
+var room_type := ""
+var _used_rooms: Array[String] = []
+var _door_options: Array[String] = []
+var _door_pick := 0
+var _menu_pick := 0
+var _campfire_taken := false
+var _bridge: JavaScriptObject
+var _cb_load: JavaScriptObject
+var _cb_save: JavaScriptObject
+var _cb_who: JavaScriptObject
+var save_mode := "local"
+var _loaded := false
+var bot := OS.get_cmdline_user_args().has("--bot")
+var _bot_t := 0.0
+var _stat_t := 0.0
 
 
 func _ready() -> void:
 	Art.setup_fonts()
 	_setup_input()
-	var seed_value := randi() % 900000 + 100000
-	dice = Dice.new(seed_value)
+	dice = Dice.new(randi() % 900000 + 100000)
 	RenderingServer.set_default_clear_color(Color(0.05, 0.04, 0.07))
-
 	sfx = Sfx.new()
 	add_child(sfx)
-	room = Room.new()
-	add_child(room)
-	room.build(FileAccess.get_file_as_string("res://rooms/test_room.txt"))
-
-	player = Player.new()
-	player.game = self
-	player.position = room.player_spawn
-	add_child(player)
-	player.died.connect(_on_player_died)
-	player.downed.connect(func(): hud.death_saves(true, player.death_saves); hud.banner("DOWN!", Color(1, 0.4, 0.35)))
-
 	camera = Camera2D.new()
-	camera.limit_left = 0
-	camera.limit_top = 0
-	camera.limit_right = int(room.size_px().x)
-	camera.limit_bottom = int(room.size_px().y)
 	camera.position_smoothing_enabled = true
 	camera.position_smoothing_speed = 7.0
 	add_child(camera)
-	camera.global_position = player.global_position
-
 	hud = Hud.new()
 	add_child(hud)
 	hud.build(self)
-	log_line("Seed %d. Boar-vhal: AC 14, 15 HP, Greataxe +5 (1d12+3)." % seed_value)
-
-	if _test("crowd") or _test("ds"):
-		phase = Phase.PLAY
-		hud.hide_center()
-		player.global_position = Vector2(300, 208)
-		if _test("crowd"):
-			player.max_hp = 999
-			player.hp = 999
-			for i in 4:
-				var e := Enemy.new()
-				e.setup(self, Creatures.monster("minion" if i % 2 else "warrior"))
-				e.position = room.doors[0] + Vector2(i * 2, 0)
-				e.facing = 1
-				add_child(e)
-				enemies.append(e)
-		var tm := Timer.new()
-		tm.wait_time = 0.5
-		tm.autostart = true
-		tm.timeout.connect(func():
-			var xs: Array = living_enemies().map(func(x): return roundi(x.global_position.x))
-			xs.sort()
-			print("[t] enemies x=%s  player hp=%d state=%s  ds_panel=%s" % [str(xs), player.hp, Player.State.keys()[player.state], hud.ds_panel.visible]))
-		add_child(tm)
-		if _test("ds"):
-			player.force_down()
-		return
-	if _test("pit"):
-		phase = Phase.PLAY
-		hud.hide_center()
-		player.global_position = Vector2(24 * 16 + 24, 150)
-		var tm := Timer.new()
-		tm.wait_time = 0.25
-		tm.autostart = true
-		tm.timeout.connect(func(): print("[pit] p=%s hp=%d state=%s" % [str(player.global_position.round()), player.hp, Player.State.keys()[player.state]]))
-		add_child(tm)
-		return
-	if skip_title:
-		_start()
-	else:
-		hud.show_center("VANGUARD'S DESCENT", "Milestone 1 feel test.\n" +
-			"Each swing that connects rolls d20 + 5 against the goblin's hidden Armor Class. Goblins roll against your AC 14.\n" +
-			"Advantage: strike from behind (dodge through a goblin as it winds up) or while dropping onto it.\n" +
-			"Table rules: a roll under the AC still lands a glancing blow for 1d4. A natural 1 misses and you take 1d4.\n" +
-			"Keys: A/D move, Space jump, J attack, K dodge, L Rage, Tab log.  Pad: A jump, X attack, B dodge, Y Rage.\n" +
-			"Press attack or jump to begin.",
-			"Art: 0x72 Dungeon Tileset II (CC0). Fonts and sounds: Kenney (CC0). Includes material from SRD 5.1 and 5.2 by Wizards of the Coast LLC, CC-BY-4.0.")
+	battle = preload("res://scripts/game/battle.gd").new()
+	add_child(battle)
+	_load_room("warren_campfire_1", true)
+	_spawn_player()
+	_load_hero()
 
 
-## Test modes: "--crowdtest" on the command line, or "?test=crowd" in the page address.
-func _test(name: String) -> bool:
-	if OS.get_cmdline_user_args().has("--%stest" % name):
-		return true
-	if OS.has_feature("web"):
-		var q = JavaScriptBridge.eval("window.location.search", true)
-		return q is String and (q as String).contains("test=" + name)
-	return false
-
+# ---------------- input ----------------
 
 func _setup_input() -> void:
 	var keys := {
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT], "move_down": [KEY_S, KEY_DOWN],
+		"move_up": [KEY_W, KEY_UP],
 		"jump": [KEY_SPACE, KEY_W, KEY_UP], "attack": [KEY_J, KEY_Z], "dodge": [KEY_K, KEY_SHIFT, KEY_C],
 		"rage": [KEY_L, KEY_Q], "toggle_log": [KEY_TAB, KEY_I], "confirm": [KEY_ENTER, KEY_KP_ENTER],
-		"test_down": [KEY_F2, KEY_2],
+		"interact": [KEY_E, KEY_F], "potion": [KEY_H], "reckless": [KEY_R], "echo": [KEY_U],
+		"back": [KEY_ESCAPE, KEY_BACKSPACE], "test_down": [KEY_F2],
 	}
-	var pads := {"jump": [JOY_BUTTON_A], "attack": [JOY_BUTTON_X], "dodge": [JOY_BUTTON_B, JOY_BUTTON_RIGHT_SHOULDER],
-		"rage": [JOY_BUTTON_Y], "toggle_log": [JOY_BUTTON_BACK], "confirm": [JOY_BUTTON_START],
-		"move_left": [JOY_BUTTON_DPAD_LEFT], "move_right": [JOY_BUTTON_DPAD_RIGHT], "move_down": [JOY_BUTTON_DPAD_DOWN]}
+	var pads := {"jump": [JOY_BUTTON_A], "attack": [JOY_BUTTON_X], "dodge": [JOY_BUTTON_B],
+		"rage": [JOY_BUTTON_Y], "toggle_log": [JOY_BUTTON_BACK], "confirm": [JOY_BUTTON_START, JOY_BUTTON_A],
+		"interact": [JOY_BUTTON_LEFT_SHOULDER], "echo": [JOY_BUTTON_RIGHT_SHOULDER], "potion": [JOY_BUTTON_DPAD_UP],
+		"back": [JOY_BUTTON_B],
+		"move_left": [JOY_BUTTON_DPAD_LEFT], "move_right": [JOY_BUTTON_DPAD_RIGHT], "move_down": [JOY_BUTTON_DPAD_DOWN],
+		"move_up": [JOY_BUTTON_DPAD_UP]}
 	for action: String in keys:
 		if not InputMap.has_action(action):
 			InputMap.add_action(action, 0.35)
@@ -132,7 +100,8 @@ func _setup_input() -> void:
 			var j := InputEventJoypadButton.new()
 			j.button_index = b
 			InputMap.action_add_event(action, j)
-	var axes := {"move_left": [JOY_AXIS_LEFT_X, -1.0], "move_right": [JOY_AXIS_LEFT_X, 1.0], "move_down": [JOY_AXIS_LEFT_Y, 1.0]}
+	var axes := {"move_left": [JOY_AXIS_LEFT_X, -1.0], "move_right": [JOY_AXIS_LEFT_X, 1.0],
+		"move_down": [JOY_AXIS_LEFT_Y, 1.0], "move_up": [JOY_AXIS_LEFT_Y, -1.0], "reckless": [JOY_AXIS_TRIGGER_RIGHT, 1.0]}
 	for action: String in axes:
 		var m := InputEventJoypadMotion.new()
 		m.axis = axes[action][0]
@@ -144,75 +113,450 @@ func _setup_input() -> void:
 
 
 func accepting_input() -> bool:
-	return phase == Phase.PLAY
+	return phase == Phase.RUN
 
 
-func _start() -> void:
-	phase = Phase.PLAY
+# ---------------- hero saves ----------------
+
+func _hero_id() -> String:
+	var me := ""
+	if _bridge:
+		me = str(_bridge.me())
+	var slug := me.to_lower().strip_edges().replace(" ", "-")
+	return (slug if slug != "" else "guest") + "_boarvhal"
+
+
+func _on_whoami(args: Array) -> void:
+	if args.size() == 0 or args[0] == null:
+		return
+	var d = JSON.parse_string(str(args[0]))
+	if typeof(d) == TYPE_DICTIONARY:
+		hero.owner = str(d.get("player", d.get("name", "")))
+		if phase == Phase.TAVERN and _loaded:
+			_refresh_tavern()
+
+
+func _load_hero() -> void:
+	if OS.has_feature("web"):
+		_bridge = JavaScriptBridge.get_interface("VDSave")
+	if _bridge:
+		hero.id = _hero_id()
+		_cb_load = JavaScriptBridge.create_callback(_on_hero_loaded)
+		_cb_save = JavaScriptBridge.create_callback(_on_hero_saved)
+		_bridge.loadDoc("vd_heroes", hero.id, _cb_load)
+		_cb_who = JavaScriptBridge.create_callback(_on_whoami)
+		_bridge.whoami(_cb_who)
+	else:
+		var txt := FileAccess.get_file_as_string("user://hero.json") if not bot else ""
+		_on_hero_loaded([txt if txt != "" else null])
+
+
+func _on_hero_loaded(args: Array) -> void:
+	if args.size() > 0 and args[0] != null:
+		var d = JSON.parse_string(str(args[0]))
+		if typeof(d) == TYPE_DICTIONARY:
+			hero.load_dict(d)
+	save_mode = str(_bridge.mode()) if _bridge else "local"
+	_loaded = true
+	player.apply_hero(hero)
+	player.hp = player.max_hp
+	player.hp_changed.emit()
+	if _arg("lv5"):
+		hero.level = 5
+		hero.xp = 6500
+		player.apply_hero(hero)
+	if _arg("boss"):
+		hero.level = 2
+		hero.xp = 300
+		_start_run()
+		depth = ROOMS_BEFORE_BOSS
+		_enter_room("boss")
+		return
+	if _arg("doors"):
+		_start_run()
+		for e in enemies:
+			e.queue_free()
+		enemies.clear()
+		_offer_doors()
+		return
+	_open_tavern()
+
+
+## Test switches: "--boss" on the command line or "?test=boss" in the page address.
+func _arg(name: String) -> bool:
+	if OS.get_cmdline_user_args().has("--" + name) or OS.get_cmdline_user_args().has("--%stest" % name):
+		return true
+	if OS.has_feature("web"):
+		var q = JavaScriptBridge.eval("window.location.search", true)
+		return q is String and (q as String).contains("test=" + name)
+	return false
+
+
+func save_hero() -> void:
+	var json := JSON.stringify(hero.to_dict())
+	if _bridge:
+		_bridge.saveDoc("vd_heroes", hero.id, json, _cb_save)
+	elif not bot:
+		var f := FileAccess.open("user://hero.json", FileAccess.WRITE)
+		if f:
+			f.store_string(json)
+
+
+func _on_hero_saved(args: Array) -> void:
+	if args.size() > 0 and not bool(args[0]):
+		toast("Saved in this browser only: the party records could not be reached.")
+
+
+func _save_run_record(result: String) -> void:
+	if not _bridge:
+		return
+	var rec := {"hero": hero.name, "owner": hero.owner, "level": hero.level, "result": result, "depth": depth,
+		"biome": BIOME, "kills": stats.get("kills", 0), "gold": run_gold, "nat20s": stats.get("nat20s", 0),
+		"time": Time.get_unix_time_from_system()}
+	_bridge.saveDoc("vd_runs", "%s_%d" % [hero.id, Time.get_unix_time_from_system()], JSON.stringify(rec), _cb_save)
+
+
+# ---------------- tavern ----------------
+
+func _tavern_options() -> Array:
+	return [
+		["Descend into the %s" % BIOME, "start"],
+		["Buy a Potion of Healing (%d gp)" % POTION_PRICE, "potion"],
+	]
+
+
+func _open_tavern() -> void:
+	phase = Phase.TAVERN
+	_menu_pick = 0
+	hud.hide_doors()
+	_refresh_tavern()
+
+
+func _refresh_tavern() -> void:
+	var opts: Array = _tavern_options()
+	var next := hero.next_level_xp()
+	var sheet := "%s, level %d %s\nHP %d   AC %d   Greataxe +%d (1d12%+d)\nXP %d%s   Gold %d   Potions %d\nRuns %d   Boss kills %d   Deaths %d   Goblins slain %d" % [
+		hero.name, hero.level, hero.title, hero.max_hp(), hero.ac(), hero.combat_stats().weapon.attack, hero.str_mod(),
+		hero.xp, (" / %d" % next) if next > 0 else " (max level)", hero.gold, hero.potions,
+		hero.runs, hero.clears, hero.deaths, hero.kills]
+	var who := ("Playing as %s. " % hero.owner) if hero.owner != "" else ""
+	var saves := "Progress saves to your party's records." if save_mode == "shared" else "Progress saves in this browser. Open Session Scribe and enter the campaign passphrase to share it with the party."
+	hud.show_tavern(sheet, opts.map(func(o): return o[0]), _menu_pick, who + saves)
+
+
+func _tavern_input() -> void:
+	var opts: Array = _tavern_options()
+	if Input.is_action_just_pressed("move_down") or Input.is_action_just_pressed("move_right"):
+		_menu_pick = (_menu_pick + 1) % opts.size()
+		sfx.play("step", -8.0)
+		_refresh_tavern()
+	elif Input.is_action_just_pressed("move_up") or Input.is_action_just_pressed("move_left"):
+		_menu_pick = (_menu_pick - 1 + opts.size()) % opts.size()
+		sfx.play("step", -8.0)
+		_refresh_tavern()
+	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("interact"):
+		match opts[_menu_pick][1]:
+			"start":
+				_start_run()
+			"potion":
+				if hero.gold >= POTION_PRICE:
+					hero.gold -= POTION_PRICE
+					hero.potions += 1
+					save_hero()
+					sfx.play("die", -6.0)
+					toast("Bought a Potion of Healing.")
+				else:
+					toast("Not enough gold. Potions cost %d gp." % POTION_PRICE)
+				_refresh_tavern()
+
+
+# ---------------- runs ----------------
+
+func _start_run() -> void:
+	hud.hide_tavern()
 	hud.hide_center()
-	_wave_timer = 1.0
+	hero.runs += 1
+	stats = {"swings": 0, "rolls": 0, "hits": 0, "crits": 0, "fumbles": 0, "glances": 0, "self": 0, "taken": 0, "kills": 0, "nat20s": 0, "xp": 0}
+	run_gold = 0
+	run_potions = hero.potions
+	hit_dice = hero.level
+	depth = 0
+	_used_rooms.clear()
+	_campfire_taken = false
+	player.apply_hero(hero)
+	player.hp = player.max_hp
+	player.rage_uses = player.stats.rage_uses
+	player.used_second_wind = false
+	player.hp_changed.emit()
+	log_line("Delve %d begins." % hero.runs)
+	_enter_room("combat")
 
 
-var bot := OS.get_cmdline_user_args().has("--bot")
-var _bot_t := 0.0
-var _stat_t := 0.0
+func _enter_room(kind: String) -> void:
+	depth += 1
+	room_type = kind
+	var file := ""
+	if kind == "boss":
+		file = "warren_boss"
+	else:
+		var pool: Array = ROOM_POOL[kind].filter(func(f): return not _used_rooms.has(f))
+		if pool.is_empty():
+			pool = ROOM_POOL[kind]
+		file = pool[dice.die(pool.size()) - 1]
+		_used_rooms.append(file)
+	if kind == "campfire":
+		_campfire_taken = true
+	_load_room(file)
+	player.global_position = room.player_spawn
+	player.velocity = Vector2.ZERO
+	if is_instance_valid(player.echo):
+		player.echo.queue_free()
+	camera.global_position = player.global_position
+	camera.reset_smoothing()
+	phase = Phase.RUN
+	var label := "%s  %d / %d  %s" % [BIOME.to_upper(), mini(depth, ROOMS_BEFORE_BOSS + 1), ROOMS_BEFORE_BOSS + 1, ROOM_LABEL[kind]]
+	hud.set_room(label)
+	hud.banner(ROOM_LABEL[kind], Color(1, 0.88, 0.55))
+	log_line("Room %d: %s." % [depth, ROOM_LABEL[kind].capitalize()])
+	if kind == "boss":
+		phase = Phase.BATTLE
+		get_tree().create_timer(1.0).timeout.connect(func(): battle.start(self))
 
 
-func _bot(delta: float) -> void:
-	_bot_t += delta
-	for a in ["move_left", "move_right", "attack", "dodge", "jump", "rage"]:
-		Input.action_release(a)
-	if phase == Phase.TITLE:
-		Input.action_press("attack")
+func _load_room(file: String, quiet := false) -> void:
+	if room:
+		room.queue_free()
+	for e in enemies:
+		if is_instance_valid(e):
+			e.queue_free()
+	enemies.clear()
+	for p in props:
+		if is_instance_valid(p):
+			p.queue_free()
+	props.clear()
+	for c in get_children():
+		if c is Projectile:
+			c.queue_free()
+	room = Room.new()
+	add_child(room)
+	move_child(room, 0)
+	room.build(FileAccess.get_file_as_string("res://rooms/%s.txt" % file))
+	camera.limit_left = 0
+	camera.limit_top = 0
+	camera.limit_right = int(room.size_px().x)
+	camera.limit_bottom = int(room.size_px().y)
+	if quiet:
 		return
-	var es := living_enemies()
-	if es.is_empty() or player.is_down():
-		return
-	var e: Enemy = es[0]
-	var dx := e.global_position.x - player.global_position.x
-	if absf(dx) > 18.0:
-		Input.action_press("move_right" if dx > 0 else "move_left")
-		if absf(player.velocity.x) < 5.0 or int(_bot_t * 2) % 5 == 0:
-			Input.action_press("jump")
-	elif e.global_position.y < player.global_position.y - 20.0 and player.is_on_floor():
-		Input.action_press("jump")
-	elif int(_bot_t * 10) % 4 == 0:
-		Input.action_press("attack")
-	if e.state == Enemy.State.WINDUP and randf() < 0.05:
-		Input.action_press("dodge")
-	if wave == 2 and player.rage_uses == 2:
-		Input.action_press("rage")
+	for s in room.spawns:
+		var key: String = s[0]
+		if key == "B":
+			continue
+		spawn_monster(key, s[1])
+	for c in room.chests:
+		var ch := Chest.new()
+		ch.game = self
+		ch.position = c
+		add_child(ch)
+		props.append(ch)
+	for f in room.fires:
+		var cf := Campfire.new()
+		cf.game = self
+		cf.position = f
+		add_child(cf)
+		props.append(cf)
+	for d in room.darts:
+		var dt := DartTrap.new()
+		dt.game = self
+		dt.position = d[0]
+		dt.dir = d[1]
+		add_child(dt)
+		props.append(dt)
 
+
+func spawn_monster(key: String, pos: Vector2) -> Enemy:
+	var e := Enemy.new()
+	e.setup(self, Creatures.monster(key))
+	e.position = pos
+	e.facing = -1 if pos.x > player.global_position.x else 1
+	e._cd = 0.6 + randf() * 0.6
+	add_child(e)
+	enemies.append(e)
+	return e
+
+
+func _spawn_player() -> void:
+	player = Player.new()
+	player.game = self
+	player.hero = hero
+	player.stats = hero.combat_stats()
+	player.position = room.player_spawn
+	add_child(player)
+	player.died.connect(_on_player_died)
+	player.downed.connect(func(): hud.death_saves(true, player.death_saves); hud.banner("DOWN!", Color(1, 0.4, 0.35)))
+	camera.global_position = player.global_position
+
+
+func room_cleared() -> bool:
+	if room_type in ["combat", "elite"]:
+		return living_enemies().is_empty()
+	return true
+
+
+func try_interact() -> void:
+	for p in props:
+		if is_instance_valid(p) and p.has_method("interact") and p.global_position.distance_to(player.global_position) < 24.0:
+			p.interact(player)
+			return
+
+
+func _check_exit() -> void:
+	if room.exit_pos.x < 0.0:
+		return
+	var near := absf(player.global_position.x - room.exit_pos.x) < 10.0 and absf(player.global_position.y - room.exit_pos.y) < 20.0
+	if not near:
+		return
+	if not room_cleared():
+		toast("The door is barred. Clear the room first.")
+		return
+	_offer_doors()
+
+
+func _offer_doors() -> void:
+	phase = Phase.DOORS
+	player.velocity = Vector2.ZERO
+	if depth >= ROOMS_BEFORE_BOSS:
+		_door_options = ["boss"]
+	else:
+		var weights := {"combat": 4, "gauntlet": 2, "treasure": 2, "elite": 1}
+		if depth >= 2 and not _campfire_taken:
+			weights["campfire"] = 3
+		var a := _weighted(weights)
+		var b := a
+		var guard := 0
+		while b == a and guard < 20:
+			b = _weighted(weights)
+			guard += 1
+		if depth == 3 and not _campfire_taken and a != "campfire" and b != "campfire":
+			b = "campfire"
+		_door_options = [a, b]
+	_door_pick = 0
+	_show_doors()
+
+
+func _weighted(w: Dictionary) -> String:
+	var total := 0
+	for k in w:
+		total += w[k]
+	var r := dice.die(total)
+	for k in w:
+		r -= w[k]
+		if r <= 0:
+			return k
+	return w.keys()[0]
+
+
+func _show_doors() -> void:
+	var labels: Array = _door_options.map(func(k): return ROOM_LABEL[k])
+	var hints: Array = _door_options.map(func(k): return ROOM_HINT[k])
+	hud.show_doors(labels, hints, _door_pick)
+
+
+func _doors_input() -> void:
+	if Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right"):
+		_door_pick = (_door_pick + 1) % _door_options.size()
+		sfx.play("step", -8.0)
+		_show_doors()
+	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("interact"):
+		hud.hide_doors()
+		sfx.play("chop", -8.0)
+		_enter_room(_door_options[_door_pick])
+
+
+func living_enemies() -> Array[Enemy]:
+	var out: Array[Enemy] = []
+	for e in enemies:
+		if is_instance_valid(e) and not e.is_dead():
+			out.append(e)
+	return out
+
+
+func on_enemy_killed(e: Enemy) -> void:
+	stats.kills = stats.get("kills", 0) + 1
+	hero.kills += 1
+	log_line("%s is slain. +%d XP." % [e.data.name, e.data.xp])
+	sfx.play("thud", -6.0)
+	gain_xp(int(e.data.xp))
+	if room_cleared() and phase == Phase.RUN and room_type in ["combat", "elite"]:
+		room.open_exit()
+		toast("The way on is open.")
+
+
+func gain_xp(amount: int) -> void:
+	stats.xp = stats.get("xp", 0) + amount
+	var before := hero.level
+	var gained := hero.add_xp(amount)
+	if gained > 0:
+		hit_dice += gained
+		player.apply_hero(hero)
+		player.hp = mini(player.max_hp, player.hp + 10 * gained)
+		player.rage_uses = mini(player.stats.rage_uses, player.rage_uses + (1 if hero.level >= 3 and before < 3 else 0))
+		player.hp_changed.emit()
+		banner("LEVEL %d!" % hero.level, Color(1.0, 0.85, 0.3))
+		sfx.play("crit", -4.0)
+		for lv in range(before + 1, hero.level + 1):
+			log_line("Level %d: %s" % [lv, hero.level_features(lv)])
+		hud.level_note(hero.level_features(hero.level))
+		save_hero()
+
+
+func note_swing(_connected: bool) -> void:
+	stats.swings = stats.get("swings", 0) + 1
+
+
+# ---------------- frame ----------------
 
 func _process(delta: float) -> void:
 	if bot:
 		_bot(delta)
-		_stat_t += delta
-		if _stat_t > 3.0:
-			_stat_t = 0.0
-			print("[bot] wave %d hp %d p=%s e=%s stats %s" % [wave, player.hp, str(player.global_position.round()), str(living_enemies().map(func(x): return [x.data.name.substr(7), x.global_position.round(), Enemy.State.keys()[x.state]])), str(stats)])
 	match phase:
-		Phase.TITLE:
-			if Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("jump") or Input.is_action_just_pressed("confirm"):
-				_start()
+		Phase.TAVERN:
+			if _loaded:
+				_tavern_input()
+		Phase.DOORS:
+			_doors_input()
+		Phase.RUN:
+			_check_exit()
 		Phase.OVER:
 			if Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("attack"):
-				skip_title = true
-				get_tree().reload_current_scene()
-				return
+				hud.hide_center()
+				_reset_after_run()
+				_open_tavern()
 	if Input.is_action_just_pressed("toggle_log"):
 		hud.toggle_log()
-	if Input.is_action_just_pressed("test_down") and phase == Phase.PLAY:
+	if Input.is_action_just_pressed("test_down") and phase == Phase.RUN:
 		player.force_down()
-
-	if phase == Phase.PLAY and _wave_timer > 0.0:
-		_wave_timer -= delta
-		if _wave_timer <= 0.0:
-			_spawn_wave()
-
-	camera.global_position = player.global_position + Vector2(player.facing * 24.0, -20.0)
-	hud.refresh(player, stats, wave, living_enemies().size())
+	if phase != Phase.BATTLE:
+		camera.global_position = player.global_position + Vector2(player.facing * 24.0, -20.0)
+	hud.refresh(player, stats, self)
+	hud.prompt(_current_prompt())
 	_layout_name_tags()
+
+
+func _current_prompt() -> String:
+	if phase != Phase.RUN:
+		return ""
+	for p in props:
+		if is_instance_valid(p) and p.has_method("prompt") and p.global_position.distance_to(player.global_position) < 24.0:
+			return p.prompt()
+	return ""
+
+
+func _reset_after_run() -> void:
+	_load_room("warren_campfire_1", true)
+	player.global_position = room.player_spawn
+	player.set_physics_process(true)
+	player.revive_full()
+	camera.reset_smoothing()
 
 
 ## Stack monster name tags on extra rows when neighbours' names would overlap.
@@ -229,51 +573,48 @@ func _layout_name_tags() -> void:
 		if row == row_end.size():
 			row_end.append(0.0)
 		row_end[row] = e.global_position.x + w / 2.0
-		e.bar.position.y = -22.0 - 9.0 * row
+		e.bar.position.y = -22.0 - 9.0 * row - (22.0 if e.data.name == "Bugbear Chief" else 0.0)
 
 
-func _spawn_wave() -> void:
-	wave += 1
-	var list: Array = Creatures.WAVES[mini(wave - 1, Creatures.WAVES.size() - 1)].duplicate()
-	if wave > Creatures.WAVES.size():
-		for i in wave - Creatures.WAVES.size():
-			list.append("warrior")
-	hud.banner("WAVE %d" % wave, Color(1, 0.88, 0.55))
-	for i in list.size():
-		var key: String = list[i]
-		var e := Enemy.new()
-		e.setup(self, Creatures.monster(key))
-		var door: Vector2 = room.doors[_door_toggle % room.doors.size()]
-		_door_toggle += 1
-		e.position = door + Vector2(randf_range(-6, 6), 0)
-		e.facing = 1 if door.x < room.size_px().x / 2.0 else -1
-		e._cd = 0.15 + i * 0.35
-		add_child(e)
-		enemies.append(e)
+# ---------------- run end ----------------
+
+func end_run(result: String) -> void:
+	if phase == Phase.OVER:
+		return
+	phase = Phase.OVER
+	hud.death_saves(false, player.death_saves)
+	hero.best_depth = maxi(hero.best_depth, depth)
+	var body := ""
+	if result == "cleared":
+		hero.clears += 1
+		hero.gold += run_gold
+		hero.potions = run_potions
+		body = "The Bugbear Chief is dead and the Goblin Warren is broken.\n\nYou bank %d gp and carry %d potion%s home." % [run_gold, run_potions, "" if run_potions == 1 else "s"]
+	else:
+		hero.deaths += 1
+		hero.potions = mini(hero.potions, run_potions)
+		body = "%s\n\nThe party carries Boar-vhal back to the tavern. Gold found this run is lost (%d gp). XP is kept." % [result, run_gold]
+	var rolls: int = stats.get("rolls", 0)
+	var pct := 0 if rolls == 0 else roundi(100.0 * stats.hits / rolls)
+	body += "\n\nRooms: %d   Goblins slain: %d   XP earned: %d\nAttack rolls %d, hits %d (%d%%), glancing %d, crits %d, natural 1s %d" % [
+		depth, stats.get("kills", 0), stats.get("xp", 0), rolls, stats.hits, pct, stats.glances, stats.crits, stats.fumbles]
+	save_hero()
+	_save_run_record(result if result == "cleared" else "died")
+	get_tree().create_timer(1.0).timeout.connect(func():
+		hud.show_center("VICTORY" if result == "cleared" else "RUN OVER", body + "\n\nPress Enter, Start or attack to return to the tavern."))
 
 
-func living_enemies() -> Array[Enemy]:
-	var out: Array[Enemy] = []
-	for e in enemies:
-		if is_instance_valid(e) and not e.is_dead():
-			out.append(e)
-	return out
+func _on_player_died(reason: String) -> void:
+	end_run(reason)
 
 
-func on_enemy_killed(e: Enemy) -> void:
-	stats.kills += 1
-	log_line("%s is slain." % e.data.name)
-	sfx.play("thud", -6.0)
-	if living_enemies().is_empty() and phase == Phase.PLAY:
-		_wave_timer = 2.5
-		toast("Wave cleared. Next wave in a moment.")
+func on_battle_end(victory: bool) -> void:
+	if victory:
+		run_gold += 40 + dice.roll(4, 6).reduce(func(a, b): return a + b, 0) * 5
+		end_run("cleared")
 
 
-func note_swing(connected: bool) -> void:
-	stats.swings += 1
-
-
-# ---------------- presentation of rolls ----------------
+# ---------------- presentation ----------------
 
 func show_attack(attacker: Node2D, target: Node2D, weapon: String, atk: Dictionary, dmg: Dictionary,
 		reasons: Array, glancing: bool) -> void:
@@ -402,11 +743,100 @@ func hitstop(seconds: float) -> void:
 	get_tree().create_timer(seconds, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
 
 
-func _on_player_died(reason: String) -> void:
-	phase = Phase.OVER
-	hud.death_saves(false, player.death_saves)
-	var rolls: int = stats.rolls
-	var pct := 0 if rolls == 0 else roundi(100.0 * stats.hits / rolls)
-	get_tree().create_timer(1.2).timeout.connect(func():
-		hud.show_center("RUN OVER", "%s\n\nReached wave %d.  Goblins slain: %d.\nYour attack rolls: %d, hits %d (%d%%), glancing %d, crits %d, natural 1s %d.\nDamage taken: %d (%d from your own fumbles).\n\nPress Enter, Start or attack to try again." % [
-			reason, wave, stats.kills, rolls, stats.hits, pct, stats.glances, stats.crits, stats.fumbles, stats.taken + stats.self, stats.self]))
+# ---------------- test bot ----------------
+
+func _bot_battle() -> void:
+	if int(_bot_t * 6) % 2 == 1:
+		return
+	var b = battle
+	match b.mode:
+		1:  # MENU
+			var want := "end"
+			var adjacent: bool = absi(b._hero().col - b._boss_c().get("col", -99)) <= 1
+			for id in ["rage", "reckless", "attack", "move"]:
+				if id == "move" and adjacent:
+					continue
+				for i in b.menu_items.size():
+					if b.menu_items[i][1] == id and b.menu_items[i][2]:
+						if id == "reckless" and b.reckless_on:
+							continue
+						want = id
+						break
+				if want != "end":
+					break
+			for i in b.menu_items.size():
+				if b.menu_items[i][1] == want:
+					b.menu_pick = i
+			Input.action_press("confirm")
+		2:  # MOVE
+			var hc: Dictionary = b._hero()
+			var bc: Dictionary = b._boss_c()
+			var dir := 1 if bc.get("col", hc.col + 1) > hc.col else -1
+			var target: int = hc.col
+			for i in b.h_move:
+				var nc: int = target + dir
+				if b._occupied(nc, hc):
+					break
+				target = nc
+			b.cursor_col = target
+			Input.action_press("confirm")
+		3:  # TARGET
+			Input.action_press("confirm")
+
+
+func _bot(delta: float) -> void:
+	_bot_t += delta
+	_stat_t += delta
+	if _stat_t > 3.0 and phase == Phase.BATTLE:
+		_stat_t = 0.0
+		print("[battle] mode %s turn %d round %d hp %d" % [battle.mode, battle.turn_index, battle.round_no, player.hp])
+	if _stat_t > 3.0:
+		_stat_t = 0.0
+		print("[bot] phase %s depth %d room %s lvl %d xp %d hp %d/%d enemies %d p=%s" % [Phase.keys()[phase], depth, room_type, hero.level, hero.xp, player.hp, player.max_hp, living_enemies().size(), str(player.global_position.round())])
+	for a in ["move_left", "move_right", "attack", "dodge", "rage", "confirm", "interact", "potion"]:
+		Input.action_release(a)
+	if player.velocity.y >= 0.0 or phase != Phase.RUN:
+		Input.action_release("jump")
+	match phase:
+		Phase.TAVERN, Phase.DOORS, Phase.OVER:
+			if int(_bot_t * 4) % 2 == 0:
+				Input.action_press("confirm")
+			return
+		Phase.BATTLE:
+			_bot_battle()
+			return
+	if player.is_down():
+		return
+	if player.hp < player.max_hp / 3 and run_potions > 0:
+		Input.action_press("potion")
+	var es := living_enemies()
+	var tx := room.exit_pos.x
+	var e: Enemy = null
+	if not es.is_empty():
+		es.sort_custom(func(a, b): return absf(a.global_position.x - player.global_position.x) < absf(b.global_position.x - player.global_position.x))
+		e = es[0]
+		tx = e.global_position.x
+	for p in props:
+		if is_instance_valid(p) and p.has_method("prompt") and p.prompt() != "":
+			tx = p.global_position.x
+			if absf(tx - player.global_position.x) < 12.0:
+				Input.action_press("interact")
+			break
+	var dx := tx - player.global_position.x
+	if e and absf(dx) < 20.0 and absf(e.global_position.y - player.global_position.y) < 20.0:
+		if int(_bot_t * 10) % 4 == 0:
+			Input.action_press("attack")
+	else:
+		Input.action_press("move_right" if dx > 0 else "move_left")
+		var ahead := player.global_position + Vector2(signf(dx) * 20.0, 4.0)
+		var blocked := absf(player.velocity.x) < 5.0
+		if blocked or not room.is_ground_at(ahead) or (e and e.global_position.y < player.global_position.y - 20.0 and absf(dx) < 40.0):
+			Input.action_press("jump")
+	if player.rage_uses > 0 and not player.raging() and e and absf(dx) < 60.0 and room_type in ["elite", "combat"]:
+		Input.action_press("rage")
+	Input.action_release("echo")
+	Input.action_release("reckless")
+	if e and absf(dx) < 40.0 and hero.has_echo() and int(_bot_t * 3) % 7 == 0:
+		Input.action_press("echo")
+	if hero.has_reckless() and not player.reckless and int(_bot_t) % 9 == 0:
+		Input.action_press("reckless")

@@ -28,7 +28,13 @@ const BONUS_ACTION_COOLDOWN := 6.0
 const DEATH_SAVE_INTERVAL := 2.0
 
 var game: Node   # Main
-var stats: Dictionary = Creatures.BOARVHAL
+var stats: Dictionary = Hero.new().combat_stats()
+var hero: Hero
+var reckless := false
+var echo: Node2D
+var _echo_cd := 0.0
+var _potion_t := 0.0
+var recovery := RECOVERY
 var max_hp := 15
 var hp := 15
 var ac := 14
@@ -66,6 +72,7 @@ func _ready() -> void:
 	hp = max_hp
 	ac = stats.ac
 	rage_uses = stats.rage_uses
+	recovery = RECOVERY * (0.5 if hero and hero.has_extra_attack() else 1.0)
 	collision_layer = 0
 	collision_mask = Room.LAYER_SOLID | Room.LAYER_PLATFORM
 	floor_snap_length = 4.0
@@ -101,6 +108,18 @@ func _ready() -> void:
 	visual.add_child(slash)
 
 
+## Re-reads stats after a level-up. Keeps current damage taken.
+func apply_hero(h: Hero) -> void:
+	hero = h
+	var lost := max_hp - hp
+	stats = h.combat_stats()
+	max_hp = stats.hp
+	hp = clampi(max_hp - lost, 1, max_hp) if hp > 0 else 0
+	ac = stats.ac
+	recovery = RECOVERY * (0.5 if h.has_extra_attack() else 1.0)
+	hp_changed.emit()
+
+
 func is_down() -> bool:
 	return state == State.DOWN or state == State.DEAD
 
@@ -122,6 +141,7 @@ func _physics_process(delta: float) -> void:
 	_iframes = maxf(0.0, _iframes - delta)
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
 	bonus_cd = maxf(0.0, bonus_cd - delta)
+	_echo_cd = maxf(0.0, _echo_cd - delta)
 	_spike_cd = maxf(0.0, _spike_cd - delta)
 	if rage_time > 0.0:
 		rage_time = maxf(0.0, rage_time - delta)
@@ -156,12 +176,23 @@ func _physics_process(delta: float) -> void:
 			_try_dodge(input_x)
 		if Input.is_action_just_pressed("rage"):
 			_try_rage()
+		if Input.is_action_just_pressed("interact"):
+			game.try_interact()
+		if Input.is_action_just_pressed("potion"):
+			_try_potion()
+		if Input.is_action_just_pressed("reckless"):
+			_toggle_reckless()
+		if Input.is_action_just_pressed("echo"):
+			_try_echo()
 	_buffer = maxf(0.0, _buffer - delta)
 	if is_on_floor():
 		_coyote = COYOTE
 	else:
 		_coyote = maxf(0.0, _coyote - delta)
 
+	if _potion_t > 0.0:
+		_potion_t -= delta
+		input_x *= 0.3
 	match state:
 		State.NORMAL:
 			_move(input_x, delta, 1.0)
@@ -250,7 +281,7 @@ func _start_attack() -> void:
 	var tw := create_tween()
 	tw.tween_property(weapon_pivot, "rotation", -2.3, WINDUP).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tw.tween_property(weapon_pivot, "rotation", 1.95, ACTIVE).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
-	tw.tween_property(weapon_pivot, "rotation", -0.55, RECOVERY).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(weapon_pivot, "rotation", -0.55, recovery).set_trans(Tween.TRANS_SINE)
 
 
 func _process_attack() -> void:
@@ -263,10 +294,10 @@ func _process_attack() -> void:
 		if _state_time >= WINDUP + ACTIVE:
 			_attack_phase = 2
 			game.note_swing(_hit_this_swing.size() > 0)
-	if _attack_phase == 2 and _state_time >= WINDUP + ACTIVE + RECOVERY * 0.55 and _attack_queued:
+	if _attack_phase == 2 and _state_time >= WINDUP + ACTIVE + recovery * 0.55 and _attack_queued:
 		_start_attack()
 		return
-	if _attack_phase == 2 and _state_time >= WINDUP + ACTIVE + RECOVERY:
+	if _attack_phase == 2 and _state_time >= WINDUP + ACTIVE + recovery:
 		_set_state(State.NORMAL)
 
 
@@ -299,6 +330,12 @@ func _roll_attack_against(e: Enemy) -> void:
 	if not is_on_floor() and global_position.y < e.global_position.y - 6.0:
 		adv += 1
 		reasons.append("from above")
+	if reckless:
+		adv += 1
+		reasons.append("reckless")
+	if is_instance_valid(echo) and echo.global_position.distance_to(e.global_position) < 26.0:
+		adv += 1
+		reasons.append("flanked by your echo")
 	var mode := Dice.combine(adv, 0)
 	var wpn: Dictionary = stats.weapon
 	var atk := Rules.attack(game.dice, wpn.attack, e.ac, mode)
@@ -311,6 +348,10 @@ func _roll_attack_against(e: Enemy) -> void:
 		var gl: Dictionary = Creatures.GLANCING
 		dmg = Rules.damage(game.dice, gl.count, gl.sides, gl.bonus)
 	game.show_attack(self, e, "Greataxe", atk, dmg, reasons, glancing)
+	if atk.kept == 20 and hero:
+		hero.nat20s += 1
+	if not dmg.is_empty() and hero:
+		hero.biggest_hit = maxi(hero.biggest_hit, int(dmg.total))
 	if atk.hit or glancing:
 		e.take_hit(dmg.total, atk.crit, facing, glancing)
 	elif atk.fumble:
@@ -328,15 +369,15 @@ func _fumble_self() -> void:
 # ---------------- defence ----------------
 
 ## Called by an enemy whose strike connected. Rolls against Boar-vhal's AC.
-func receive_attack(enemy: Enemy, wpn: Dictionary) -> void:
+func receive_attack(enemy: Node2D, wpn: Dictionary) -> void:
 	if is_invulnerable():
 		return
-	var atk := Rules.attack(game.dice, wpn.attack, ac, Dice.Mode.NORMAL)
+	var atk := Rules.attack(game.dice, wpn.attack, ac, Dice.Mode.ADVANTAGE if reckless else Dice.Mode.NORMAL)
 	var dmg := {}
 	if atk.hit:
 		var resisted: bool = raging() and wpn.type in ["bludgeoning", "piercing", "slashing"]
 		dmg = Rules.damage(game.dice, wpn.count, wpn.sides, wpn.bonus, atk.crit, resisted)
-	game.show_attack(enemy, self, wpn.name, atk, dmg, [], false)
+	game.show_attack(enemy, self, wpn.name, atk, dmg, ["you attacked recklessly"] if reckless else [], false)
 	if atk.hit:
 		take_damage(dmg.total, atk.crit, signf(global_position.x - enemy.global_position.x))
 	else:
@@ -425,6 +466,26 @@ func _die(reason: String) -> void:
 	died.emit(reason)
 
 
+## Full reset between runs (long rest at the tavern).
+func revive_full() -> void:
+	_set_state(State.NORMAL)
+	death_saves.reset()
+	hp = max_hp
+	rage_time = 0.0
+	rage_uses = stats.rage_uses
+	reckless = false
+	used_second_wind = false
+	_iframes = 0.0
+	visual.rotation = 0.0
+	visual.position = Vector2.ZERO
+	weapon_pivot.visible = true
+	weapon_pivot.rotation = -0.55
+	sprite.play("idle")
+	if is_instance_valid(echo):
+		echo.queue_free()
+	hp_changed.emit()
+
+
 func force_down() -> void:
 	if not is_down():
 		hp = 0
@@ -473,6 +534,69 @@ func _try_rage() -> void:
 	game.sfx.play("thud", -4.0)
 
 
+func _toggle_reckless() -> void:
+	if not hero or not hero.has_reckless():
+		game.toast("Reckless Attack unlocks at level 2.")
+		return
+	reckless = not reckless
+	game.toast("Reckless Attack ON: advantage for you, and for them." if reckless else "Reckless Attack off.")
+
+
+func _try_potion() -> void:
+	if _potion_t > 0.0 or is_down():
+		return
+	if game.run_potions <= 0:
+		game.toast("No potions. Buy them at the tavern.")
+		return
+	if hp >= max_hp:
+		game.toast("Already at full health.")
+		return
+	game.run_potions -= 1
+	_potion_t = 0.6
+	var faces: Array[int] = game.dice.roll(2, 4)
+	var heal: int = faces[0] + faces[1] + 2
+	hp = mini(max_hp, hp + heal)
+	hp_changed.emit()
+	game.toast("Potion of Healing: +%d HP (2d4+2)" % heal)
+	game.log_line("Potion of Healing: 2d4 %s +2 = %d HP regained." % [str(faces), heal])
+	game.sfx.play("dodge", -4.0)
+
+
+func _try_echo() -> void:
+	if not hero or not hero.has_echo():
+		game.toast("Echo unlocks at level 3.")
+		return
+	if _echo_cd > 0.0:
+		return
+	if not is_instance_valid(echo):
+		if bonus_cd > 0.0:
+			game.toast("Bonus action recharging (%.0fs)" % ceilf(bonus_cd))
+			return
+		bonus_cd = BONUS_ACTION_COOLDOWN
+		echo = Node2D.new()
+		var ghost := AnimatedSprite2D.new()
+		ghost.sprite_frames = sprite.sprite_frames
+		ghost.offset = sprite.offset
+		ghost.play("idle")
+		ghost.modulate = Color(0.55, 0.75, 1.0, 0.55)
+		ghost.scale.x = facing
+		echo.add_child(ghost)
+		echo.global_position = global_position
+		echo.z_index = -1
+		game.add_child(echo)
+		game.log_line("Bonus action: Boar-vhal leaves an Echo. Goblins beside it are flanked.")
+		game.sfx.play("dodge", -8.0)
+	else:
+		# Swap places with the echo.
+		var here := global_position
+		global_position = echo.global_position
+		echo.global_position = here
+		velocity = Vector2.ZERO
+		_echo_cd = 1.5
+		_iframes = maxf(_iframes, 0.2)
+		game.sfx.play("dodge", -6.0)
+
+
 # ---------------- hazards and animation ----------------
 
 func _check_spikes() -> void:
@@ -482,7 +606,8 @@ func _check_spikes() -> void:
 	for r: Rect2 in game.room.spike_rects:
 		if feet.intersects(r):
 			_spike_cd = 1.4
-			var sv := Rules.save(game.dice, stats.dex_save, Creatures.SPIKES.dc)
+			var ds_mode := Dice.Mode.ADVANTAGE if hero and hero.level >= 2 else Dice.Mode.NORMAL
+			var sv := Rules.save(game.dice, stats.dex_save, Creatures.SPIKES.dc, ds_mode)
 			var dmg := Rules.damage(game.dice, Creatures.SPIKES.count, Creatures.SPIKES.sides, 0, false,
 				raging())
 			var total: int = dmg.total if not sv.success else floori(dmg.total / 2.0)

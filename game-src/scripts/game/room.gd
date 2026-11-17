@@ -15,6 +15,12 @@ var player_spawn := Vector2.ZERO
 var doors: Array[Vector2] = []
 var spike_rects: Array[Rect2] = []
 var spike_sprites: Array[AnimatedSprite2D] = []
+var exit_pos := Vector2(-1000, -1000)
+var exit_door: Sprite2D
+var spawns: Array = []        # [key, position]
+var chests: Array[Vector2] = []
+var fires: Array[Vector2] = []
+var darts: Array = []         # [position, direction]
 
 const WALL := Vector2i(2, 1)      # wall_mid at (32, 16)
 const LIP := Vector2i(2, 0)       # wall_top_mid at (32, 0)
@@ -77,8 +83,22 @@ func build(text: String) -> void:
 					deco.add_child(s)
 					spike_sprites.append(s)
 					spike_rects.append(Rect2(x * T, y * T + 9, T, 7))
-				"P":
+				"P", "S":
 					player_spawn = Vector2(x * T + 8, (y + 1) * T)
+				"X":
+					exit_pos = Vector2(x * T + 8, (y + 1) * T)
+					exit_door = Sprite2D.new()
+					exit_door.texture = Art.region("doors_leaf_closed")
+					exit_door.position = Vector2(x * T + 8, (y + 1) * T - 16)
+					deco.add_child(exit_door)
+				"g", "G", "a", "B":
+					spawns.append([ch, Vector2(x * T + 8, (y + 1) * T)])
+				"C":
+					chests.append(Vector2(x * T + 8, (y + 1) * T))
+				"F":
+					fires.append(Vector2(x * T + 8, (y + 1) * T))
+				"D", "d":
+					darts.append([Vector2(x * T + 8, y * T + 8), -1.0 if ch == "D" else 1.0])
 				"L", "R":
 					doors.append(Vector2(x * T + 8, (y + 1) * T))
 					var door := Sprite2D.new()
@@ -153,6 +173,11 @@ func is_ground_at(p: Vector2) -> bool:
 		return true
 	var ch := rows[y][x]
 	return ch == "#" or ch == "="
+
+
+func open_exit() -> void:
+	if exit_door:
+		exit_door.texture = Art.region("doors_leaf_open")
 
 
 func size_px() -> Vector2:

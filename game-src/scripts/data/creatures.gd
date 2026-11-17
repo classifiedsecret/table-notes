@@ -47,6 +47,34 @@ const GOBLIN_WARRIOR := {
 const GLANCING := {"count": 1, "sides": 4, "bonus": 0}
 const FUMBLE_SELF := {"count": 1, "sides": 4, "bonus": 0}
 
+## Goblin Archer: Goblin Warrior statline (SRD 5.2) without a shield, using its Shortbow +4, 5 (1d6 + 2) piercing.
+const GOBLIN_ARCHER := {
+	"name": "Goblin Archer",
+	"display": "Goblin Archer",
+	"ac": 13, "hp_count": 3, "hp_sides": 6,
+	"speed_ft": 30,
+	"weapon": {"name": "Shortbow", "attack": 4, "count": 1, "sides": 6, "bonus": 2, "type": "piercing"},
+	"melee": {"name": "Scimitar", "attack": 4, "count": 1, "sides": 6, "bonus": 2, "type": "slashing"},
+	"sprite": "goblin_warrior", "weapon_sprite": "weapon_bow",
+	"windup": 0.7, "cooldown": 2.0, "xp": 50, "ranged": true,
+}
+
+## Bugbear Chief: boss of the Goblin Warren. Built on the SRD 5.2 Bugbear Warrior, tuned for one hero.
+## AC 14, HP 5d8 + 5, reach 10 ft (Long-Limbed), Morningstar +4, 9 (2d6 + 2) piercing.
+const BUGBEAR_CHIEF := {
+	"name": "Bugbear Chief",
+	"display": "Bugbear Chief",
+	"ac": 14, "hp_count": 5, "hp_sides": 8, "hp_bonus": 5,
+	"speed_ft": 30, "reach": 2, "dex_mod": 2, "str_save": 2,
+	"weapon": {"name": "Morningstar", "attack": 4, "count": 2, "sides": 6, "bonus": 2, "type": "piercing"},
+	"shove_dc": 12,
+	"sprite": "bugbear_chief", "weapon_sprite": "weapon_big_hammer", "frame": [32, 36],
+	"windup": 0.6, "cooldown": 1.5, "xp": 200,
+}
+
+## Dart trap: +5 to hit, 2 (1d4) piercing.
+const DART := {"name": "Dart trap", "attack": 5, "count": 1, "sides": 4, "bonus": 0, "type": "piercing"}
+
 ## Spike pit in the test room: DEX save DC 12, 2d4 piercing, half on a success.
 const SPIKES := {"dc": 12, "count": 2, "sides": 4, "bonus": 0, "type": "piercing"}
 
@@ -64,4 +92,8 @@ const WAVES := [
 
 
 static func monster(key: String) -> Dictionary:
-	return GOBLIN_WARRIOR if key == "warrior" else GOBLIN_MINION
+	match key:
+		"warrior", "G": return GOBLIN_WARRIOR
+		"archer", "a": return GOBLIN_ARCHER
+		"boss", "B": return BUGBEAR_CHIEF
+	return GOBLIN_MINION

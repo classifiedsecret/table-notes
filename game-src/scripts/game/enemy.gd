@@ -32,11 +32,11 @@ func setup(g: Node, d: Dictionary) -> void:
 	data = d
 	ac = d.ac
 	var hp_roll: Array[int] = game.dice.roll(d.hp_count, d.hp_sides)
-	max_hp = 0
+	max_hp = int(d.get("hp_bonus", 0))
 	for v in hp_roll:
 		max_hp += v
 	hp = max_hp
-	speed = 86.0 if d.name == "Goblin Minion" else 74.0
+	speed = 86.0 if d.name == "Goblin Minion" else (66.0 if d.get("ranged", false) else 74.0)
 	game.log_line("A %s appears." % d.name)
 
 
@@ -53,9 +53,10 @@ func _ready() -> void:
 	visual = Node2D.new()
 	add_child(visual)
 	sprite = AnimatedSprite2D.new()
-	sprite.sprite_frames = Art.strip_frames(load("res://assets/sprites/%s.png" % data.sprite), 16, 16, {
+	var fr: Array = data.get("frame", [16, 16])
+	sprite.sprite_frames = Art.strip_frames(load("res://assets/sprites/%s.png" % data.sprite), fr[0], fr[1], {
 		"idle": [0, 4, 6, true], "run": [4, 4, 10, true]})
-	sprite.offset = Vector2(0, -8)
+	sprite.offset = Vector2(0, -fr[1] / 2.0)
 	sprite.material = Art.flash_material()
 	sprite.play("idle")
 	visual.add_child(sprite)
@@ -104,9 +105,6 @@ func _physics_process(delta: float) -> void:
 		_drop_t -= delta
 		if _drop_t <= 0.0:
 			collision_mask |= Room.LAYER_PLATFORM
-	_flash = maxf(0.0, _flash - delta * 6.0)
-	_show_bar = maxf(0.0, _show_bar - delta)
-	(sprite.material as ShaderMaterial).set_shader_parameter("flash", _flash)
 	var p: Player = game.player
 	var dx := p.global_position.x - global_position.x
 	var dy := p.global_position.y - global_position.y
@@ -116,7 +114,9 @@ func _physics_process(delta: float) -> void:
 		State.DEAD:
 			velocity.x = move_toward(velocity.x, 0.0, 400.0 * delta)
 		State.CHASE:
-			if p.is_down():
+			if data.get("ranged", false) and not p.is_down() and game.accepting_input():
+				_archer_chase(delta, dx, dy)
+			elif p.is_down():
 				_go(State.RETREAT)
 			elif not game.accepting_input():
 				velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
@@ -145,7 +145,7 @@ func _physics_process(delta: float) -> void:
 		State.WINDUP:
 			# Facing is locked during the wind-up: dodge behind it for advantage.
 			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
-			weapon_pivot.rotation = lerpf(0.5, -2.0, minf(1.0, _t / (data.windup * 0.6)))
+			weapon_pivot.rotation = 0.0 if data.get("ranged", false) else lerpf(0.5, -2.0, minf(1.0, _t / (data.windup * 0.6)))
 			warn.visible = true
 			_flash = 0.35 + 0.25 * sin(_t * 40.0)
 			(sprite.material as ShaderMaterial).set_shader_parameter("flash_color", Color(1, 0.85, 0.3))
@@ -155,18 +155,27 @@ func _physics_process(delta: float) -> void:
 				(sprite.material as ShaderMaterial).set_shader_parameter("flash_color", Color.WHITE)
 				warn.visible = false
 		State.STRIKE:
-			weapon_pivot.rotation = lerpf(-2.0, 1.9, minf(1.0, _t / 0.08))
-			velocity.x = facing * 60.0 if _t < 0.06 else 0.0
-			if not _struck and _t >= 0.04:
-				_struck = true
-				game.sfx.play("swing", -10.0, 0.2)
-				if _strike_rect().intersects(p.hurt_rect()):
-					p.receive_attack(self, data.weapon)
+			if data.get("ranged", false):
+				velocity.x = 0.0
+				if not _struck:
+					_struck = true
+					var from := global_position + Vector2(facing * 6.0, -8.0)
+					var aim := (p.global_position + Vector2(0, -12) - from).normalized()
+					Projectile.fire(game, from, aim * 210.0, data.name, data.weapon, Color(0.85, 0.75, 0.55))
+					game.sfx.play("swing", -14.0, 0.3)
+			else:
+				weapon_pivot.rotation = lerpf(-2.0, 1.9, minf(1.0, _t / 0.08))
+				velocity.x = facing * 60.0 if _t < 0.06 else 0.0
+				if not _struck and _t >= 0.04:
+					_struck = true
+					game.sfx.play("swing", -10.0, 0.2)
+					if _strike_rect().intersects(p.hurt_rect()):
+						p.receive_attack(self, data.weapon)
 			if _t >= 0.12:
 				_go(State.RECOVER)
 				_cd = data.cooldown
 		State.RECOVER:
-			weapon_pivot.rotation = lerpf(1.9, 0.5, minf(1.0, _t / 0.3))
+			weapon_pivot.rotation = 0.0 if data.get("ranged", false) else lerpf(1.9, 0.5, minf(1.0, _t / 0.3))
 			if data.name == "Goblin Minion" and _t < 0.25:
 				# Nimble Escape: hop back out of reach after stabbing.
 				velocity.x = -facing * 90.0
@@ -203,7 +212,26 @@ func _physics_process(delta: float) -> void:
 	visual.scale.x = facing
 	if state != State.DEAD:
 		sprite.play("run" if absf(velocity.x) > 10.0 else "idle")
-	bar.call("set_values", hp, max_hp, data.display, _show_bar > 0.0 or hp < max_hp)
+
+
+
+## Archers keep their distance and shoot when they have a line on the hero.
+func _archer_chase(delta: float, dx: float, dy: float) -> void:
+	if dx != 0.0:
+		facing = 1 if dx > 0.0 else -1
+	var dist := absf(dx)
+	var want := 0.0
+	if dist < 60.0:
+		want = -signf(dx)
+	elif dist > 150.0:
+		want = signf(dx)
+	if want != 0.0 and is_on_floor() and _ground_ahead_dir(want):
+		velocity.x = move_toward(velocity.x, want * speed, 600.0 * delta)
+	else:
+		velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+	if _cd <= 0.0 and dist < 220.0 and absf(dy) < 70.0 and is_on_floor():
+		_go(State.WINDUP)
+		velocity.x = 0.0
 
 
 func _on_platform() -> bool:
@@ -222,6 +250,14 @@ func _on_platform() -> bool:
 		if ch == "=":
 			on_plat = true
 	return on_plat
+
+
+func _process(delta: float) -> void:
+	_flash = maxf(0.0, _flash - delta * 6.0)
+	_show_bar = maxf(0.0, _show_bar - delta)
+	(sprite.material as ShaderMaterial).set_shader_parameter("flash", _flash)
+	if state != State.DEAD:
+		bar.call("set_values", hp, max_hp, data.display, _show_bar > 0.0 or hp < max_hp)
 
 
 func _ground_ahead_dir(d: float) -> bool:

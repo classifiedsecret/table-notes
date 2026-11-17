@@ -25,6 +25,18 @@
   function call(cb) { var a = Array.prototype.slice.call(arguments, 1); try { cb.apply(null, a); } catch (e) { console.error('VDSave callback', e); } }
   window.VDSave = {
     mode: function () { return mode; },
+    /* The Session Scribe "You are" choice: a party member id, or '' if not chosen. */
+    me: function () { return ls('table-notes-me') || ''; },
+    /* cb(jsonOrNull): the party member record for "You are" ({name, player, ...}) when shared. */
+    whoami: function (cb) {
+      init().then(function () {
+        var id = ls('table-notes-me');
+        if (mode !== 'shared' || !id) return call(cb, null);
+        base.collection('party').doc(id).get().then(function (snap) {
+          call(cb, snap.exists ? JSON.stringify(snap.data()) : null);
+        }, function () { call(cb, null); });
+      });
+    },
     hasPassphrase: function () { return !!ls(LS_PASS); },
     /* cb(jsonStringOrNull) */
     loadDoc: function (coll, id, cb) {
