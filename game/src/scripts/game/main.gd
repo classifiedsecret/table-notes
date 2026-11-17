@@ -54,11 +54,15 @@ var _stat_t := 0.0
 func _ready() -> void:
 	Art.setup_fonts()
 	_setup_input()
+	# Physics interpolation smooths only bodies moved in physics steps (hero, goblins, arrows, camera).
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	dice = Dice.new(randi() % 900000 + 100000)
 	RenderingServer.set_default_clear_color(Color(0.05, 0.04, 0.07))
 	sfx = Sfx.new()
 	add_child(sfx)
 	camera = Camera2D.new()
+	camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
+	camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 	camera.position_smoothing_enabled = true
 	camera.position_smoothing_speed = 7.0
 	add_child(camera)
@@ -174,6 +178,24 @@ func _on_hero_loaded(args: Array) -> void:
 		_start_run()
 		depth = ROOMS_BEFORE_BOSS
 		_enter_room("boss")
+		return
+	if _arg("jump"):
+		_start_run()
+		for e in enemies:
+			e.queue_free()
+		enemies.clear()
+		var start_y := player.global_position.y
+		var tt := [0]
+		var tm := Timer.new()
+		tm.wait_time = 0.02
+		tm.autostart = true
+		tm.timeout.connect(func():
+			tt[0] += 1
+			var t: int = tt[0]
+			if t == 20: Input.action_press("jump")
+			if t == 70: Input.action_release("jump")
+			if t > 18 and t % 3 == 0 and t < 60: print("[jump] t=%d y=%.1f vy=%.0f floor=%s state=%s" % [t, start_y - player.global_position.y, player.velocity.y, player.is_on_floor(), Player.State.keys()[player.state]]))
+		add_child(tm)
 		return
 	if _arg("doors"):
 		_start_run()
@@ -327,8 +349,7 @@ func _enter_room(kind: String) -> void:
 	player.velocity = Vector2.ZERO
 	if is_instance_valid(player.echo):
 		player.echo.queue_free()
-	camera.global_position = player.global_position
-	camera.reset_smoothing()
+	_snap_view()
 	phase = Phase.RUN
 	var label := "%s  %s  ROOM %d / %d  %s" % [BIOME.to_upper(), Creatures.TIERS[hero.tier].name.to_upper(), mini(depth, ROOMS_BEFORE_BOSS + 1), ROOMS_BEFORE_BOSS + 1, ROOM_LABEL[kind]]
 	hud.set_room(label)
@@ -551,11 +572,22 @@ func _process(delta: float) -> void:
 		hud.toggle_log()
 	if Input.is_action_just_pressed("test_down") and phase == Phase.RUN:
 		player.force_down()
-	if phase != Phase.BATTLE:
-		camera.global_position = player.global_position + Vector2(player.facing * 24.0, -20.0)
 	hud.refresh(player, stats, self)
 	hud.prompt(_current_prompt())
 	_layout_name_tags()
+
+
+func _physics_process(_delta: float) -> void:
+	if phase != Phase.BATTLE and player:
+		camera.global_position = player.global_position + Vector2(player.facing * 24.0, -20.0)
+
+
+## After moving the hero instantly (new room, new run), stop the camera gliding across.
+func _snap_view() -> void:
+	player.reset_physics_interpolation()
+	camera.global_position = player.global_position + Vector2(player.facing * 24.0, -20.0)
+	camera.reset_smoothing()
+	camera.reset_physics_interpolation()
 
 
 func _current_prompt() -> String:
@@ -572,7 +604,7 @@ func _reset_after_run() -> void:
 	player.global_position = room.player_spawn
 	player.set_physics_process(true)
 	player.revive_full()
-	camera.reset_smoothing()
+	_snap_view()
 
 
 ## Stack monster name tags on extra rows when neighbours' names would overlap.

@@ -83,7 +83,9 @@ func _ready() -> void:
 	shape.position = Vector2(0, -11)
 	add_child(shape)
 
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	visual = Node2D.new()
+	visual.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(visual)
 	rage_glow = Node2D.new()
 	rage_glow.set_script(preload("res://scripts/game/glow.gd"))
@@ -591,6 +593,7 @@ func _try_echo() -> void:
 		var here := global_position
 		global_position = echo.global_position
 		echo.global_position = here
+		reset_physics_interpolation()
 		velocity = Vector2.ZERO
 		_echo_cd = 1.5
 		_iframes = maxf(_iframes, 0.2)

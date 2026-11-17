@@ -66,6 +66,9 @@ func start(g: Node) -> void:
 	_build_ui()
 
 	var p: Player = game.player
+	p.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	game.camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	game.camera.process_callback = Camera2D.CAMERA2D_PROCESS_IDLE
 	p.set_physics_process(false)
 	p.velocity = Vector2.ZERO
 	if p.raging():
@@ -76,6 +79,7 @@ func start(g: Node) -> void:
 		if s[0] == "B":
 			boss = game.spawn_monster("boss", s[1])
 	for e: Enemy in game.living_enemies():
+		e.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 		e.set_physics_process(false)
 		e.velocity = Vector2.ZERO
 		e.facing = -1
@@ -192,6 +196,12 @@ func _finish(victory: bool) -> void:
 		ui.queue_free()
 		ui = null
 	game.hud.hints.visible = true
+	var hp_node: Player = game.player
+	hp_node.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
+	hp_node.reset_physics_interpolation()
+	game.camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
+	game.camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
+	game.camera.reset_physics_interpolation()
 	if victory:
 		for e: Enemy in game.living_enemies():
 			var tw := e.create_tween()

@@ -51,7 +51,9 @@ func _ready() -> void:
 	shape.shape = rect
 	shape.position = Vector2(0, -6)
 	add_child(shape)
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	visual = Node2D.new()
+	visual.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(visual)
 	sprite = AnimatedSprite2D.new()
 	var fr: Array = data.get("frame", [16, 16])

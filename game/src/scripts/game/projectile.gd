@@ -19,6 +19,7 @@ static func fire(g: Node, from: Vector2, velocity: Vector2, shooter: String, wpn
 	p.weapon = wpn
 	p.color = col
 	p.z_index = 5
+	p.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	g.add_child(p)
 	return p
 
