@@ -936,7 +936,7 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
   function acPick(i) {
     var c = AC.items[i], ti = AC.el; if (!c || !ti) return;
     var v = ti.value, pos = ti.selectionStart == null ? v.length : ti.selectionStart;
-    var lead = v.slice(0, AC.start), keep = lead.trim() === '' ? v.charAt(AC.start) : '';
+    var lead = v.slice(0, AC.start), keep = ti.id === 'text' && lead.trim() === '' ? v.charAt(AC.start) : '';   /* only a new note keeps a leading symbol (it sets the type) */
     var head = lead + keep + c.name;
     ti.value = head + v.slice(pos); acClose(); fit(ti); ti.focus(); ti.setSelectionRange(head.length, head.length);
   }
@@ -1510,7 +1510,8 @@ window.HEROIMG = {"party": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2
     var id = S.editing; if (!id) return;
     var ta = $('edit-' + id), v = ta ? ta.value.trim() : '', cur = S.entries.get(id), type = cur && cur.type;
     acClose(); S.editing = null; S.dirty = false;
-    TYPES.forEach(function (t) { if (t.pre && v.charAt(0) === t.pre && v.length > 1) { type = t.k; v = v.slice(1).trim(); } });
+    /* an edit never retypes the note: a leading tag symbol is dropped, and the type is changed from its dropdown */
+    if (/^[@#$?*]/.test(v) && v.length > 1) v = v.slice(1).trim();
     if (save && cur && v && (v !== cur.text || type !== cur.type)) patch('entries', id, Object.assign({ text: v, type: type }, stamp()));
     render();
   }
