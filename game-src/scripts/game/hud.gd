@@ -37,6 +37,8 @@ var door_boxes: Array[ColorRect] = []
 var tavern_panel: PanelContainer
 var tavern_sheet: Label
 var tavern_opts: Label
+var tavern_lines: Array[Label] = []
+var tavern_help: Label
 var tavern_foot: Label
 var hints: Label
 
@@ -158,9 +160,13 @@ func build(g: Node) -> void:
 	tavern_sheet = _label(tavern_panel, Vector2(18, 46), "", 8, Color(0.92, 0.92, 0.88))
 	tavern_sheet.size = Vector2(364, 50)
 	tavern_opts = _label(tavern_panel, Vector2(18, 102), "", 8, Color(1, 1, 1))
-	tavern_opts.size = Vector2(364, 50)
-	tavern_foot = _label(tavern_panel, Vector2(18, 152), "", 8, Color(0.6, 0.6, 0.68))
-	tavern_foot.size = Vector2(364, 64)
+	for i in 8:
+		var tl := _label(tavern_panel, Vector2(18, 100 + i * 12), "", 8, Color.WHITE)
+		tl.visible = false
+		tavern_lines.append(tl)
+	tavern_help = _label(tavern_panel, Vector2(18, 150), "UP / DOWN TO CHOOSE, ATTACK OR ENTER TO SELECT", 8, Color(0.7, 0.7, 0.76))
+	tavern_foot = _label(tavern_panel, Vector2(18, 166), "", 8, Color(0.6, 0.6, 0.68))
+	tavern_foot.size = Vector2(364, 50)
 	tavern_foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tavern_panel.visible = false
 
@@ -312,10 +318,20 @@ func hide_doors() -> void:
 func show_tavern(sheet: String, options: Array, pick: int, foot: String) -> void:
 	tavern_panel.visible = true
 	tavern_sheet.text = sheet.to_upper()
-	var lines: Array[String] = []
-	for i in options.size():
-		lines.append(("> " if i == pick else "   ") + str(options[i]).to_upper())
-	tavern_opts.text = "\n".join(lines) + "\n\nUP / DOWN TO CHOOSE, ATTACK OR ENTER TO SELECT"
+	tavern_opts.text = ""
+	# One line per option, laid out from the option count so nothing overlaps.
+	var y := 100.0
+	for i in tavern_lines.size():
+		var l := tavern_lines[i]
+		l.visible = i < options.size()
+		if not l.visible:
+			continue
+		l.position.y = y
+		l.text = ("> " if i == pick else "  ") + str(options[i]).to_upper()
+		l.label_settings.font_color = Color(0.45, 1.0, 0.45) if i == pick else Color(0.92, 0.92, 0.9)
+		y += 12.0
+	tavern_help.position.y = y + 4.0
+	tavern_foot.position.y = y + 20.0
 	tavern_foot.text = (foot + "\nArt: 0x72 (CC0). Fonts and sounds: Kenney (CC0). Includes material from SRD 5.1 and 5.2 by Wizards of the Coast LLC, CC-BY-4.0.").to_upper()
 
 
