@@ -50,8 +50,8 @@ r = Room(54); r.ends(); r.block(22, 29, 11); r.plat(10, 15, 10); r.plat(33, 38, 
 for x, ch, y in [(26, 'G', 10), (36, 'a', 8), (44, 'g', 12), (47, 'g', 12)]: r.put(x, y, ch)
 r.deco([(6, 'b'), (18, 'h'), (40, 'b'), (14, 'c'), (42, 'c')]); rooms['warren_combat_2'] = r
 
-r = Room(52); r.ends(); r.pit(24, 26); r.plat(8, 13, 10); r.plat(20, 30, 9); r.plat(36, 41, 10)
-for x, ch, y in [(25, 'a', 8), (34, 'g', 12), (40, 'G', 12), (45, 'g', 12)]: r.put(x, y, ch)
+r = Room(52); r.ends(); r.pit(24, 26); r.plat(8, 13, 10); r.plat(20, 30, 10); r.plat(36, 41, 10)
+for x, ch, y in [(25, 'a', 9), (34, 'g', 12), (40, 'G', 12), (45, 'g', 12)]: r.put(x, y, ch)
 r.deco([(5, 'b'), (16, 'h'), (33, 'b'), (46, 'h'), (18, 'c'), (31, 'c')]); rooms['warren_combat_3'] = r
 
 r = Room(64); r.ends()
@@ -59,7 +59,7 @@ for a in (14, 26, 38): r.pit(a, a + 2)
 r.block(48, 51, 11)
 r.put(62, FLOOR - 1, '#'); r.put(62, FLOOR - 2, '#')
 r.put(61, FLOOR - 1, 'D'); r.put(61, 9, 'D'); r.put(1, 10, 'd')
-r.plat(30, 34, 9)
+r.plat(30, 34, 10)
 r.put(56, FLOOR - 1, 'g'); r.put(59, FLOOR - 1, '.'); r.put(r.w - 3, FLOOR - 1, '.'); r.put(r.w - 4, FLOOR - 1, 'X')
 r.deco([(8, 'b'), (20, 'h'), (32, 'b'), (44, 'h'), (54, 'b')]); rooms['warren_gauntlet_1'] = r
 
@@ -67,7 +67,7 @@ r = Room(60); r.ends()
 # stepping stones: 3-wide spike gaps between 2-wide pillars of floor
 for a in (10, 15, 20, 25, 30, 35, 40):
     r.pit(a, a + 2)
-r.plat(13, 17, 9); r.plat(28, 32, 9)
+r.plat(13, 17, 10); r.plat(28, 32, 10)
 r.put(1, 11, 'd'); r.put(58, 9, 'D')
 r.put(50, FLOOR - 1, 'a')
 r.deco([(6, 'b'), (22, 'h'), (37, 'b'), (52, 'h')]); rooms['warren_gauntlet_2'] = r
@@ -79,7 +79,7 @@ r.deco([(6, 'b'), (14, 'h'), (24, 'b'), (32, 'h')]); rooms['warren_treasure_1'] 
 r = Room(34); r.ends(); r.put(17, FLOOR - 1, 'F')
 r.deco([(6, 'b'), (12, 'h'), (22, 'b'), (28, 'h'), (9, 'c'), (25, 'c')]); rooms['warren_campfire_1'] = r
 
-r = Room(56); r.ends(); r.plat(12, 17, 10); r.plat(24, 31, 9); r.plat(38, 43, 10); r.block(46, 49, 11)
+r = Room(56); r.ends(); r.plat(12, 17, 10); r.plat(24, 31, 10); r.plat(38, 43, 10); r.block(46, 49, 11)
 for x, ch, y in [(14, 'a', 9), (42, 'a', 9), (30, 'G', 12), (36, 'G', 12), (48, 'g', 10)]: r.put(x, y, ch)
 r.deco([(7, 'b'), (21, 'h'), (35, 'b'), (50, 'h'), (20, 'c'), (33, 'c')]); rooms['warren_elite_1'] = r
 
@@ -92,5 +92,8 @@ for name, rr in rooms.items():
     assert t.count('S') == 1, name
     assert name == 'warren_boss' or t.count('X') == 1, name
     open(os.path.join(OUT, name + '.txt'), 'w').write(t)
-print(len(rooms), 'rooms written')
+import subprocess
+chk = subprocess.run([sys.executable, '-I', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'check_rooms.py'), OUT])
+assert chk.returncode == 0, 'a room has a platform the hero cannot reach'
+print(len(rooms), 'rooms written and checked')
 print(rooms['warren_gauntlet_1'].text())
