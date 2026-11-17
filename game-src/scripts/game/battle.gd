@@ -42,6 +42,7 @@ var ui: CanvasLayer
 var order_label: Label
 var menu_label: Label
 var menu_panel: Control
+var menu_lines: Array[Label] = []
 var info_label: Label
 var intent_label: Label
 var _hint := ""
@@ -265,16 +266,39 @@ func _open_menu() -> void:
 	queue_redraw()
 
 
+## Selected action in green, actions you can't take this turn greyed out (and skipped by the cursor).
 func _render_menu() -> void:
-	var lines: Array[String] = []
-	for i in menu_items.size():
+	menu_label.text = ""
+	for i in menu_lines.size():
+		var l := menu_lines[i]
+		if i >= menu_items.size():
+			l.visible = false
+			continue
 		var it: Array = menu_items[i]
-		var prefix := "> " if i == menu_pick else "  "
-		lines.append(prefix + (str(it[0]) if it[2] else "(" + str(it[0]) + ")"))
-	menu_label.text = "\n".join(lines).to_upper()
-	menu_panel.size.y = 10.0 + 12.0 * lines.size()
+		l.visible = true
+		var selected := i == menu_pick
+		l.text = ("> " if selected else "  ") + str(it[0]).to_upper()
+		if not it[2]:
+			l.label_settings.font_color = Color(0.42, 0.41, 0.46)
+		elif selected:
+			l.label_settings.font_color = Color(0.45, 1.0, 0.45)
+		else:
+			l.label_settings.font_color = Color(0.92, 0.92, 0.9)
+	menu_panel.size.y = 10.0 + 12.0 * menu_items.size()
 	var res := "ACTION %s   BONUS %s   MOVE %d FT" % ["READY" if h_action > 0 else "USED", "READY" if h_bonus > 0 else "USED", h_move * 5]
 	_info(res + "\nUP/DOWN, ATTACK TO CONFIRM, ESC BACK")
+
+
+## Moves the cursor to the next action that can be taken, wrapping around.
+func _step_menu(dir: int) -> void:
+	var n := menu_items.size()
+	for k in range(1, n + 1):
+		var i := (menu_pick + dir * k + n * 2) % n
+		if menu_items[i][2]:
+			menu_pick = i
+			break
+	game.sfx.play("step", -10.0)
+	_render_menu()
 
 
 func _process(_delta: float) -> void:
@@ -283,11 +307,9 @@ func _process(_delta: float) -> void:
 	match mode:
 		Mode.MENU:
 			if Input.is_action_just_pressed("move_down"):
-				menu_pick = (menu_pick + 1) % menu_items.size()
-				_render_menu()
+				_step_menu(1)
 			elif Input.is_action_just_pressed("move_up"):
-				menu_pick = (menu_pick - 1 + menu_items.size()) % menu_items.size()
-				_render_menu()
+				_step_menu(-1)
 			elif _confirm():
 				_choose(menu_items[menu_pick])
 		Mode.MOVE:
@@ -380,6 +402,8 @@ func _choose(item: Array) -> void:
 		"end":
 			mode = Mode.BUSY
 			menu_label.text = ""
+			for l in menu_lines:
+				l.visible = false
 			_next_turn()
 
 
@@ -728,6 +752,11 @@ func _build_ui() -> void:
 	order_label = _label(top, Vector2(5, 3), 8, Color(0.92, 0.9, 0.85))
 	menu_panel = _panel(Vector2(4, 72), Vector2(186, 100))
 	menu_label = _label(menu_panel, Vector2(6, 4), 8, Color.WHITE)
+	menu_lines.clear()
+	for i in 12:
+		var l := _label(menu_panel, Vector2(6, 4 + i * 12), 8, Color.WHITE)
+		l.visible = false
+		menu_lines.append(l)
 	intent_label = _label(ui, Vector2(196, 60), 8, Color(1, 0.6, 0.45))
 	intent_label.size = Vector2(280, 10)
 	intent_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -780,6 +809,9 @@ func _refresh_order() -> void:
 		lines.append(("> " if i == turn_index else "  ") + "%s  %s" % [str(c.name).to_upper(), tag])
 	order_label.text = "\n".join(lines)
 	if combatants[turn_index].side != "hero":
+		for l in menu_lines:
+			l.visible = false
+		menu_panel.size.y = 22.0
 		menu_label.text = ("%s'S TURN" % str(combatants[turn_index].name).to_upper())
 		_info("")
 
