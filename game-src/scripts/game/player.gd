@@ -356,7 +356,6 @@ func take_damage(amount: int, crit: bool, from_dir: float) -> void:
 	hp = maxi(0, hp - amount)
 	_flash = 1.0
 	hp_changed.emit()
-	game.shake(3.0 if crit else 1.5)
 	game.sfx.play("hit", -2.0)
 	if hp <= 0:
 		_go_down()
@@ -408,7 +407,6 @@ func _rise(msg: String) -> void:
 	hp = 1
 	hp_changed.emit()
 	death_saves.reset()
-	game.death_saves_changed()
 	game.log_line(msg)
 	game.banner(msg.split(".")[0] + ".", Color(0.6, 1.0, 0.6))
 	weapon_pivot.visible = true
@@ -418,6 +416,7 @@ func _rise(msg: String) -> void:
 	tw.parallel().tween_property(visual, "position", Vector2.ZERO, 0.25)
 	_iframes = 1.2
 	_set_state(State.NORMAL)
+	game.death_saves_changed()
 
 
 func _die(reason: String) -> void:
@@ -471,7 +470,6 @@ func _try_rage() -> void:
 		(sprite.material as ShaderMaterial).set_shader_parameter("flash_color", Color.WHITE))
 	game.banner("RAGE!", Color(1.0, 0.45, 0.35))
 	game.log_line("Bonus action: Rage (%d left). +2 damage, resistance to bludgeoning, piercing and slashing for 1 minute." % rage_uses)
-	game.shake(2.0)
 	game.sfx.play("thud", -4.0)
 
 

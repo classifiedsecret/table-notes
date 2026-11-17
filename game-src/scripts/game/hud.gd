@@ -96,6 +96,7 @@ func build(g: Node) -> void:
 	ds_text.size = Vector2(150, 10)
 	ds_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ds_panel.visible = false
+	(ds_panel.get_theme_stylebox("panel") as StyleBoxFlat).bg_color = Color(0.07, 0.06, 0.09, 0.96)
 
 	center_panel = _panel(Vector2(50, 30), Vector2(380, 206))
 	center_title = _label(center_panel, Vector2(0, 8), "", 24, Color(1, 0.88, 0.55), true)

@@ -37,7 +37,7 @@ func setup(g: Node, d: Dictionary) -> void:
 		max_hp += v
 	hp = max_hp
 	speed = 86.0 if d.name == "Goblin Minion" else 74.0
-	game.log_line("%s appears (AC %d, HP %d from %dd%d %s)." % [d.name, ac, hp, d.hp_count, d.hp_sides, str(hp_roll)])
+	game.log_line("A %s appears." % d.name)
 
 
 func _ready() -> void:
@@ -123,7 +123,7 @@ func _physics_process(delta: float) -> void:
 			else:
 				if dir != 0.0:
 					facing = int(dir)
-				var close := absf(dx) < 20.0 and absf(dy) < 18.0
+				var close := absf(dx) < 22.0 and absf(dy) < 18.0
 				if close and _cd <= 0.0 and is_on_floor():
 					_go(State.WINDUP)
 					velocity.x = 0.0
@@ -184,13 +184,26 @@ func _physics_process(delta: float) -> void:
 			if not p.is_down():
 				_go(State.CHASE)
 
+	# Keep personal space from other goblins so a pack reads as separate bodies.
+	if state != State.DEAD and state != State.STRIKE:
+		var push := 0.0
+		for o: Enemy in game.living_enemies():
+			if o == self:
+				continue
+			var ox := global_position.x - o.global_position.x
+			if absf(ox) < 20.0 and absf(global_position.y - o.global_position.y) < 14.0:
+				var side := signf(ox) if ox != 0.0 else (1.0 if get_instance_id() > o.get_instance_id() else -1.0)
+				push += side * (20.0 - absf(ox)) * 30.0
+		if push != 0.0 and (_ground_ahead_dir(signf(push)) or not is_on_floor()):
+			velocity.x = clampf(velocity.x + push * delta * 10.0, -speed * 1.3, speed * 1.3)
+
 	var g: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 	velocity.y = minf(420.0, velocity.y + g * delta)
 	move_and_slide()
 	visual.scale.x = facing
 	if state != State.DEAD:
 		sprite.play("run" if absf(velocity.x) > 10.0 else "idle")
-	bar.call("set_values", hp, max_hp, ac, _show_bar > 0.0 or hp < max_hp)
+	bar.call("set_values", hp, max_hp, data.display, _show_bar > 0.0 or hp < max_hp)
 
 
 func _on_platform() -> bool:
@@ -209,6 +222,10 @@ func _on_platform() -> bool:
 		if ch == "=":
 			on_plat = true
 	return on_plat
+
+
+func _ground_ahead_dir(d: float) -> bool:
+	return game.room.is_ground_at(global_position + Vector2(d * 9.0, 4.0))
 
 
 func _ground_ahead() -> bool:

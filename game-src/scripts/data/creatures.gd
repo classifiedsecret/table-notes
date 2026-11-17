@@ -22,6 +22,7 @@ const BOARVHAL := {
 ## Goblin Minion (SRD 5.2, CR 1/8): AC 12, HP 7 (2d6), Dagger +4, 4 (1d4 + 2) piercing.
 const GOBLIN_MINION := {
 	"name": "Goblin Minion",
+	"display": "Goblin",
 	"ac": 12, "hp_count": 2, "hp_sides": 6,
 	"speed_ft": 30,
 	"weapon": {"name": "Dagger", "attack": 4, "count": 1, "sides": 4, "bonus": 2, "type": "piercing"},
@@ -32,6 +33,7 @@ const GOBLIN_MINION := {
 ## Goblin Warrior (SRD 5.2, CR 1/4): AC 15, HP 10 (3d6), Scimitar +4, 5 (1d6 + 2) slashing.
 const GOBLIN_WARRIOR := {
 	"name": "Goblin Warrior",
+	"display": "Goblin Warrior",
 	"ac": 15, "hp_count": 3, "hp_sides": 6,
 	"speed_ft": 30,
 	"weapon": {"name": "Scimitar", "attack": 4, "count": 1, "sides": 6, "bonus": 2, "type": "slashing"},

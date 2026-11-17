@@ -10,6 +10,16 @@ var _tumble_time := 0.0
 var _life := 0.0
 var _duration := 1.3
 var _vel := Vector2(0, -22)
+var _gravity := 0.0
+
+
+## Like spawn, but flung outward from `pos` along `dir` in a short arc.
+static func fling(parent: Node, pos: Vector2, dir: Vector2, big: String, small: String, color: Color,
+		tumble_sides := 0, duration := 1.3) -> FloatText:
+	var f := spawn(parent, pos, big, small, color, tumble_sides, duration)
+	f._vel = dir.normalized() * 120.0
+	f._gravity = 80.0
+	return f
 
 
 static func spawn(parent: Node, pos: Vector2, big: String, small: String, color: Color,
@@ -50,7 +60,8 @@ func _process(delta: float) -> void:
 		return
 	scale = scale.lerp(Vector2.ONE, minf(1.0, delta * 14.0))
 	position += _vel * delta
-	_vel.y *= 0.96
+	_vel.y += _gravity * delta
+	_vel *= 0.97
 	var t := _life / _duration
 	modulate.a = 1.0 if t < 0.7 else maxf(0.0, 1.0 - (t - 0.7) / 0.3)
 	if _life >= _duration:
