@@ -39,11 +39,11 @@ const CAST := [
 		"War favours the prepared. Have you prayed, Boar-vhal? Have you at least stretched?",
 		"If you fall down there, I'll be up here. Drink a potion first, then call for me.",
 		"Strike first. Strike hard. Then tell me about it over an ale."]},
-	{"key": "npc_lyburnum", "name": "Lyburnum", "match": "lyburnum", "x": 636.0, "y": 208.0, "sit": true, "face": 1, "lines": [
+	{"key": "npc_lyburnum", "name": "Lyburnum", "match": "lyburnum", "x": 626.0, "y": 208.0, "sit": true, "face": 1, "lines": [
 		"Conquer the cellar. Then conquer another ale.",
 		"Fear is a weapon. Make the goblins hold it by the blade.",
 		"Kieran waters the ale. I have chosen to let him live."]},
-	{"key": "npc_suilean", "name": "Suilean", "match": "suilean", "x": 520.0, "y": 208.0, "sit": true, "face": 1, "lines": [
+	{"key": "npc_suilean", "name": "Suilean", "match": "suilean", "x": 474.0, "y": 202.0, "sit": true, "face": 1, "lines": [
 		"The roots under this inn are whispering. Something down there is digging.",
 		"The fire is nice. The couch is nicer. Wake me when it's my turn.",
 		"Bring me a mushroom from the warren. A weird one."]},
@@ -64,7 +64,7 @@ const CAST := [
 
 ## Staff from Session Scribe's Business tab, matched by role. Fallbacks are used offline.
 const STAFF := {
-	"barkeep": {"key": "npc_kieran", "name": "Kieran", "x": 664.0, "y": 208.0, "lines": [
+	"barkeep": {"key": "npc_kieran", "name": "Kieran", "x": 672.0, "y": 186.0, "lines": [
 		"Welcome back to the Gryphon's Roost. Ale's two copper. Owners drink free, but the ledger notices.",
 		"There's a hole in my cellar and goblins in the hole. Fix one of those, would you?",
 		"If it goes badly down there, I'll hear it on the Sending Stone."]},
@@ -87,7 +87,7 @@ const PATRONS := [
 	{"key": "npc_patron_b", "name": "Patron", "x": 428.0, "y": 208.0, "sit": true, "face": -1, "lines": [
 		"I heard the owners eat goblins.",
 		"Don't spill my drink and we'll get along fine."]},
-	{"key": "npc_patron_c", "name": "Patron", "x": 704.0, "y": 208.0, "sit": true, "face": -1, "lines": [
+	{"key": "npc_patron_c", "name": "Patron", "x": 716.0, "y": 208.0, "sit": true, "face": -1, "lines": [
 		"It's not a costume.",
 		"Best stew in Waterdeep. Don't tell the cook I said so."]},
 ]
@@ -169,13 +169,12 @@ func _furnish() -> void:
 	_spr("window", Vector2(468, 166), -6)
 	_spr("fireplace", Vector2(528, FLOOR_Y), -5)
 	var fire := Node2D.new()
-	fire.set_script(preload("res://scripts/game/campfire.gd"))
-	fire.position = Vector2(528, FLOOR_Y - 4)
+	fire.set_script(preload("res://scripts/game/hearth_fire.gd"))
+	fire.position = Vector2(528, FLOOR_Y - 3)
 	fire.z_index = -4
-	fire.set("game", game)
 	add_child(fire)
-	_spr("rug", Vector2(528, FLOOR_Y + 1), -3)
-	_spr("couch", Vector2(524, FLOOR_Y), 2)
+	_spr("rug", Vector2(500, FLOOR_Y + 1), -3)
+	_spr("couch", Vector2(474, FLOOR_Y), 0)   # left of the hearth, facing the fire
 	board = _label("", Vector2(564, 124), Color(0.92, 0.95, 0.9), 8, -3)
 	_spr("chalkboard", Vector2(588, 160), -6)
 	_label("TONIGHT", Vector2(566, 122), Color(1, 0.9, 0.6), 8, -2)
@@ -187,8 +186,8 @@ func _furnish() -> void:
 	for x in range(616, 728, 16):
 		_spr("bar", Vector2(x + 8, FLOOR_Y), 3)
 	_spr("bar_end", Vector2(731, FLOOR_Y), 3)
-	_spr("stool", Vector2(636, FLOOR_Y), 5)
-	_spr("stool", Vector2(704, FLOOR_Y), 5)
+	_spr("stool", Vector2(626, FLOOR_Y), 4)
+	_spr("stool", Vector2(716, FLOOR_Y), 4)
 	_spr("mug", Vector2(650, FLOOR_Y - 25), 4)
 	_spr("doors_leaf_closed", Vector2(776, FLOOR_Y), -6)
 	_label("KITCHEN", Vector2(756, 162), Color(0.8, 0.75, 0.6))
@@ -265,9 +264,15 @@ func _people() -> void:
 
 func _add(d: Dictionary) -> InnNPC:
 	var n := InnNPC.make(d.key, d.name, Vector2(d.x, d.y), d.lines, d.get("sit", false), d.get("face", 1))
-	n.z_index = 4 if d.key == "npc_kieran" else (1 if d.get("sit", false) else 2)
+	# Seated people draw over their seats: couch (z 0), table stools (z 1), bar stools (z 4).
+	# Kieran works behind the counter (z 3); everyone at the bar sits on the near side of it.
+	n.z_index = 2
 	if d.key == "npc_kieran":
-		n.z_index = 2   # behind the bar counter (z 3)
+		n.z_index = 2
+	elif d.get("sit", false) and d.y > FLOOR_Y - 2.0 and d.x > 600.0 and d.x < 740.0:
+		n.z_index = 5
+	elif d.get("sit", false):
+		n.z_index = 2
 	add_child(n)
 	npcs.append(n)
 	if d.key == "npc_dm":
@@ -325,7 +330,7 @@ func nearest(p: Vector2) -> InnNPC:
 		var d := absf(n.global_position.x - p.x)
 		if n == dm and dm.marker and dm.marker.visible:
 			d -= 14.0   # whoever has a quest to give answers first
-		if d < bd and absf(n.global_position.y - p.y) < 24.0:
+		if d < bd and absf(n.global_position.y - p.y) < 30.0:
 			bd = d
 			best = n
 	return best
