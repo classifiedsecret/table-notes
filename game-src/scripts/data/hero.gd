@@ -20,6 +20,8 @@ var kills := 0
 var best_depth := 0
 var nat20s := 0
 var biggest_hit := 0
+var tier_unlocked := 1
+var tier := 1
 
 
 func str_score() -> int:
@@ -106,11 +108,13 @@ func level_features(lv: int) -> String:
 func to_dict() -> Dictionary:
 	return {"id": id, "owner": owner, "name": name, "level": level, "xp": xp, "gold": gold, "potions": potions,
 		"runs": runs, "clears": clears, "deaths": deaths, "kills": kills, "best_depth": best_depth,
-		"nat20s": nat20s, "biggest_hit": biggest_hit, "class": "barbarian", "updated": Time.get_unix_time_from_system()}
+		"nat20s": nat20s, "biggest_hit": biggest_hit, "tier_unlocked": tier_unlocked, "tier": tier, "class": "barbarian", "updated": Time.get_unix_time_from_system()}
 
 
 func load_dict(d: Dictionary) -> void:
-	for k in ["level", "xp", "gold", "potions", "runs", "clears", "deaths", "kills", "best_depth", "nat20s", "biggest_hit"]:
+	for k in ["level", "xp", "gold", "potions", "runs", "clears", "deaths", "kills", "best_depth", "nat20s", "biggest_hit", "tier_unlocked", "tier"]:
 		if d.has(k):
 			set(k, int(d[k]))
 	level = clampi(level, 1, MAX_LEVEL)
+	tier_unlocked = clampi(tier_unlocked, 1, 3)
+	tier = clampi(tier, 1, tier_unlocked)

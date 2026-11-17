@@ -91,6 +91,28 @@ const WAVES := [
 ]
 
 
+## Difficulty tiers: tougher monsters and bigger rewards for higher-level heroes.
+const TIERS := {
+	1: {"name": "Tier I", "levels": "levels 1-2", "hp": 1.0, "atk": 0, "dmg": 0, "ac": 0, "xp": 1.0, "gold": 1.0},
+	2: {"name": "Tier II", "levels": "levels 3-4", "hp": 1.8, "atk": 2, "dmg": 2, "ac": 1, "xp": 2.5, "gold": 2.0},
+	3: {"name": "Tier III", "levels": "level 5", "hp": 2.6, "atk": 3, "dmg": 4, "ac": 2, "xp": 4.0, "gold": 3.0},
+}
+
+
+## Returns a copy of a stat block scaled for the tier.
+static func scaled(base: Dictionary, tier: int) -> Dictionary:
+	var t: Dictionary = TIERS[clampi(tier, 1, 3)]
+	var d := base.duplicate(true)
+	d.ac = int(d.ac) + int(t.ac)
+	d.xp = roundi(float(d.xp) * float(t.xp))
+	d["hp_scale"] = t.hp
+	for k in ["weapon", "melee"]:
+		if d.has(k):
+			d[k].attack = int(d[k].attack) + int(t.atk)
+			d[k].bonus = int(d[k].bonus) + int(t.dmg)
+	return d
+
+
 static func monster(key: String) -> Dictionary:
 	match key:
 		"warrior", "G": return GOBLIN_WARRIOR

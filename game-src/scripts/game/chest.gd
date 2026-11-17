@@ -45,7 +45,7 @@ func interact(p: Player) -> void:
 		return
 	opened = true
 	sprite.play()
-	var gp: int = (game.dice.roll(2, 6).reduce(func(a, b): return a + b, 0)) * 5 + 5 * game.hero.level
+	var gp: int = roundi(((game.dice.roll(2, 6).reduce(func(a, b): return a + b, 0)) * 5 + 5 * game.hero.level) * float(Creatures.TIERS[game.hero.tier].gold))
 	var potion: bool = game.dice.die(100) <= 50
 	game.run_gold += gp
 	if potion:

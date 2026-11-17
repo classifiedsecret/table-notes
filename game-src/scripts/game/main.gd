@@ -165,6 +165,9 @@ func _on_hero_loaded(args: Array) -> void:
 		hero.level = 5
 		hero.xp = 6500
 		player.apply_hero(hero)
+	if _arg("t3"):
+		hero.tier_unlocked = 3
+		hero.tier = 3
 	if _arg("boss"):
 		hero.level = 2
 		hero.xp = 300
@@ -221,7 +224,9 @@ func _save_run_record(result: String) -> void:
 func _tavern_options() -> Array:
 	return [
 		["Descend into the %s" % BIOME, "start"],
+		["Difficulty: %s (%s)%s" % [Creatures.TIERS[hero.tier].name, Creatures.TIERS[hero.tier].levels, "  - press to change" if hero.tier_unlocked > 1 else "  - clear it to unlock Tier II"], "tier"],
 		["Buy a Potion of Healing (%d gp)" % POTION_PRICE, "potion"],
+		["Return to Session Scribe", "leave"],
 	]
 
 
@@ -258,6 +263,17 @@ func _tavern_input() -> void:
 		match opts[_menu_pick][1]:
 			"start":
 				_start_run()
+			"tier":
+				if hero.tier_unlocked > 1:
+					hero.tier = hero.tier % hero.tier_unlocked + 1
+					save_hero()
+					sfx.play("step", -6.0)
+				else:
+					toast("Defeat the Bugbear Chief to unlock Tier II.")
+				_refresh_tavern()
+			"leave":
+				if OS.has_feature("web"):
+					JavaScriptBridge.eval("window.location.href = '../'")
 			"potion":
 				if hero.gold >= POTION_PRICE:
 					hero.gold -= POTION_PRICE
@@ -314,7 +330,7 @@ func _enter_room(kind: String) -> void:
 	camera.global_position = player.global_position
 	camera.reset_smoothing()
 	phase = Phase.RUN
-	var label := "%s  %d / %d  %s" % [BIOME.to_upper(), mini(depth, ROOMS_BEFORE_BOSS + 1), ROOMS_BEFORE_BOSS + 1, ROOM_LABEL[kind]]
+	var label := "%s  %s  ROOM %d / %d  %s" % [BIOME.to_upper(), Creatures.TIERS[hero.tier].name.to_upper(), mini(depth, ROOMS_BEFORE_BOSS + 1), ROOMS_BEFORE_BOSS + 1, ROOM_LABEL[kind]]
 	hud.set_room(label)
 	hud.banner(ROOM_LABEL[kind], Color(1, 0.88, 0.55))
 	log_line("Room %d: %s." % [depth, ROOM_LABEL[kind].capitalize()])
@@ -375,7 +391,7 @@ func _load_room(file: String, quiet := false) -> void:
 
 func spawn_monster(key: String, pos: Vector2) -> Enemy:
 	var e := Enemy.new()
-	e.setup(self, Creatures.monster(key))
+	e.setup(self, Creatures.scaled(Creatures.monster(key), hero.tier))
 	e.position = pos
 	e.facing = -1 if pos.x > player.global_position.x else 1
 	e._cd = 0.6 + randf() * 0.6
@@ -587,6 +603,9 @@ func end_run(result: String) -> void:
 	var body := ""
 	if result == "cleared":
 		hero.clears += 1
+		if hero.tier == hero.tier_unlocked and hero.tier_unlocked < 3:
+			hero.tier_unlocked += 1
+			toast("%s unlocked at the tavern." % Creatures.TIERS[hero.tier_unlocked].name)
 		hero.gold += run_gold
 		hero.potions = run_potions
 		body = "The Bugbear Chief is dead and the Goblin Warren is broken.\n\nYou bank %d gp and carry %d potion%s home." % [run_gold, run_potions, "" if run_potions == 1 else "s"]
@@ -610,7 +629,7 @@ func _on_player_died(reason: String) -> void:
 
 func on_battle_end(victory: bool) -> void:
 	if victory:
-		run_gold += 40 + dice.roll(4, 6).reduce(func(a, b): return a + b, 0) * 5
+		run_gold += roundi((40 + dice.roll(4, 6).reduce(func(a, b): return a + b, 0) * 5) * float(Creatures.TIERS[hero.tier].gold))
 		end_run("cleared")
 
 

@@ -35,6 +35,7 @@ func setup(g: Node, d: Dictionary) -> void:
 	max_hp = int(d.get("hp_bonus", 0))
 	for v in hp_roll:
 		max_hp += v
+	max_hp = maxi(1, roundi(max_hp * float(d.get("hp_scale", 1.0))))
 	hp = max_hp
 	speed = 86.0 if d.name == "Goblin Minion" else (66.0 if d.get("ranged", false) else 74.0)
 	game.log_line("A %s appears." % d.name)
