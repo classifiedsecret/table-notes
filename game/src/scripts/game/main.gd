@@ -47,6 +47,7 @@ var _cb_who: JavaScriptObject
 var save_mode := "local"
 var _loaded := false
 var bot := OS.get_cmdline_user_args().has("--bot")
+var _face_log := false
 var _bot_t := 0.0
 var _stat_t := 0.0
 
@@ -179,6 +180,13 @@ func _on_hero_loaded(args: Array) -> void:
 		depth = ROOMS_BEFORE_BOSS
 		_enter_room("boss")
 		return
+	if _arg("face"):
+		_face_log = true
+		_start_run()
+		for e in enemies:
+			e.queue_free()
+		enemies.clear()
+		return
 	if _arg("jump"):
 		_start_run()
 		for e in enemies:
@@ -192,6 +200,16 @@ func _on_hero_loaded(args: Array) -> void:
 		tm.timeout.connect(func():
 			tt[0] += 1
 			var t: int = tt[0]
+			if OS.get_cmdline_user_args().has("--facetest"):
+				var mm := InputEventMouseMotion.new()
+				mm.position = Vector2(10, 135) if t < 60 else Vector2(470, 135)
+				Input.parse_input_event(mm)
+				if t == 20: Input.action_press("move_right")
+				if t == 45: Input.action_release("move_right")
+				if t == 58: Input.action_press("attack")
+				if t == 59: Input.action_release("attack")
+				if t % 4 == 0: print("[face] t=%d moving=%s st=%s facing=%d aim=%s mw=%s px=%.0f" % [t, Input.is_action_pressed("move_right"), Player.State.keys()[player.state], player.facing, player._mouse_aim, str((player.get_canvas_transform().affine_inverse() * player._mouse_screen).round()), player.global_position.x])
+				return
 			if t == 20: Input.action_press("jump")
 			if t == 70: Input.action_release("jump")
 			if t > 18 and t % 3 == 0 and t < 60: print("[jump] t=%d y=%.1f vy=%.0f floor=%s state=%s" % [t, start_y - player.global_position.y, player.velocity.y, player.is_on_floor(), Player.State.keys()[player.state]]))
@@ -621,6 +639,11 @@ func _layout_name_tags() -> void:
 		if row == row_end.size():
 			row_end.append(0.0)
 		row_end[row] = e.global_position.x + w / 2.0
+		var view_c := camera.get_screen_center_position().x
+		var lo := maxf(0.0, view_c - 240.0) + w / 2.0 + 2.0
+		var hi := minf(room.size_px().x, view_c + 240.0) - w / 2.0 - 2.0
+		var cx := e.global_position.x
+		e.bar.position.x = clampf(cx, lo, maxf(lo, hi)) - cx
 		e.bar.position.y = -22.0 - 9.0 * row - (22.0 if e.data.name == "Bugbear Chief" else 0.0)
 
 

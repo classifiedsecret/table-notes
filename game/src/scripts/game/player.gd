@@ -35,6 +35,8 @@ var echo: Node2D
 var _echo_cd := 0.0
 var _potion_t := 0.0
 var recovery := RECOVERY
+var _mouse_aim := false
+var _mouse_screen := Vector2.ZERO
 var max_hp := 15
 var hp := 15
 var ac := 14
@@ -241,13 +243,40 @@ func _apply_gravity(delta: float) -> void:
 
 
 func _move(input_x: float, delta: float, control: float) -> void:
-	if input_x != 0.0 and state == State.NORMAL:
-		facing = 1 if input_x > 0.0 else -1
+	_update_facing(input_x)
 	var target := input_x * RUN_SPEED * control
 	var accel := (ACCEL_GROUND if is_on_floor() else ACCEL_AIR)
 	if input_x == 0.0 and is_on_floor():
 		accel = FRICTION
 	velocity.x = move_toward(velocity.x, target, accel * delta)
+
+
+## Facing: toward the mouse cursor once the mouse has been used (even while running the other way),
+## the right stick on a gamepad, otherwise the direction you are moving.
+## You can turn while attacking, except during the instant the axe lands.
+func _update_facing(input_x: float) -> void:
+	if state != State.NORMAL and state != State.ATTACK:
+		return
+	if state == State.ATTACK and _attack_phase == 1:
+		return
+	var stick := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X) if Input.get_connected_joypads().size() > 0 else 0.0
+	if absf(stick) > 0.5:
+		_mouse_aim = false
+		facing = 1 if stick > 0.0 else -1
+	elif _mouse_aim:
+		var dx := get_global_mouse_position().x - global_position.x
+		if absf(dx) > 3.0:
+			facing = 1 if dx > 0.0 else -1
+	elif input_x != 0.0:
+		facing = 1 if input_x > 0.0 else -1
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion or event is InputEventMouseButton:
+		_mouse_aim = true
+		_mouse_screen = (event as InputEventMouse).position
+	elif event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.5):
+		_mouse_aim = false
 
 
 func _on_platform() -> bool:
@@ -635,6 +664,8 @@ func _check_spikes() -> void:
 
 
 func _animate(_delta: float) -> void:
+	if game.has_method("_arg") and visual.scale.x != facing and game.get("_face_log"):
+		print("[facing] %d state=%s moving=%s" % [facing, State.keys()[state], Input.is_action_pressed("move_right") or Input.is_action_pressed("move_left")])
 	visual.scale.x = facing
 	if state == State.DODGE:
 		return

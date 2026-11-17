@@ -221,7 +221,7 @@ func _hero_turn_start() -> void:
 	h_move = int(p.stats.speed_ft / 5)
 	if p.is_down():
 		mode = Mode.BUSY
-		_info("Boar-vhal is down. Rolling a death saving throw...")
+		_info("Down! Rolling a death save...")
 		await get_tree().create_timer(0.7).timeout
 		var r := Rules.death_save(game.dice)
 		var outcome := p.death_saves.apply(r)
@@ -294,9 +294,9 @@ func _render_menu() -> void:
 			l.label_settings.font_color = Color(0.45, 1.0, 0.45)
 		else:
 			l.label_settings.font_color = Color(0.92, 0.92, 0.9)
-	menu_panel.size.y = 10.0 + 12.0 * menu_items.size()
-	var res := "ACTION %s   BONUS %s   MOVE %d FT" % ["READY" if h_action > 0 else "USED", "READY" if h_bonus > 0 else "USED", h_move * 5]
-	_info(res + "\nUP/DOWN, ATTACK TO CONFIRM, ESC BACK")
+	menu_panel.size.y = 8.0 + 10.0 * menu_items.size()
+	var res := "ACTION %s  BONUS %s  MOVE %d FT" % ["OK" if h_action > 0 else "USED", "OK" if h_bonus > 0 else "USED", h_move * 5]
+	_info(res + "    UP/DOWN PICK  ATTACK CONFIRM  ESC BACK")
 
 
 ## Moves the cursor to the next action that can be taken, wrapping around.
@@ -366,12 +366,12 @@ func _choose(item: Array) -> void:
 			target_list = _targets_in_reach()
 			target_pick = 0
 			mode = Mode.TARGET
-			_info("LEFT/RIGHT: CHOOSE TARGET   ATTACK: SWING   ESC: BACK")
+			_info("LEFT/RIGHT: CHOOSE TARGET    ATTACK: SWING    ESC: BACK")
 			queue_redraw()
 		"move":
 			cursor_col = _hero().col
 			mode = Mode.MOVE
-			_info("LEFT/RIGHT: CHOOSE A SQUARE   ATTACK: MOVE THERE   ESC: BACK")
+			_info("LEFT/RIGHT: CHOOSE A SQUARE    ATTACK: MOVE THERE    ESC: BACK")
 			queue_redraw()
 		"dash":
 			h_action = 0
@@ -764,14 +764,17 @@ func _build_ui() -> void:
 	menu_label = _label(menu_panel, Vector2(6, 4), 8, Color.WHITE)
 	menu_lines.clear()
 	for i in 12:
-		var l := _label(menu_panel, Vector2(6, 4 + i * 12), 8, Color.WHITE)
+		var l := _label(menu_panel, Vector2(6, 3 + i * 10), 8, Color.WHITE)
 		l.visible = false
 		menu_lines.append(l)
-	intent_label = _label(ui, Vector2(196, 60), 8, Color(1, 0.6, 0.45))
-	intent_label.size = Vector2(280, 10)
+	intent_label = _label(ui, Vector2(196, 108), 8, Color(1, 0.6, 0.45))
+	intent_label.size = Vector2(280, 22)
+	intent_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intent_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	info_label = _label(ui, Vector2(196, 110), 8, Color(0.85, 0.88, 0.95))
-	info_label.size = Vector2(280, 30)
+	# Turn info and controls use the bottom line of the screen (the run's key hints are hidden in battle).
+	info_label = _label(ui, Vector2(0, 259), 8, Color(0.7, 0.85, 1.0))
+	info_label.size = Vector2(480, 10)
+	info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	game.hud.hints.visible = false
