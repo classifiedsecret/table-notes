@@ -1,0 +1,12 @@
+Vanguard's Descent - credits and licences
+
+Character, weapon, prop and tile art: 16x16 Dungeon Tileset II by 0x72 (https://0x72.itch.io/dungeontileset-ii), CC0 1.0.
+  Boar-vhal and Goblin Warrior sprites are recoloured from it.
+Fonts: Kenney Pixel and Kenney Mini Square by Kenney (https://kenney.nl), CC0 1.0.
+Sound effects: Kenney Casino Audio, RPG Audio and Impact Sounds by Kenney (https://kenney.nl), CC0 1.0.
+Assets obtained via the series-ai/jam-ready-assets mirror; licence files are in assets/licenses/.
+
+Rules: This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") and
+System Reference Document 5.2 ("SRD 5.2") by Wizards of the Coast LLC, available at
+https://www.dndbeyond.com/srd. The SRD 5.1 and SRD 5.2 are licensed under the Creative Commons
+Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
