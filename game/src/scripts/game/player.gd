@@ -99,8 +99,6 @@ func _ready() -> void:
 		"idle": [0, 4, 6, true], "run": [4, 4, 11, true], "hit": [8, 1, 1, false]})
 	sprite.offset = Vector2(0, -14)
 	sprite.material = Art.flash_material()
-	(sprite.material as ShaderMaterial).set_shader_parameter("frame_w", 16.0)
-	(sprite.material as ShaderMaterial).set_shader_parameter("outline_color", Color(1.0, 0.93, 0.75, 0.55))
 	sprite.play("idle")
 	visual.add_child(sprite)
 	weapon_pivot = Node2D.new()

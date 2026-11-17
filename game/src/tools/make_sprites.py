@@ -31,6 +31,22 @@ bv = strip(frames('dwarf_m', [('idle', 4), ('run', 4), ('hit', 1)]), {
     '#da4e38': '#6b4a3a', '#e46e33': '#8f6a4c',   # hood -> boar hide
     '#d8a57d': '#a3adb3', '#c38d70': '#7f8c95',   # skin -> stone grey
 }, 'boarvhal.png')
+
+def outline(fname, fw, rgba):
+    # Soft 1px light rim (kept inside each frame) so the hero reads against dark walls.
+    im = Image.open(S + fname).convert('RGBA'); px = im.load(); W, H = im.size
+    add = []
+    for y in range(H):
+        for x in range(W):
+            if px[x, y][3] > 0: continue
+            lx = x % fw
+            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                nx, ny = x + dx, y + dy
+                if not (0 <= ny < H) or not (0 <= lx + dx < fw): continue
+                if px[nx, ny][3] > 128: add.append((x, y)); break
+    for x, y in add: px[x, y] = rgba
+    im.save(S + fname)
+outline('boarvhal.png', bv[0], (255, 236, 190, 150))
 gm = strip(frames('goblin', [('idle', 4), ('run', 4)]), None, 'goblin_minion.png')
 gw = strip(frames('goblin', [('idle', 4), ('run', 4)]), {
     '#3d734f': '#55682f', '#314152': '#6e2f2a'}, 'goblin_warrior.png')
