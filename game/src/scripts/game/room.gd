@@ -21,6 +21,7 @@ var spawns: Array = []        # [key, position]
 var chests: Array[Vector2] = []
 var fires: Array[Vector2] = []
 var darts: Array = []         # [position, direction]
+var back_color := Color(0.36, 0.33, 0.42)
 
 const WALL := Vector2i(2, 1)      # wall_mid at (32, 16)
 const LIP := Vector2i(2, 0)       # wall_top_mid at (32, 0)
@@ -35,7 +36,7 @@ func build(text: String) -> void:
 	var back := TileMapLayer.new()
 	back.tile_set = ts
 	back.collision_enabled = false
-	back.modulate = Color(0.36, 0.33, 0.42)
+	back.modulate = back_color
 	back.z_index = -20
 	add_child(back)
 

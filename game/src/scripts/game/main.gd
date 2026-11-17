@@ -1,7 +1,7 @@
 extends Node2D
 ## Vanguard's Descent: tavern hub, Goblin Warren runs, door choices, the turn-based boss, saves.
 
-enum Phase { TAVERN, RUN, DOORS, BATTLE, OVER }
+enum Phase { TAVERN, RUN, DOORS, BATTLE, OVER, CARD }   # TAVERN = walking around the inn
 
 const BIOME := "Goblin Warren"
 const ROOMS_BEFORE_BOSS := 5
@@ -25,6 +25,10 @@ var player: Player
 var camera: Camera2D
 var hud: Hud
 var battle: Node
+var inn: Inn
+var _talking: InnNPC
+var _quest_i := -1      # >= 0 while the Hooded Stranger is giving the quest
+var _barred_t := 0.0
 var hero := Hero.new()
 var phase := Phase.TAVERN
 var enemies: Array[Enemy] = []
@@ -44,6 +48,8 @@ var _bridge: JavaScriptObject
 var _cb_load: JavaScriptObject
 var _cb_save: JavaScriptObject
 var _cb_who: JavaScriptObject
+var _cb_staff: JavaScriptObject
+var _cb_biz: JavaScriptObject
 var save_mode := "local"
 var _loaded := false
 var bot := OS.get_cmdline_user_args().has("--bot")
@@ -72,8 +78,14 @@ func _ready() -> void:
 	hud.build(self)
 	battle = preload("res://scripts/game/battle.gd").new()
 	add_child(battle)
-	_load_room("warren_campfire_1", true)
+	inn = Inn.new()
+	add_child(inn)
+	move_child(inn, 0)
+	inn.build(self)
+	room = inn.room
+	_set_camera_limits()
 	_spawn_player()
+	hud.set_inn_mode(true)
 	_load_hero()
 
 
@@ -118,7 +130,7 @@ func _setup_input() -> void:
 
 
 func accepting_input() -> bool:
-	return phase == Phase.RUN
+	return phase == Phase.RUN or phase == Phase.TAVERN
 
 
 # ---------------- hero saves ----------------
@@ -137,7 +149,8 @@ func _on_whoami(args: Array) -> void:
 	var d = JSON.parse_string(str(args[0]))
 	if typeof(d) == TYPE_DICTIONARY:
 		hero.owner = str(d.get("player", d.get("name", "")))
-		if phase == Phase.TAVERN and _loaded:
+		inn.hide_player_character(str(d.get("name", "")))
+		if phase == Phase.CARD and _loaded:
 			_refresh_tavern()
 
 
@@ -166,6 +179,7 @@ func _on_hero_loaded(args: Array) -> void:
 	player.apply_hero(hero)
 	player.hp = player.max_hp
 	player.hp_changed.emit()
+	_load_party_data()
 	if _arg("lv5"):
 		hero.level = 5
 		hero.xp = 6500
@@ -235,6 +249,26 @@ func _arg(name: String) -> bool:
 	return false
 
 
+## Live data from Session Scribe: Business staff and prices, and who "You are" is.
+func _load_party_data() -> void:
+	if not _bridge:
+		return
+	_cb_staff = JavaScriptBridge.create_callback(func(args: Array):
+		var d = JSON.parse_string(str(args[0])) if args.size() > 0 and args[0] != null else null
+		if typeof(d) == TYPE_ARRAY:
+			inn.apply_staff(d))
+	_bridge.readColl("bizstaff", _cb_staff)
+	_cb_biz = JavaScriptBridge.create_callback(func(args: Array):
+		var d = JSON.parse_string(str(args[0])) if args.size() > 0 and args[0] != null else null
+		if typeof(d) == TYPE_ARRAY:
+			for doc in d:
+				if typeof(doc) == TYPE_DICTIONARY:
+					for v in doc.values():
+						if typeof(v) == TYPE_STRING and (v as String).contains("--"):
+							inn.set_prices(v))
+	_bridge.readColl("biz", _cb_biz)
+
+
 func save_hero() -> void:
 	var json := JSON.stringify(hero.to_dict())
 	if _bridge:
@@ -266,15 +300,13 @@ func _tavern_options() -> Array:
 		["Descend into the %s" % BIOME, "start"],
 		["Difficulty: %s (%s)%s" % [Creatures.TIERS[hero.tier].name, Creatures.TIERS[hero.tier].levels, "  - press to change" if hero.tier_unlocked > 1 else "  - clear it to unlock Tier II"], "tier"],
 		["Buy a Potion of Healing (%d gp)" % POTION_PRICE, "potion"],
+		["Back to the taproom", "back"],
 		["Return to Session Scribe", "leave"],
 	]
 
 
 func _open_tavern() -> void:
-	phase = Phase.TAVERN
-	_menu_pick = 0
-	hud.hide_doors()
-	_refresh_tavern()
+	_enter_inn(false)
 
 
 func _refresh_tavern() -> void:
@@ -287,10 +319,17 @@ func _refresh_tavern() -> void:
 	var who := ("Playing as %s. " % hero.owner) if hero.owner != "" else ""
 	var saves := "Progress saves to your party's records." if save_mode == "shared" else "Progress saves in this browser. Open Session Scribe and enter the campaign passphrase to share it with the party."
 	hud.show_tavern(sheet, opts.map(func(o): return o[0]), _menu_pick, who + saves)
+	hud.set_tavern_title("THE CELLAR STAIR", "A SINKHOLE HAS OPENED UNDER THE GRYPHON'S ROOST. GOBLINS ARE CLIMBING OUT OF THE DARK.")
 
 
 func _tavern_input() -> void:
 	var opts: Array = _tavern_options()
+	if Input.is_action_just_pressed("back"):
+		hud.hide_tavern()
+		phase = Phase.TAVERN
+		player.global_position.x = Inn.CELLAR_X - 40.0
+		player.reset_physics_interpolation()
+		return
 	if Input.is_action_just_pressed("move_down") or Input.is_action_just_pressed("move_right"):
 		_menu_pick = (_menu_pick + 1) % opts.size()
 		sfx.play("step", -8.0)
@@ -311,6 +350,12 @@ func _tavern_input() -> void:
 				else:
 					toast("Defeat the Bugbear Chief to unlock Tier II.")
 				_refresh_tavern()
+			"back":
+				hud.hide_tavern()
+				phase = Phase.TAVERN
+				player.global_position.x = Inn.CELLAR_X - 40.0
+				player.facing = -1
+				player.reset_physics_interpolation()
 			"leave":
 				if OS.has_feature("web"):
 					JavaScriptBridge.eval("window.location.href = '../'")
@@ -379,8 +424,9 @@ func _enter_room(kind: String) -> void:
 
 
 func _load_room(file: String, quiet := false) -> void:
-	if room:
+	if room and room != inn.room:
 		room.queue_free()
+	room = null
 	for e in enemies:
 		if is_instance_valid(e):
 			e.queue_free()
@@ -392,14 +438,16 @@ func _load_room(file: String, quiet := false) -> void:
 	for c in get_children():
 		if c is Projectile:
 			c.queue_free()
+	if file == "":
+		return
+	if inn.is_inside_tree():
+		remove_child(inn)
+	hud.set_inn_mode(false)
 	room = Room.new()
 	add_child(room)
 	move_child(room, 0)
 	room.build(FileAccess.get_file_as_string("res://rooms/%s.txt" % file))
-	camera.limit_left = 0
-	camera.limit_top = 0
-	camera.limit_right = int(room.size_px().x)
-	camera.limit_bottom = int(room.size_px().y)
+	_set_camera_limits()
 	if quiet:
 		return
 	for s in room.spawns:
@@ -426,6 +474,39 @@ func _load_room(file: String, quiet := false) -> void:
 		dt.dir = d[1]
 		add_child(dt)
 		props.append(dt)
+
+
+func _set_camera_limits() -> void:
+	camera.limit_left = 0
+	camera.limit_top = 0
+	camera.limit_right = int(room.size_px().x)
+	camera.limit_bottom = int(room.size_px().y)
+
+
+## Back in the Gryphon's Roost: at the front door on first arrival, at the cellar door after a delve.
+func _enter_inn(at_cellar := false) -> void:
+	_load_room("", true)
+	if not inn.is_inside_tree():
+		add_child(inn)
+		move_child(inn, 0)
+	room = inn.room
+	_set_camera_limits()
+	phase = Phase.TAVERN
+	hud.hide_tavern()
+	hud.hide_doors()
+	hud.set_inn_mode(true)
+	hud.set_room("THE GRYPHON'S ROOST INN - WATERDEEP")
+	player.global_position = Vector2(Inn.CELLAR_X - 40.0, Inn.FLOOR_Y) if at_cellar else room.player_spawn
+	player.facing = -1 if at_cellar else 1
+	player.velocity = Vector2.ZERO
+	_snap_view()
+
+
+func _open_card() -> void:
+	phase = Phase.CARD
+	player.velocity = Vector2.ZERO
+	_menu_pick = 0
+	_refresh_tavern()
 
 
 func spawn_monster(key: String, pos: Vector2) -> Enemy:
@@ -458,6 +539,11 @@ func room_cleared() -> bool:
 
 
 func try_interact() -> void:
+	if phase == Phase.TAVERN:
+		var n := inn.nearest(player.global_position)
+		if n:
+			_talk(n)
+		return
 	for p in props:
 		if is_instance_valid(p) and p.has_method("interact") and p.global_position.distance_to(player.global_position) < 24.0:
 			p.interact(player)
@@ -575,8 +661,23 @@ func _process(delta: float) -> void:
 		_bot(delta)
 	match phase:
 		Phase.TAVERN:
-			if _loaded:
-				_tavern_input()
+			if inn.dm:
+				inn.dm.set_marker(_loaded and not hero.quest_given)
+			_barred_t = maxf(0.0, _barred_t - delta)
+			if _loaded and not hero.quest_given and player.global_position.x > Inn.CELLAR_X - 30.0 and absf(player.global_position.y - Inn.FLOOR_Y) < 4.0:
+				# The way down stays shut until the stranger has had his word.
+				player.global_position.x = Inn.CELLAR_X - 30.0
+				player.velocity.x = minf(player.velocity.x, 0.0)
+				if _barred_t <= 0.0:
+					toast("THE CELLAR DOOR IS BARRED. THE HOODED STRANGER WANTS A WORD FIRST.")
+					if bot: print("[bot] cellar barred at x %d" % player.global_position.x)
+					_barred_t = 3.0
+			elif _loaded and inn.at_cellar(player.global_position):
+				_close_talk()
+				_open_card()
+			_update_talk()
+		Phase.CARD:
+			_tavern_input()
 		Phase.DOORS:
 			_doors_input()
 		Phase.RUN:
@@ -585,7 +686,6 @@ func _process(delta: float) -> void:
 			if Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("attack"):
 				hud.hide_center()
 				_reset_after_run()
-				_open_tavern()
 	if Input.is_action_just_pressed("toggle_log"):
 		hud.toggle_log()
 	if Input.is_action_just_pressed("test_down") and phase == Phase.RUN:
@@ -608,7 +708,50 @@ func _snap_view() -> void:
 	camera.reset_physics_interpolation()
 
 
+## Talking in the inn: E shows the next line from the nearest person; walking away closes it.
+func _talk(n: InnNPC) -> void:
+	if n == inn.dm and _loaded and not hero.quest_given:
+		_talking = n
+		n.face_toward(player.global_position.x)
+		_quest_i += 1
+		hud.show_dialogue(n.display_name, Inn.QUEST_LINES[_quest_i])
+		sfx.play("step", -8.0)
+		if _quest_i >= Inn.QUEST_LINES.size() - 1:
+			hero.quest_given = true
+			_quest_i = -1
+			n.set_marker(false)
+			save_hero()
+			toast("QUEST ACCEPTED: CLEAR THE CELLAR")
+			sfx.play("crit", -6.0)
+		return
+	if n != _talking:
+		n.line_i = n.line_i % maxi(1, n.lines.size())
+	_talking = n
+	n.face_toward(player.global_position.x)
+	hud.show_dialogue(n.display_name, n.next_line())
+	sfx.play("step", -8.0)
+
+
+func _update_talk() -> void:
+	if _talking and (not is_instance_valid(_talking) or absf(_talking.global_position.x - player.global_position.x) > 40.0 or absf(_talking.global_position.y - player.global_position.y) > 30.0):
+		_close_talk()
+
+
+func _close_talk() -> void:
+	if _quest_i >= 0:
+		_quest_i = -1   # walked off mid-briefing: he starts again next time
+	_talking = null
+	hud.hide_dialogue()
+
+
+func peaceful() -> bool:
+	return phase == Phase.TAVERN
+
+
 func _current_prompt() -> String:
+	if phase == Phase.TAVERN:
+		var n := inn.nearest(player.global_position)
+		return ("E: TALK TO %s" % n.display_name.to_upper()) if n else ""
 	if phase != Phase.RUN:
 		return ""
 	for p in props:
@@ -618,11 +761,9 @@ func _current_prompt() -> String:
 
 
 func _reset_after_run() -> void:
-	_load_room("warren_campfire_1", true)
-	player.global_position = room.player_spawn
 	player.set_physics_process(true)
 	player.revive_full()
-	_snap_view()
+	_enter_inn(true)
 
 
 ## Stack monster name tags on extra rows when neighbours' names would overlap.
@@ -872,9 +1013,19 @@ func _bot(delta: float) -> void:
 	if player.velocity.y >= 0.0 or phase != Phase.RUN:
 		Input.action_release("jump")
 	match phase:
-		Phase.TAVERN, Phase.DOORS, Phase.OVER:
+		Phase.CARD, Phase.DOORS, Phase.OVER:
 			if int(_bot_t * 4) % 2 == 0:
 				Input.action_press("confirm")
+			return
+		Phase.TAVERN:
+			if not hero.quest_given and inn.dm and not OS.get_cmdline_user_args().has("--rush"):
+				var dx := inn.dm.global_position.x - player.global_position.x
+				if absf(dx) > 14.0:
+					Input.action_press("move_right" if dx > 0 else "move_left")
+				elif int(_bot_t * 4) % 2 == 0:
+					Input.action_press("interact")
+				return
+			Input.action_press("move_right")
 			return
 		Phase.BATTLE:
 			_bot_battle()

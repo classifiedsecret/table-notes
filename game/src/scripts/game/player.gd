@@ -77,7 +77,8 @@ func _ready() -> void:
 	recovery = RECOVERY * (0.5 if hero and hero.has_extra_attack() else 1.0)
 	collision_layer = 0
 	collision_mask = Room.LAYER_SOLID | Room.LAYER_PLATFORM
-	floor_snap_length = 4.0
+	floor_snap_length = 6.0
+	floor_max_angle = deg_to_rad(50.0)   # the inn's stairs are 45 degrees
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(10, 22)
@@ -97,6 +98,8 @@ func _ready() -> void:
 		"idle": [0, 4, 6, true], "run": [4, 4, 11, true], "hit": [8, 1, 1, false]})
 	sprite.offset = Vector2(0, -14)
 	sprite.material = Art.flash_material()
+	(sprite.material as ShaderMaterial).set_shader_parameter("frame_w", 16.0)
+	(sprite.material as ShaderMaterial).set_shader_parameter("outline_color", Color(1.0, 0.93, 0.75, 0.55))
 	sprite.play("idle")
 	visual.add_child(sprite)
 	weapon_pivot = Node2D.new()
@@ -174,20 +177,24 @@ func _physics_process(delta: float) -> void:
 		input_x = Input.get_axis("move_left", "move_right")
 		if Input.is_action_just_pressed("jump"):
 			_buffer = JUMP_BUFFER
-		if Input.is_action_just_pressed("attack"):
-			_attack_queued = true
-		if Input.is_action_just_pressed("dodge"):
-			_try_dodge(input_x)
-		if Input.is_action_just_pressed("rage"):
-			_try_rage()
 		if Input.is_action_just_pressed("interact"):
 			game.try_interact()
-		if Input.is_action_just_pressed("potion"):
-			_try_potion()
-		if Input.is_action_just_pressed("reckless"):
-			_toggle_reckless()
-		if Input.is_action_just_pressed("echo"):
-			_try_echo()
+		if game.peaceful():
+			if Input.is_action_just_pressed("attack") and not Input.is_action_just_pressed("interact"):
+				pass   # no axe-swinging in the taproom
+		else:
+			if Input.is_action_just_pressed("attack"):
+				_attack_queued = true
+			if Input.is_action_just_pressed("dodge"):
+				_try_dodge(input_x)
+			if Input.is_action_just_pressed("rage"):
+				_try_rage()
+			if Input.is_action_just_pressed("potion"):
+				_try_potion()
+			if Input.is_action_just_pressed("reckless"):
+				_toggle_reckless()
+			if Input.is_action_just_pressed("echo"):
+				_try_echo()
 	_buffer = maxf(0.0, _buffer - delta)
 	if is_on_floor():
 		_coyote = COYOTE

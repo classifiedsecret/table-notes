@@ -41,6 +41,14 @@ var tavern_lines: Array[Label] = []
 var tavern_help: Label
 var tavern_foot: Label
 var hints: Label
+var tavern_title: Label
+var tavern_sub: Label
+var stats_panel: Control
+var dlg_panel: PanelContainer
+var dlg_name: Label
+var dlg_text: Label
+const HINTS_RUN := "MOVE A/D  JUMP SPACE  ATTACK J  DODGE K  RAGE L  RECKLESS R  ECHO U  USE E  POTION H  LOG TAB"
+const HINTS_INN := "MOVE A/D  JUMP SPACE  TALK E  CLIMB STAIRS W  DROP DOWN S + SPACE  CELLAR: FAR RIGHT"
 
 var _log: Array[String] = []
 var _banner_t := 0.0
@@ -76,6 +84,7 @@ func build(g: Node) -> void:
 	room_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	var sp := _panel(Vector2(286, 4), Vector2(190, 22))
+	stats_panel = sp
 	stats_label = _label(sp, Vector2(5, 2), "", 8, Color(0.9, 0.9, 0.85))
 	rule_label = _label(sp, Vector2(5, 11), "", 8, Color(0.7, 0.75, 0.85))
 
@@ -151,12 +160,12 @@ func build(g: Node) -> void:
 	doors_panel.visible = false
 
 	tavern_panel = _panel(Vector2(40, 22), Vector2(400, 222), 0.97)
-	var tt := _label(tavern_panel, Vector2(0, 6), "THE DEAD MERE TAVERN", 24, Color(1, 0.88, 0.55), true)
-	tt.size = Vector2(400, 24)
-	tt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var sub := _label(tavern_panel, Vector2(10, 30), "A SINKHOLE HAS OPENED UNDER THE CELLAR. THE GUILD PAYS FOR EVERY LEVEL CLEARED.", 8, Color(0.7, 0.68, 0.75))
-	sub.size = Vector2(380, 10)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tavern_title = _label(tavern_panel, Vector2(0, 6), "THE CELLAR STAIR", 24, Color(1, 0.88, 0.55), true)
+	tavern_title.size = Vector2(400, 24)
+	tavern_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tavern_sub = _label(tavern_panel, Vector2(10, 30), "", 8, Color(0.7, 0.68, 0.75))
+	tavern_sub.size = Vector2(380, 10)
+	tavern_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tavern_sheet = _label(tavern_panel, Vector2(18, 46), "", 8, Color(0.92, 0.92, 0.88))
 	tavern_sheet.size = Vector2(364, 50)
 	tavern_opts = _label(tavern_panel, Vector2(18, 102), "", 8, Color(1, 1, 1))
@@ -170,7 +179,14 @@ func build(g: Node) -> void:
 	tavern_foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tavern_panel.visible = false
 
-	hints = _label(root, Vector2(0, 259), "MOVE A/D  JUMP SPACE  ATTACK J  DODGE K  RAGE L  RECKLESS R  ECHO U  USE E  POTION H  LOG TAB", 8, Color(0.7, 0.68, 0.75))
+	dlg_panel = _panel(Vector2(70, 196), Vector2(340, 40), 0.95)
+	dlg_name = _label(dlg_panel, Vector2(8, 3), "", 8, Color(1, 0.85, 0.45))
+	dlg_text = _label(dlg_panel, Vector2(8, 13), "", 8, Color(0.94, 0.94, 0.9))
+	dlg_text.size = Vector2(324, 24)
+	dlg_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dlg_panel.visible = false
+
+	hints = _label(root, Vector2(0, 259), HINTS_RUN, 8, Color(0.7, 0.68, 0.75))
 	hints.size = Vector2(480, 10)
 	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
@@ -236,12 +252,36 @@ func refresh(p: Player, stats: Dictionary, g: Node) -> void:
 	rage_label.text = r
 	bonus_label.text = "BONUS ACTION READY" if p.bonus_cd <= 0.0 else "BONUS ACTION IN %dS" % ceili(p.bonus_cd)
 	bonus_label.label_settings.font_color = Color(0.7, 0.95, 0.7) if p.bonus_cd <= 0.0 else Color(0.6, 0.6, 0.65)
-	var in_run: bool = g.phase != 0
+	var in_run: bool = g.phase in [1, 2, 3, 4]
 	purse_label.text = "GOLD %d  POTIONS %d  HIT DICE %d" % [h.gold + (g.run_gold if in_run else 0), g.run_potions if in_run else h.potions, g.hit_dice]
 	var rolls: int = stats.get("rolls", 0)
 	var pct := 0 if rolls == 0 else roundi(100.0 * stats.get("hits", 0) / rolls)
 	stats_label.text = "YOUR ATTACKS %d  HITS %d (%d%%)  CRITS %d" % [rolls, stats.get("hits", 0), pct, stats.get("crits", 0)]
 	rule_label.text = "GLANCING %d   FUMBLES %d (TOOK %d)" % [stats.get("glances", 0), stats.get("fumbles", 0), stats.get("self", 0)]
+
+
+## In the inn the combat readouts are hidden and the key hints change.
+func set_inn_mode(on: bool) -> void:
+	stats_panel.visible = not on
+	log_panel.visible = not on
+	hints.text = HINTS_INN if on else HINTS_RUN
+	if not on:
+		hide_dialogue()
+
+
+func set_tavern_title(title: String, sub: String) -> void:
+	tavern_title.text = title
+	tavern_sub.text = sub
+
+
+func show_dialogue(who: String, text: String) -> void:
+	dlg_panel.visible = true
+	dlg_name.text = who.to_upper() + "   (E: MORE)"
+	dlg_text.text = text.to_upper()
+
+
+func hide_dialogue() -> void:
+	dlg_panel.visible = false
 
 
 func set_room(text: String) -> void:
@@ -266,6 +306,8 @@ func add_log(line: String) -> void:
 
 
 func toggle_log() -> void:
+	if hints.text == HINTS_INN:
+		return
 	log_panel.visible = not log_panel.visible
 
 

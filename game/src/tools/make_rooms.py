@@ -86,6 +86,14 @@ r.deco([(7, 'b'), (21, 'h'), (35, 'b'), (50, 'h'), (20, 'c'), (33, 'c')]); rooms
 r = Room(34); r.put(3, FLOOR - 1, 'S'); r.put(24, FLOOR - 1, 'B'); r.put(29, FLOOR - 1, 'a')
 r.deco([(6, 'b'), (12, 'b'), (18, 'b'), (24, 'b'), (9, 'h'), (27, 'h')]); rooms['warren_boss'] = r
 
+# The Gryphon's Roost Inn: ground-floor taproom, upper floor (rooms to let and the party's rooms) from col 1 to 48,
+# reached by a 45-degree staircase rising from x=56 tiles (floor) to x=49 tiles (upper floor). Cellar door at the far right.
+r = Room(64)
+for x in range(1, 49):
+    r.put(x, 6, '#')
+r.put(2, FLOOR - 1, 'S'); r.put(61, FLOOR - 1, 'X')
+rooms['inn_gryphons_roost'] = r
+
 os.makedirs(OUT, exist_ok=True)
 for name, rr in rooms.items():
     t = rr.text()

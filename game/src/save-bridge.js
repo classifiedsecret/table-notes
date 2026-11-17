@@ -27,6 +27,17 @@
     mode: function () { return mode; },
     /* The Session Scribe "You are" choice: a party member id, or '' if not chosen. */
     me: function () { return ls('table-notes-me') || ''; },
+    /* cb(jsonArrayOrNull): every document in a campaign collection (shared mode only), each with its id. */
+    readColl: function (coll, cb) {
+      init().then(function () {
+        if (mode !== 'shared') return call(cb, null);
+        base.collection(coll).get().then(function (qs) {
+          var out = [];
+          qs.forEach(function (d) { var o = d.data() || {}; o.id = d.id; delete o.avatar; out.push(o); });
+          call(cb, JSON.stringify(out));
+        }, function () { call(cb, null); });
+      });
+    },
     /* cb(jsonOrNull): the party member record for "You are" ({name, player, ...}) when shared. */
     whoami: function (cb) {
       init().then(function () {
