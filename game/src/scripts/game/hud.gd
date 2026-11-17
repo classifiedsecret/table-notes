@@ -48,7 +48,7 @@ var dlg_panel: PanelContainer
 var dlg_name: Label
 var dlg_text: Label
 const HINTS_RUN := "MOVE A/D  JUMP SPACE  ATTACK J  DODGE K  RAGE L  RECKLESS R  ECHO U  USE E  POTION H  LOG TAB"
-const HINTS_INN := "MOVE A/D  JUMP SPACE  TALK E  CLIMB STAIRS W  DROP DOWN S + SPACE  CELLAR: FAR RIGHT"
+const HINTS_INN := "MOVE A/D  JUMP SPACE  TALK E  CLIMB STAIRS W  DROP S+SPACE  CELLAR: FAR RIGHT  MUSIC M"
 
 var _log: Array[String] = []
 var _banner_t := 0.0

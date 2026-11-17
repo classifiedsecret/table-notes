@@ -26,6 +26,7 @@ var camera: Camera2D
 var hud: Hud
 var battle: Node
 var inn: Inn
+var music: Music
 var _talking: InnNPC
 var _quest_i := -1      # >= 0 while the Hooded Stranger is giving the quest
 var _barred_t := 0.0
@@ -78,6 +79,9 @@ func _ready() -> void:
 	hud.build(self)
 	battle = preload("res://scripts/game/battle.gd").new()
 	add_child(battle)
+	music = Music.new()
+	add_child(music)
+	music.play("tavern", 2.0)
 	inn = Inn.new()
 	add_child(inn)
 	move_child(inn, 0)
@@ -98,7 +102,7 @@ func _setup_input() -> void:
 		"jump": [KEY_SPACE, KEY_W, KEY_UP], "attack": [KEY_J, KEY_Z], "dodge": [KEY_K, KEY_SHIFT, KEY_C],
 		"rage": [KEY_L, KEY_Q], "toggle_log": [KEY_TAB, KEY_I], "confirm": [KEY_ENTER, KEY_KP_ENTER],
 		"interact": [KEY_E, KEY_F], "potion": [KEY_H], "reckless": [KEY_R], "echo": [KEY_U],
-		"back": [KEY_ESCAPE, KEY_BACKSPACE], "test_down": [KEY_F2],
+		"back": [KEY_ESCAPE, KEY_BACKSPACE], "test_down": [KEY_F2], "music": [KEY_M],
 	}
 	var pads := {"jump": [JOY_BUTTON_A], "attack": [JOY_BUTTON_X], "dodge": [JOY_BUTTON_B],
 		"rage": [JOY_BUTTON_Y], "toggle_log": [JOY_BUTTON_BACK], "confirm": [JOY_BUTTON_START, JOY_BUTTON_A],
@@ -396,6 +400,7 @@ func _start_run() -> void:
 func _enter_room(kind: String) -> void:
 	depth += 1
 	room_type = kind
+	music.play("boss" if kind == "boss" else "delve", 1.0 if kind == "boss" else 2.0)
 	var file := ""
 	if kind == "boss":
 		file = "warren_boss"
@@ -485,6 +490,7 @@ func _set_camera_limits() -> void:
 
 ## Back in the Gryphon's Roost: at the front door on first arrival, at the cellar door after a delve.
 func _enter_inn(at_cellar := false) -> void:
+	music.play("tavern", 2.0)
 	_load_room("", true)
 	if not inn.is_inside_tree():
 		add_child(inn)
@@ -686,6 +692,8 @@ func _process(delta: float) -> void:
 			if Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("attack"):
 				hud.hide_center()
 				_reset_after_run()
+	if Input.is_action_just_pressed("music"):
+		toast("MUSIC OFF" if music.toggle_mute() else "MUSIC ON")
 	if Input.is_action_just_pressed("toggle_log"):
 		hud.toggle_log()
 	if Input.is_action_just_pressed("test_down") and phase == Phase.RUN:
@@ -794,6 +802,7 @@ func end_run(result: String) -> void:
 	if phase == Phase.OVER:
 		return
 	phase = Phase.OVER
+	music.stop(3.0)
 	hud.death_saves(false, player.death_saves)
 	hero.best_depth = maxi(hero.best_depth, depth)
 	var body := ""
@@ -1004,10 +1013,10 @@ func _bot(delta: float) -> void:
 	_stat_t += delta
 	if _stat_t > 3.0 and phase == Phase.BATTLE:
 		_stat_t = 0.0
-		print("[battle] mode %s turn %d round %d hp %d" % [battle.mode, battle.turn_index, battle.round_no, player.hp])
+		print("[battle] music %s mode %s turn %d round %d hp %d" % [music.current, battle.mode, battle.turn_index, battle.round_no, player.hp])
 	if _stat_t > 3.0:
 		_stat_t = 0.0
-		print("[bot] phase %s depth %d room %s lvl %d xp %d hp %d/%d enemies %d p=%s" % [Phase.keys()[phase], depth, room_type, hero.level, hero.xp, player.hp, player.max_hp, living_enemies().size(), str(player.global_position.round())])
+		print("[bot] music %s phase %s depth %d room %s lvl %d xp %d hp %d/%d enemies %d p=%s" % [music.current, Phase.keys()[phase], depth, room_type, hero.level, hero.xp, player.hp, player.max_hp, living_enemies().size(), str(player.global_position.round())])
 	for a in ["move_left", "move_right", "attack", "dodge", "rage", "confirm", "interact", "potion"]:
 		Input.action_release(a)
 	if player.velocity.y >= 0.0 or phase != Phase.RUN:
