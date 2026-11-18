@@ -55,8 +55,8 @@ var dlg_name: Label
 var dlg_text: Label
 var dlg_yes: Label
 var dlg_no: Label
-const HINTS_INN := [["A/D", "MOVE"], ["SPACE", "JUMP"], ["E", "TALK / DOORS"], ["W", "CLIMB STAIRS"], ["S+SPACE", "DROP DOWN"],
-	["M", "MUSIC ON/OFF"], ["WHEEL", "MUSIC VOL"], ["ESC", "PAUSE"], ["", "CELLAR: FAR RIGHT"]]
+const HINTS_INN := [["WASD", "MOVE"], ["E", "TALK / DOORS"], ["M", "MUSIC ON/OFF"], ["WHEEL", "MUSIC VOL"],
+	["ESC", "PAUSE"], ["", "CELLAR: TRAPDOOR BY THE BAR"]]
 
 var _log: Array[String] = []
 var _banner_t := 0.0

@@ -1,10 +1,9 @@
 class_name TDMaps
 extends RefCounted
 ## Maps for the top-down prototype: the Gryphon's Roost (taproom, upstairs hallway, five
-## private rooms) and the two-room test dungeon under the cellar trapdoor.
+## private rooms). The cellar rooms are in TDRooms.
 ##
-## Grid legend: # wall, . floor, (space) nothing. Dungeon only: S start, g/G/a goblins,
-## ^ spikes, c chest, o column, x crate, k skull, D a door that opens when the room is clear.
+## Grid legend: # wall, . floor, (space) nothing.
 ## Props: [name, x tiles, y tiles, options]. (x, y) is the point the prop stands on (its
 ## bottom centre), so depth sorting works; "wall" props hang on a wall face, "floor" props
 ## lie flat (centred on the point), "solid" gives a footprint [w, h] in pixels.
@@ -39,7 +38,7 @@ static func taproom() -> Dictionary:
 		"spawns": {"stairs": Vector2(33.0, 5.2), "cellar": Vector2(29.5, 14.2), "door": Vector2(5.0, 14.6)},
 		"links": [
 			{"cells": [Vector2i(32, 1), Vector2i(33, 1), Vector2i(32, 0), Vector2i(33, 0)], "to": "upstairs", "spawn": "stairs", "walk": true},
-			{"cells": [Vector2i(31, 13), Vector2i(32, 13), Vector2i(31, 14), Vector2i(32, 14)], "to": "dungeon1", "spawn": "start", "walk": true},
+			{"cells": [Vector2i(31, 13), Vector2i(32, 13), Vector2i(31, 14), Vector2i(32, 14)], "to": "cellar", "walk": true},
 			{"cells": [Vector2i(4, 15), Vector2i(5, 15), Vector2i(4, 16), Vector2i(5, 16)], "to": "exit", "label": "EXIT TO SESSION SCRIBE"},
 		],
 		"props": [
@@ -149,9 +148,10 @@ static func get_map(name: String) -> Dictionary:
 		return upstairs()
 	if name.begins_with("room_"):
 		return private_room(name.substr(5))
-	if name == "dungeon1" or name == "dungeon2":
-		var i := 0 if name == "dungeon1" else 1
-		return {"title": "TEST DUNGEON - ROOM %d OF 2" % (i + 1), "theme": "stone", "grid": TDMain.ROOMS[i],
-			"spawns": {}, "links": [], "props": [], "npcs": [], "dungeon": i,
-			"next": "dungeon2" if i == 0 else "taproom", "next_spawn": "start" if i == 0 else "cellar"}
 	return taproom()
+
+
+## A cave room of the Goblin Warren as a map.
+static func cave(name: String) -> Dictionary:
+	return {"title": "THE GOBLIN WARREN", "theme": "cave", "dark": true, "grid": TDRooms.grid(name),
+		"spawns": {}, "links": [], "props": [], "npcs": []}

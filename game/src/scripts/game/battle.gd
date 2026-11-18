@@ -62,9 +62,17 @@ func start(g: Node) -> void:
 	active = true
 	visible = true
 	z_index = 3
-	var room: Room = game.room
-	max_col = room.w - 2
+	var room: World = game.room
+	# For now the fight plays out along one line of the hall: the row the hero starts on.
 	floor_y = room.player_spawn.y
+	var row := floori((floor_y - 1.0) / World.T)
+	var sc := floori(room.player_spawn.x / World.T)
+	min_col = sc
+	max_col = sc
+	while room.floorish(room.cell(Vector2i(min_col - 1, row))):
+		min_col -= 1
+	while room.floorish(room.cell(Vector2i(max_col + 1, row))):
+		max_col += 1
 	round_no = 1
 	boss_fury_used = false
 	echo_col = -1
@@ -494,7 +502,7 @@ func _camera() -> void:
 	var hc := _hero()
 	var bc := _boss_c()
 	var x: float = hc.col * T if bc.is_empty() else (hc.col + bc.col) * T / 2.0
-	game.camera.global_position = Vector2(x, floor_y - 60.0)
+	game.camera.global_position = Vector2(x, floor_y - 30.0)
 
 
 func _ask_target(action: String, reach: int, hint: String) -> void:
@@ -876,7 +884,7 @@ func _hurt_foe(t: Dictionary, amount: int) -> void:
 	e._flash = 1.0
 	e._show_bar = 99.0
 	if e.hp <= 0:
-		e._die(game.player.facing)
+		e._die(Vector2(game.player.facing, 0))
 		if e == boss:
 			await get_tree().create_timer(0.8).timeout
 			_check_end()

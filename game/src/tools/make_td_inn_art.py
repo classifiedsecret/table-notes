@@ -1,6 +1,7 @@
 """Original pixel art for the top-down (3/4) Gryphon's Roost: wood floor and wall pieces that
 join up, and furniture drawn from above-and-in-front (tables, chairs, bar, beds, rugs, couch,
-stairs, trapdoor, doors). Writes assets/sprites/td_inn.png and scripts/td/td_art.gd.
+stairs, trapdoor, doors). Writes assets/sprites/td_inn.png and scripts/td/td_art_rects.gd.
+Also the Goblin Warren's cave walls, dirt floor and cave props.
 Run: python3 tools/make_td_inn_art.py game"""
 import sys
 from PIL import Image, ImageDraw
@@ -403,6 +404,238 @@ def candle():
     return im
 
 
+
+
+# ---------------- the Goblin Warren: cave rock that joins like the wood walls ----------------
+R1, R2, R3, R4 = (96, 82, 74, 255), (122, 106, 94, 255), (70, 60, 56, 255), (150, 132, 114, 255)
+RD1, RD2 = (48, 40, 40, 255), (34, 28, 30, 255)
+DIRT1, DIRT2, DIRT3 = (92, 78, 64, 255), (82, 70, 58, 255), (70, 60, 50, 255)
+
+
+def _rock_mass(im, seed=0):
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 15], fill=RD1)
+    for (x, y) in ((3, 4), (10, 2), (7, 10), (13, 12), (1, 13)):
+        d.point(((x + seed) % 16, y), fill=RD2)
+    d.line([2, 7, 5, 6], fill=RD2); d.line([9, 13, 12, 12], fill=RD2)
+    return d
+
+
+@item
+def cave_face():          # the rock face of a cave wall: lumpy stone with a dark foot
+    im = canvas(16, 16); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 15], fill=R1)
+    for (x0, y0, x1, y1, c) in ((0, 1, 6, 5, R2), (8, 0, 15, 4, R2), (3, 7, 10, 10, R2), (11, 6, 15, 10, R3), (0, 6, 2, 11, R3)):
+        d.rectangle([x0, y0, x1, y1], fill=c)
+    d.line([0, 6, 15, 6], fill=R3); d.line([7, 0, 7, 6], fill=R3); d.line([10, 6, 10, 11], fill=R3)
+    d.point((2, 2), fill=R4); d.point((12, 1), fill=R4); d.point((5, 8), fill=R4)
+    d.rectangle([0, 12, 15, 15], fill=RD1); d.line([0, 12, 15, 12], fill=R3)
+    return im
+
+
+@item
+def cave_cap():           # top of a cave wall above its face, with a pale lip
+    im = canvas(16, 16); _rock_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([0, 11, 15, 15], fill=R3); d.line([0, 11, 15, 11], fill=R4)
+    d.point((4, 12), fill=R1); d.point((11, 13), fill=R1)
+    return im
+
+
+@item
+def cave_mass():
+    im = canvas(16, 16); _rock_mass(im); return im
+
+
+@item
+def cave_side_l():        # a cave wall with floor to its east: the lip on the right
+    im = canvas(16, 16); _rock_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([11, 0, 15, 15], fill=R3); d.line([11, 0, 11, 15], fill=R4)
+    d.point((13, 4), fill=R1); d.point((12, 11), fill=R1)
+    return im
+
+
+@item
+def cave_side_r():
+    im = canvas(16, 16); _rock_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 4, 15], fill=R3); d.line([4, 0, 4, 15], fill=R4)
+    d.point((2, 6), fill=R1); d.point((3, 13), fill=R1)
+    return im
+
+
+@item
+def cave_south():         # a cave wall with floor to its north: the lip along the top
+    im = canvas(16, 16); _rock_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 4], fill=R3); d.line([0, 4, 15, 4], fill=R4)
+    return im
+
+
+@item
+def cave_corner_sw():
+    im = canvas(16, 16); _rock_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([11, 0, 15, 4], fill=R3); d.line([11, 0, 11, 4], fill=R4); d.line([11, 4, 15, 4], fill=R4)
+    return im
+
+
+@item
+def cave_corner_se():
+    im = canvas(16, 16); _rock_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 4, 4], fill=R3); d.line([4, 0, 4, 4], fill=R4); d.line([0, 4, 4, 4], fill=R4)
+    return im
+
+
+@item
+def cave_cap_l():
+    im = items['cave_cap'](); d = ImageDraw.Draw(im)
+    d.rectangle([11, 0, 15, 10], fill=R3); d.line([11, 0, 11, 10], fill=R4)
+    return im
+
+
+@item
+def cave_cap_r():
+    im = items['cave_cap'](); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 4, 10], fill=R3); d.line([4, 0, 4, 10], fill=R4)
+    return im
+
+
+def dirt_tile(seed):
+    im = canvas(16, 16); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 15], fill=(DIRT1, DIRT2, DIRT1, DIRT2)[seed])
+    pts = [(2, 3), (9, 1), (13, 7), (5, 10), (11, 13), (1, 14), (7, 5)]
+    for i, (x, y) in enumerate(pts):
+        x = (x + seed * 5) % 16; y = (y + seed * 3) % 16
+        d.point((x, y), fill=DIRT3 if i % 2 else R2)
+    if seed == 1:
+        d.rectangle([4, 6, 6, 7], fill=R1); d.point((5, 6), fill=R4)      # a pebble
+    if seed == 3:
+        d.line([8, 9, 12, 10], fill=DIRT3); d.line([12, 10, 14, 13], fill=DIRT3)   # a crack
+    return im
+
+
+for k in range(4):
+    items['dirt_%d' % (k + 1)] = (lambda k=k: dirt_tile(k))
+
+
+@item
+def stalagmite():         # 14 x 22 rock spire
+    im = canvas(14, 22); d = ImageDraw.Draw(im)
+    d.polygon([(7, 0), (12, 16), (13, 21), (0, 21), (2, 15)], fill=R1, outline=O)
+    d.line([7, 2, 9, 15], fill=R2); d.line([5, 8, 4, 18], fill=R3)
+    d.point((7, 1), fill=R4); d.point((8, 6), fill=R4)
+    d.rectangle([1, 19, 12, 20], fill=RD1)
+    return im
+
+
+@item
+def rocks():              # 18 x 11 a pile of loose stones
+    im = canvas(18, 11); d = ImageDraw.Draw(im)
+    for (x0, y0, x1, y1) in ((0, 4, 8, 10), (6, 0, 14, 8), (11, 5, 17, 10)):
+        d.ellipse([x0, y0, x1, y1], fill=R1, outline=O)
+    d.point((9, 2), fill=R4); d.point((3, 6), fill=R4); d.point((14, 7), fill=R4)
+    return im
+
+
+@item
+def bones():              # 16 x 8 scattered bones (flat)
+    im = canvas(16, 8); d = ImageDraw.Draw(im)
+    bone = (226, 216, 196, 255)
+    d.line([1, 6, 9, 2], fill=bone, width=2); d.point((0, 6), fill=bone); d.point((10, 1), fill=bone)
+    d.line([8, 6, 15, 6], fill=bone, width=1); d.ellipse([11, 0, 15, 4], fill=bone, outline=O)
+    d.point((12, 2), fill=O); d.point((14, 2), fill=O)
+    return im
+
+
+@item
+def glowcap():            # 12 x 10 glowing cave mushrooms
+    im = canvas(12, 10); d = ImageDraw.Draw(im)
+    for (x, h, c) in ((2, 6, (120, 230, 200, 255)), (7, 8, (150, 250, 220, 255)), (10, 4, (110, 210, 190, 255))):
+        d.line([x, 9, x, 9 - h + 2], fill=(200, 190, 170, 255))
+        d.ellipse([x - 2, 9 - h, x + 2, 9 - h + 3], fill=c, outline=(40, 90, 80, 255))
+    return im
+
+
+@item
+def puddle():             # 28 x 12 a dark pool (flat)
+    im = canvas(28, 12); d = ImageDraw.Draw(im)
+    d.ellipse([0, 0, 27, 11], fill=(40, 52, 66, 255), outline=(30, 34, 44, 255))
+    d.ellipse([4, 2, 20, 8], fill=(52, 70, 88, 255))
+    d.line([8, 3, 13, 3], fill=(120, 150, 170, 255))
+    return im
+
+
+@item
+def tunnel():             # 28 x 30 the way on: a dark passage in a cave face
+    im = canvas(28, 30); d = ImageDraw.Draw(im)
+    d.rectangle([0, 6, 27, 29], fill=R3)
+    d.ellipse([0, 0, 27, 20], fill=R3)
+    d.ellipse([3, 3, 24, 22], fill=(16, 12, 14, 255))
+    d.rectangle([3, 12, 24, 29], fill=(16, 12, 14, 255))
+    for (x, y) in ((1, 9), (25, 12), (2, 20), (24, 24), (13, 1)):
+        d.point((x, y), fill=R4)
+    d.rectangle([0, 27, 27, 29], fill=RD1)
+    return im
+
+
+@item
+def tunnel_barred():      # the same, barred with goblin-lashed planks until the room is cleared
+    im = items['tunnel'](); d = ImageDraw.Draw(im)
+    for x in (6, 12, 18):
+        d.rectangle([x, 4, x + 3, 28], fill=W3, outline=O)
+    d.rectangle([3, 10, 24, 12], fill=W1, outline=O); d.rectangle([3, 20, 24, 22], fill=W1, outline=O)
+    return im
+
+
+@item
+def goblin_tent():        # 34 x 28 a hide tent
+    im = canvas(34, 28); d = ImageDraw.Draw(im)
+    hide, hide2 = (150, 118, 80, 255), (118, 90, 60, 255)
+    d.polygon([(17, 0), (33, 27), (0, 27)], fill=hide, outline=O)
+    d.polygon([(17, 6), (23, 27), (11, 27)], fill=(30, 22, 20, 255))
+    d.line([17, 0, 6, 27], fill=hide2); d.line([17, 0, 28, 27], fill=hide2)
+    d.line([15, 0, 19, 0], fill=W3); d.point((17, 0), fill=W4)
+    return im
+
+
+@item
+def totem():              # 12 x 26 a goblin totem pole with a skull
+    im = canvas(12, 26); d = ImageDraw.Draw(im)
+    box(d, 4, 8, 7, 25, W3)
+    bone = (226, 216, 196, 255)
+    d.ellipse([1, 0, 10, 9], fill=bone, outline=O)
+    d.point((4, 4), fill=O); d.point((7, 4), fill=O); d.line([4, 7, 7, 7], fill=O)
+    d.line([0, 13, 11, 13], fill=RED1); d.point((0, 14), fill=RED2); d.point((11, 14), fill=RED2)
+    return im
+
+
+@item
+def bedroll():            # 20 x 10 a goblin's bedroll (flat)
+    im = canvas(20, 10); d = ImageDraw.Draw(im)
+    box(d, 0, 1, 19, 9, (110, 90, 70, 255)); d.rectangle([1, 2, 6, 8], fill=(140, 116, 88, 255))
+    d.line([7, 2, 7, 8], fill=O)
+    return im
+
+
+@item
+def throne():             # 30 x 32 the Bugbear Chief's bone throne
+    im = canvas(30, 32); d = ImageDraw.Draw(im)
+    bone = (226, 216, 196, 255); bone2 = (190, 178, 156, 255)
+    box(d, 2, 0, 27, 20, W3)
+    for x in (3, 9, 15, 21):
+        d.ellipse([x, 0, x + 5, 5], fill=bone, outline=O)
+    box(d, 0, 16, 29, 31, W1)
+    d.rectangle([4, 18, 25, 22], fill=RED2)
+    box(d, 0, 14, 4, 31, bone2); box(d, 25, 14, 29, 31, bone2)
+    return im
+
+
+@item
+def torch_post():         # 8 x 22 a torch on a stake (light source in the warren)
+    im = canvas(8, 22); d = ImageDraw.Draw(im)
+    box(d, 3, 8, 4, 21, W3)
+    d.ellipse([1, 1, 6, 8], fill=(255, 170, 60, 255), outline=(170, 70, 30, 255))
+    d.ellipse([2, 2, 5, 6], fill=(255, 235, 150, 255))
+    return im
+
+
 # ---------------- pack ----------------
 built = {k: (fn() if callable(fn) else fn) for k, fn in items.items()}
 order = sorted(built, key=lambda k: -built[k].size[1])
@@ -420,31 +653,12 @@ sheet = canvas(W, y + rowh + 1)
 for k, (rx, ry, rw, rh) in rects.items():
     sheet.paste(built[k], (rx, ry), built[k])
 sheet.save(G + '/assets/sprites/td_inn.png')
-with open(G + '/scripts/td/td_art.gd', 'w') as f:
-    f.write('class_name TDArt\nextends RefCounted\n## Generated by tools/make_td_inn_art.py: regions in td_inn.png.\n\n')
+with open(G + '/scripts/td/td_art_rects.gd', 'w') as f:
+    f.write('class_name TDArtRects\n## Generated by tools/make_td_inn_art.py: regions in td_inn.png.\n\n')
     f.write('const RECTS := {\n')
     for k, r in sorted(rects.items()):
         f.write('\t"%s": Rect2(%d, %d, %d, %d),\n' % (k, *r))
-    f.write('}\n\nstatic var _sheet: Texture2D\nstatic var _cache := {}\n\n\n')
-    f.write('''## Our own top-down piece, else a side-view inn prop that also reads from above, else a 0x72 tile.
-static func tex(name: String) -> Texture2D:
-	if _cache.has(name):
-		return _cache[name]
-	var t: Texture2D
-	if RECTS.has(name):
-		if _sheet == null:
-			_sheet = load("res://assets/sprites/td_inn.png")
-		var a := AtlasTexture.new()
-		a.atlas = _sheet
-		a.region = RECTS[name]
-		t = a
-	elif InnProps.RECTS.has(name):
-		t = InnProps.tex(name)
-	else:
-		t = Art.region(name)
-	_cache[name] = t
-	return t
-''')
+    f.write('}\n')
 preview = sheet.resize((sheet.size[0] * 2, sheet.size[1] * 2), Image.NEAREST)
 bg = Image.new('RGBA', preview.size, (60, 54, 66, 255)); bg.alpha_composite(preview); bg.save('/tmp/td_inn_sheet.png')
 print(len(rects), 'pieces', sheet.size)

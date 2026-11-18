@@ -1,17 +1,12 @@
 extends Node2D
-## Vanguard's Descent: tavern hub, Goblin Warren runs, door choices, the turn-based boss, saves.
+## Vanguard's Descent, top-down: the Gryphon's Roost hub, Goblin Warren runs, door choices,
+## the turn-based boss, saves.
 
 enum Phase { TAVERN, RUN, DOORS, BATTLE, OVER, CARD }   # TAVERN = walking around the inn
 
 const BIOME := "Goblin Warren"
 const ROOMS_BEFORE_BOSS := 5
-const ROOM_POOL := {
-	"combat": ["warren_combat_1", "warren_combat_2", "warren_combat_3"],
-	"gauntlet": ["warren_gauntlet_1", "warren_gauntlet_2"],
-	"treasure": ["warren_treasure_1"],
-	"campfire": ["warren_campfire_1"],
-	"elite": ["warren_elite_1"],
-}
+const ROOM_POOL := TDRooms.POOL
 const ROOM_LABEL := {"combat": "COMBAT", "gauntlet": "GAUNTLET", "treasure": "TREASURE", "campfire": "CAMPFIRE", "elite": "ELITE", "boss": "BOSS"}
 const ROOM_HINT := {"combat": "Goblins. The door bars until they fall.", "gauntlet": "Traps and spikes. Few foes.",
 	"treasure": "A locked chest, lightly guarded.", "campfire": "A safe fire for a short rest.",
@@ -20,7 +15,7 @@ const POTION_PRICE := 50
 
 var dice: Dice
 var sfx: Sfx
-var room: Room
+var room: World
 var player: Player
 var camera: Camera2D
 var hud: Hud
@@ -70,13 +65,6 @@ var _stat_t := 0.0
 func _ready() -> void:
 	Art.setup_fonts()
 	_setup_input()
-	if _arg("topdown"):
-		# The top-down test room is its own little scene; hand over to it.
-		RenderingServer.set_default_clear_color(Color(0.05, 0.04, 0.07))
-		var td := TDMain.new()
-		get_parent().add_child.call_deferred(td)
-		queue_free()
-		return
 	# Physics interpolation smooths only bodies moved in physics steps (hero, goblins, arrows, camera).
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	dice = Dice.new(randi() % 900000 + 100000)
@@ -105,9 +93,8 @@ func _ready() -> void:
 	add_child(inn)
 	move_child(inn, 0)
 	inn.build(self)
-	room = inn.room
-	_set_camera_limits()
 	_spawn_player()
+	inn.go("taproom", "door")
 	hud.set_inn_mode(true)
 	_load_hero()
 
@@ -299,10 +286,8 @@ func _on_hero_loaded(args: Array) -> void:
 	hud.set_hero_hints(hero.key)
 	if first and phase == Phase.TAVERN:
 		# Every hero starts the day in their own room.
-		player.global_position = inn.room_spawn(hero.key)
-		player.facing = -1
-		_set_camera_limits()
-		_snap_view()
+		var rs: Array = inn.room_spawn(hero.key)
+		inn.go(rs[0], rs[1])
 	if not first:
 		if phase == Phase.CARD:
 			_refresh_tavern()
@@ -325,6 +310,12 @@ func _on_hero_loaded(args: Array) -> void:
 			for k in a.substr(8).split(","):
 				if Kits.has(k):
 					party.append(k)
+	var force := _arg_value("room")
+	if force != "" and TDRooms.ROOMS.has(force):
+		# Test switch: ?room=combat_2 (or --room=combat_2) starts a delve in that cave room.
+		_force_room = force
+		_start_run()
+		return
 	if _arg("boss"):
 		if not _arg("lv5"):
 			hero.level = 2
@@ -339,34 +330,6 @@ func _on_hero_loaded(args: Array) -> void:
 		for e in enemies:
 			e.queue_free()
 		enemies.clear()
-		return
-	if _arg("jump"):
-		_start_run()
-		for e in enemies:
-			e.queue_free()
-		enemies.clear()
-		var start_y := player.global_position.y
-		var tt := [0]
-		var tm := Timer.new()
-		tm.wait_time = 0.02
-		tm.autostart = true
-		tm.timeout.connect(func():
-			tt[0] += 1
-			var t: int = tt[0]
-			if OS.get_cmdline_user_args().has("--facetest"):
-				var mm := InputEventMouseMotion.new()
-				mm.position = Vector2(10, 135) if t < 60 else Vector2(470, 135)
-				Input.parse_input_event(mm)
-				if t == 20: Input.action_press("move_right")
-				if t == 45: Input.action_release("move_right")
-				if t == 58: Input.action_press("attack")
-				if t == 59: Input.action_release("attack")
-				if t % 4 == 0: print("[face] t=%d moving=%s st=%s facing=%d aim=%s mw=%s px=%.0f" % [t, Input.is_action_pressed("move_right"), Player.State.keys()[player.state], player.facing, player._mouse_aim, str((player.get_canvas_transform().affine_inverse() * player._mouse_screen).round()), player.global_position.x])
-				return
-			if t == 20: Input.action_press("jump")
-			if t == 70: Input.action_release("jump")
-			if t > 18 and t % 3 == 0 and t < 60: print("[jump] t=%d y=%.1f vy=%.0f floor=%s state=%s" % [t, start_y - player.global_position.y, player.velocity.y, player.is_on_floor(), Player.State.keys()[player.state]]))
-		add_child(tm)
 		return
 	if _arg("card"):
 		party.append_array(["lyburnum", "ceridwen"])
@@ -383,6 +346,19 @@ func _on_hero_loaded(args: Array) -> void:
 		_offer_doors()
 		return
 	_open_tavern()
+
+
+var _force_room := ""
+
+func _arg_value(name: String) -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--%s=" % name):
+			return a.substr(name.length() + 3)
+	if OS.has_feature("web"):
+		var q = JavaScriptBridge.eval("window.location.search", true)
+		if q is String and (q as String).contains(name + "="):
+			return (q as String).get_slice(name + "=", 1).get_slice("&", 0)
+	return ""
 
 
 ## Test switches: "--boss" on the command line or "?test=boss" in the page address.
@@ -448,7 +424,6 @@ func _tavern_options() -> Array:
 		["Difficulty: %s (%s)%s" % [Creatures.TIERS[hero.tier].name, Creatures.TIERS[hero.tier].levels, "  - press to change" if hero.tier_unlocked > 1 else "  - clear it to unlock Tier II"], "tier"],
 		["Buy a Potion of Healing (%d gp)" % POTION_PRICE, "potion"],
 		["Back to the taproom", "back"],
-		["Try the top-down inn and test dungeon (prototype)", "topdown"],
 		["Return to Session Scribe", "leave"],
 	]
 
@@ -489,8 +464,7 @@ func _tavern_input() -> void:
 	if ui_back():
 		hud.hide_tavern()
 		phase = Phase.TAVERN
-		player.global_position.x = Inn.CELLAR_X - 40.0
-		player.reset_physics_interpolation()
+		_step_off_trapdoor()
 		return
 	if Input.is_action_just_pressed("move_down") or Input.is_action_just_pressed("move_right"):
 		_menu_pick = (_menu_pick + 1) % opts.size()
@@ -523,13 +497,7 @@ func _tavern_input() -> void:
 			"back":
 				hud.hide_tavern()
 				phase = Phase.TAVERN
-				player.global_position.x = Inn.CELLAR_X - 40.0
-				player.facing = -1
-				player.reset_physics_interpolation()
-			"topdown":
-				save_hero()
-				if OS.has_feature("web"):
-					JavaScriptBridge.eval("window.location.search = '?test=topdown&hero=%s'" % hero.key)
+				_step_off_trapdoor()
 			"leave":
 				_leave_to_site()
 			"potion":
@@ -568,7 +536,6 @@ func _start_run() -> void:
 	party.erase(hero.key)
 	for i in party.size():
 		var c := Companion.make(self, party[i], hero.level, i)
-		add_child(c)
 		companions.append(c)
 	if not party.is_empty():
 		log_line("The party: %s and %s. Gold is split %d ways." % [hero.short(), ", ".join(party.map(func(k): return Kits.info(k).short)), party_size()])
@@ -581,8 +548,11 @@ func _enter_room(kind: String) -> void:
 	room_type = kind
 	music.play("boss" if kind == "boss" else "delve", 1.0 if kind == "boss" else 2.0)
 	var file := ""
-	if kind == "boss":
-		file = "warren_boss"
+	if _force_room != "":
+		file = _force_room
+		_force_room = ""
+	elif kind == "boss":
+		file = "boss"
 	else:
 		var pool: Array = ROOM_POOL[kind].filter(func(f): return not _used_rooms.has(f))
 		if pool.is_empty():
@@ -592,10 +562,13 @@ func _enter_room(kind: String) -> void:
 	if kind == "campfire":
 		_campfire_taken = true
 	_load_room(file)
+	_adopt(player)
 	player.global_position = room.player_spawn
 	player.velocity = Vector2.ZERO
+	player.aim = Vector2.UP
 	for c in companions:
 		if is_instance_valid(c):
+			_adopt(c)
 			c.arrive(player.global_position, player.facing)
 	if is_instance_valid(player.echo):
 		player.echo.queue_free()
@@ -611,7 +584,12 @@ func _enter_room(kind: String) -> void:
 
 
 func _load_room(file: String, quiet := false) -> void:
-	if room and room != inn.room:
+	if is_instance_valid(player) and player.get_parent():
+		player.get_parent().remove_child(player)
+	for c in companions:
+		if is_instance_valid(c) and c.get_parent():
+			c.get_parent().remove_child(c)
+	if room and (not inn or room != inn.room):
 		room.queue_free()
 	room = null
 	for e in enemies:
@@ -630,10 +608,10 @@ func _load_room(file: String, quiet := false) -> void:
 	if inn.is_inside_tree():
 		remove_child(inn)
 	hud.set_inn_mode(false)
-	room = Room.new()
+	room = World.new()
 	add_child(room)
 	move_child(room, 0)
-	room.build(FileAccess.get_file_as_string("res://rooms/%s.txt" % file))
+	room.build(self, TDMaps.cave(file))
 	_set_camera_limits()
 	if quiet:
 		return
@@ -646,44 +624,72 @@ func _load_room(file: String, quiet := false) -> void:
 		var ch := Chest.new()
 		ch.game = self
 		ch.position = c
-		add_child(ch)
+		room.ysort.add_child(ch)
 		props.append(ch)
 	for f in room.fires:
 		var cf := Campfire.new()
 		cf.game = self
 		cf.position = f
-		add_child(cf)
+		room.ysort.add_child(cf)
+		room.add_light(f + Vector2(0, -6), 120.0, 0)
 		props.append(cf)
 	for d in room.darts:
 		var dt := DartTrap.new()
 		dt.game = self
 		dt.position = d[0]
 		dt.dir = d[1]
-		add_child(dt)
+		room.ysort.add_child(dt)
 		props.append(dt)
 
 
+## Puts a hero, companion or goblin into the current map's depth-sorted layer.
+func _adopt(n: Node2D) -> void:
+	if not is_instance_valid(n) or not room:
+		return
+	if n.get_parent() == room.ysort:
+		return
+	if n.get_parent():
+		n.get_parent().remove_child(n)
+	room.ysort.add_child(n)
+
+
+## The inn moved to another of its maps (taproom, hallway, a room): the hero goes with it.
+func on_inn_map(w: World, at: Vector2) -> void:
+	room = w
+	_adopt(player)
+	player.global_position = at
+	player.velocity = Vector2.ZERO
+	_close_talk()
+	hud.set_room(w.map.get("title", "THE GRYPHON'S ROOST INN - WATERDEEP"))
+	_set_camera_limits()
+	_snap_view()
+	inn.set_playing(hero.key)
+	if inn.dm:
+		inn.dm.set_marker(_loaded and not hero.quest_given)
+
+
+## Small rooms sit in the middle of the screen; big ones scroll with you.
 func _set_camera_limits() -> void:
-	camera.limit_left = 0
-	camera.limit_top = 0
-	camera.limit_right = int(room.size_px().x)
-	camera.limit_bottom = int(room.size_px().y)
-	if inn and room == inn.room and player:
-		# In the inn the camera shows either the inn or the private room you are in.
-		var v := Inn.view_limits(player.global_position)
-		camera.limit_left = int(v.position.x)
-		camera.limit_right = int(v.end.x)
-		camera.limit_bottom = int(v.end.y)
+	var sz := room.size_px()
+	var mx := maxf(0.0, (480.0 - sz.x) / 2.0)
+	var my := maxf(0.0, (270.0 - sz.y) / 2.0)
+	camera.limit_left = int(-mx)
+	camera.limit_top = int(-my - 16.0)
+	camera.limit_right = int(sz.x + mx)
+	camera.limit_bottom = int(sz.y + my - 16.0)
+
+
+func _step_off_trapdoor() -> void:
+	player.global_position = Vector2(29.6, 12.4) * World.T
+	player.velocity = Vector2.ZERO
+	player.reset_physics_interpolation()
 
 
 ## Through a door in the inn: hallway to private room, or back out.
 func _use_inn_door(d: Dictionary) -> void:
 	_close_talk()
-	sfx.play("chop", -10.0)
-	player.global_position = d.to
-	player.velocity = Vector2.ZERO
-	_set_camera_limits()
-	_snap_view()
+	sfx.play("thud", -10.0)
+	inn.go(d.to, d.get("spawn", ""))
 
 
 ## Back in the Gryphon's Roost: at the front door on first arrival, at the cellar door after a delve.
@@ -694,18 +700,15 @@ func _enter_inn(at_cellar := false) -> void:
 	if not inn.is_inside_tree():
 		add_child(inn)
 		move_child(inn, 0)
-	room = inn.room
-	_set_camera_limits()
 	phase = Phase.TAVERN
 	hud.hide_tavern()
 	hud.hide_doors()
 	hud.set_inn_mode(true)
-	hud.set_room("THE GRYPHON'S ROOST INN - WATERDEEP")
-	player.global_position = Vector2(Inn.CELLAR_X - 40.0, Inn.FLOOR_Y) if at_cellar else inn.room_spawn(hero.key)
-	_set_camera_limits()
-	player.facing = -1 if at_cellar else 1
-	player.velocity = Vector2.ZERO
-	_snap_view()
+	if at_cellar:
+		inn.go("taproom", "cellar")
+	else:
+		var rs: Array = inn.room_spawn(hero.key)
+		inn.go(rs[0], rs[1])
 
 
 func _open_card() -> void:
@@ -720,8 +723,9 @@ func spawn_monster(key: String, pos: Vector2) -> Enemy:
 	e.setup(self, Creatures.scaled(Creatures.monster(key), hero.tier))
 	e.position = pos
 	e.facing = -1 if pos.x > player.global_position.x else 1
+	e.look = Vector2(e.facing, 0)
 	e._cd = 0.6 + randf() * 0.6
-	add_child(e)
+	room.ysort.add_child(e)
 	enemies.append(e)
 	return e
 
@@ -731,11 +735,9 @@ func _spawn_player() -> void:
 	player.game = self
 	player.hero = hero
 	player.stats = hero.combat_stats()
-	player.position = room.player_spawn
-	add_child(player)
+	player.position = Vector2(80, 80)
 	player.died.connect(_on_player_died)
 	player.downed.connect(func(): hud.death_saves(true, player.death_saves); hud.banner("DOWN!", Color(1, 0.4, 0.35)))
-	camera.global_position = player.global_position
 
 
 func room_cleared() -> bool:
@@ -772,11 +774,13 @@ func try_interact() -> void:
 func _check_exit() -> void:
 	if room.exit_pos.x < 0.0:
 		return
-	var near := absf(player.global_position.x - room.exit_pos.x) < 10.0 and absf(player.global_position.y - room.exit_pos.y) < 20.0
+	var near := player.global_position.distance_to(room.exit_pos) < 14.0
 	if not near:
 		return
 	if not room_cleared():
-		toast("The door is barred. Clear the room first.")
+		if _barred_t <= 0.0:
+			toast("The way on is barred. Clear the room first.")
+			_barred_t = 2.5
 		return
 	_offer_doors()
 
@@ -928,13 +932,13 @@ func _process(delta: float) -> void:
 			if inn.dm:
 				inn.dm.set_marker(_loaded and not hero.quest_given)
 			_barred_t = maxf(0.0, _barred_t - delta)
-			if _loaded and not hero.quest_given and player.global_position.x > Inn.CELLAR_X - 30.0 and player.global_position.x < 1024.0 and absf(player.global_position.y - Inn.FLOOR_Y) < 4.0:
+			if _loaded and not hero.quest_given and inn.near_cellar(player.global_position):
 				# The way down stays shut until the stranger has had his word.
-				player.global_position.x = Inn.CELLAR_X - 30.0
-				player.velocity.x = minf(player.velocity.x, 0.0)
+				var away: Vector2 = player.global_position - Vector2(31.5, 13.8) * World.T
+				player.global_position = Vector2(31.5, 13.8) * World.T + away.normalized() * 31.0
 				if _barred_t <= 0.0:
-					toast("THE CELLAR DOOR IS BARRED. THE HOODED STRANGER WANTS A WORD FIRST.")
-					if bot: print("[bot] cellar barred at x %d" % player.global_position.x)
+					toast("THE TRAPDOOR IS BARRED. THE HOODED STRANGER WANTS A WORD FIRST.")
+					if bot: print("[bot] cellar barred")
 					_barred_t = 3.0
 			elif _loaded and not _switching and inn.at_cellar(player.global_position):
 				_close_talk()
@@ -963,13 +967,15 @@ func _process(delta: float) -> void:
 
 func _physics_process(_delta: float) -> void:
 	if phase != Phase.BATTLE and player:
-		camera.global_position = player.global_position + Vector2(player.facing * 24.0, -20.0)
+		camera.global_position = player.global_position + Vector2(0, -8)
+	if phase == Phase.RUN and room:
+		_barred_t = maxf(0.0, _barred_t - _delta)
 
 
 ## After moving the hero instantly (new room, new run), stop the camera gliding across.
 func _snap_view() -> void:
 	player.reset_physics_interpolation()
-	camera.global_position = player.global_position + Vector2(player.facing * 24.0, -20.0)
+	camera.global_position = player.global_position + Vector2(0, -8)
 	camera.reset_smoothing()
 	camera.reset_physics_interpolation()
 
@@ -1002,7 +1008,7 @@ func _talk(n: InnNPC) -> void:
 
 
 func _update_talk() -> void:
-	if _talking and (not is_instance_valid(_talking) or absf(_talking.global_position.x - player.global_position.x) > 40.0 or absf(_talking.global_position.y - player.global_position.y) > 30.0):
+	if _talking and (not is_instance_valid(_talking) or _talking.global_position.distance_to(player.global_position) > 44.0):
 		_close_talk()
 
 
@@ -1096,7 +1102,7 @@ func _clear_companions() -> void:
 func _ask_exit() -> void:
 	_close_talk()
 	_confirm_exit = true
-	player.velocity.x = 0.0
+	player.velocity = Vector2.ZERO
 	hud.show_confirm("Exit", "Leave the Gryphon's Roost and return to Session Scribe? Your hero is saved.")
 
 
@@ -1141,26 +1147,23 @@ func _reset_after_run() -> void:
 	_enter_inn(true)
 
 
-## Stack monster name tags on extra rows when neighbours' names would overlap.
+## Lift a monster's name tag when it would overlap a neighbour's.
 func _layout_name_tags() -> void:
 	var es := living_enemies()
-	es.sort_custom(func(a, b): return a.global_position.x < b.global_position.x)
-	var row_end: Array[float] = []
+	es.sort_custom(func(a, b): return a.global_position.y > b.global_position.y)
+	var placed: Array[Rect2] = []
 	for e in es:
 		var w: float = e.bar.call("label_width") + 4.0
-		var left := e.global_position.x - w / 2.0
-		var row := 0
-		while row < row_end.size() and row_end[row] > left:
-			row += 1
-		if row == row_end.size():
-			row_end.append(0.0)
-		row_end[row] = e.global_position.x + w / 2.0
-		var view_c := camera.get_screen_center_position().x
-		var lo := maxf(0.0, view_c - 240.0) + w / 2.0 + 2.0
-		var hi := minf(room.size_px().x, view_c + 240.0) - w / 2.0 - 2.0
-		var cx := e.global_position.x
-		e.bar.position.x = clampf(cx, lo, maxf(lo, hi)) - cx
-		e.bar.position.y = -22.0 - 9.0 * row - (22.0 if e.data.name == "Bugbear Chief" else 0.0)
+		var fr: Array = e.data.get("frame", [16, 16])
+		var y := -float(fr[1]) - 6.0
+		var r := Rect2(e.global_position.x - w / 2.0, e.global_position.y + y - 8.0, w, 9.0)
+		var guard := 0
+		while guard < 4 and placed.any(func(o): return o.intersects(r)):
+			r.position.y -= 9.0
+			y -= 9.0
+			guard += 1
+		placed.append(r)
+		e.bar.position = Vector2(0, y)
 
 
 # ---------------- run end ----------------
@@ -1427,35 +1430,28 @@ func _bot(delta: float) -> void:
 	if _stat_t > 3.0:
 		_stat_t = 0.0
 		print("[bot] exit %s music %s phase %s depth %d room %s lvl %d xp %d hp %d/%d enemies %d p=%s" % [str(room.exit_pos), music.current, Phase.keys()[phase], depth, room_type, hero.level, hero.xp, player.hp, player.max_hp, living_enemies().size(), str(player.global_position.round())])
-	for a in ["move_left", "move_right", "attack", "dodge", "rage", "confirm", "interact", "potion", "form"]:
+	for a in ["move_left", "move_right", "move_up", "move_down", "attack", "dodge", "rage", "confirm", "interact", "potion", "form"]:
 		Input.action_release(a)
-	if player.velocity.y >= 0.0 or phase != Phase.RUN:
-		Input.action_release("jump")
 	match phase:
 		Phase.CARD, Phase.DOORS, Phase.OVER:
 			if int(_bot_t * 4) % 2 == 0:
 				Input.action_press("confirm")
 			return
 		Phase.TAVERN:
-			if Inn.chamber_at(player.global_position) >= 0:
-				var dr := inn.door_at(player.global_position)
-				if not dr.is_empty():
+			var goal := Vector2.ZERO
+			if inn.current.begins_with("room_"):
+				goal = Vector2(6.0, 8.6) * World.T            # out through the doorway
+			elif inn.current == "upstairs":
+				goal = Vector2(31.0, 3.8) * World.T           # the stairs down
+			elif not hero.quest_given and inn.dm and not OS.get_cmdline_user_args().has("--rush"):
+				goal = inn.dm.global_position + Vector2(0, 12)
+				if player.global_position.distance_to(inn.dm.global_position) < 24.0:
 					if int(_bot_t * 4) % 2 == 0:
 						Input.action_press("interact")
-				else:
-					Input.action_press("move_left")
-				return
-			if player.global_position.y < 100.0 or (player.global_position.y < 204.0 and player.global_position.x > 770.0):
-				Input.action_press("move_right")   # upstairs: head for the stairs down
-				return
-			if not hero.quest_given and inn.dm and not OS.get_cmdline_user_args().has("--rush"):
-				var dx := inn.dm.global_position.x - player.global_position.x
-				if absf(dx) > 14.0:
-					Input.action_press("move_right" if dx > 0 else "move_left")
-				elif int(_bot_t * 4) % 2 == 0:
-					Input.action_press("interact")
-				return
-			Input.action_press("move_right")
+					return
+			else:
+				goal = Vector2(31.5, 13.8) * World.T          # the trapdoor
+			_bot_walk(goal)
 			return
 		Phase.BATTLE:
 			_bot_battle()
@@ -1478,38 +1474,55 @@ func _bot(delta: float) -> void:
 	if player.hp < player.max_hp / 3 and run_potions > 0:
 		Input.action_press("potion")
 	var es := living_enemies()
-	var tx := room.exit_pos.x
+	var goal := room.exit_pos
 	var e: Enemy = null
 	if not es.is_empty():
-		es.sort_custom(func(a, b): return absf(a.global_position.x - player.global_position.x) < absf(b.global_position.x - player.global_position.x))
+		es.sort_custom(func(a, b): return a.global_position.distance_to(player.global_position) < b.global_position.distance_to(player.global_position))
 		e = es[0]
-		tx = e.global_position.x
+		goal = e.global_position
 	for p in props:
 		if is_instance_valid(p) and p.has_method("prompt") and p.prompt() != "":
-			tx = p.global_position.x
-			if absf(tx - player.global_position.x) < 12.0:
+			goal = p.global_position + Vector2(0, 8)
+			if p.global_position.distance_to(player.global_position) < 20.0:
 				Input.action_press("interact")
 			break
-	var dx := tx - player.global_position.x
+	var to := goal - player.global_position
+	var dx := to.x
 	var kind := str(player.current_weapon().get("kind", "melee"))
 	var reach := 20.0 if kind == "melee" else (60.0 if kind == "whip" else 170.0)
-	if e and absf(dx) < reach and absf(e.global_position.y - player.global_position.y) < 20.0:
-		player.facing = 1 if dx > 0 else -1
+	if e and to.length() < reach and room.line_clear(player.global_position + Vector2(0, -6), e.global_position + Vector2(0, -6)):
+		player.aim = to.normalized()
 		if int(_bot_t * 10) % 4 == 0:
 			Input.action_press("attack")
 		if hero.key != "boarvhal" and int(_bot_t * 2) % 9 == 0:
 			Input.action_press(["rage", "reckless", "echo", "form"][int(_bot_t) % 4])
 	else:
-		Input.action_press("move_right" if dx > 0 else "move_left")
-		var ahead := player.global_position + Vector2(signf(dx) * 20.0, 4.0)
-		var blocked := absf(player.velocity.x) < 5.0
-		if blocked or not room.is_ground_at(ahead) or (e and e.global_position.y < player.global_position.y - 20.0 and absf(dx) < 40.0):
-			Input.action_press("jump")
-	if player.rage_uses > 0 and not player.raging() and e and absf(dx) < 60.0 and room_type in ["elite", "combat"]:
+		_bot_walk(goal)
+	if player.rage_uses > 0 and not player.raging() and e and to.length() < 60.0 and room_type in ["elite", "combat"]:
 		Input.action_press("rage")
 	Input.action_release("echo")
 	Input.action_release("reckless")
-	if e and absf(dx) < 40.0 and hero.has_echo() and int(_bot_t * 3) % 7 == 0:
+	if e and to.length() < 40.0 and hero.has_echo() and int(_bot_t * 3) % 7 == 0:
 		Input.action_press("echo")
 	if hero.has_reckless() and not player.reckless and int(_bot_t) % 9 == 0:
 		Input.action_press("reckless")
+
+
+## The test bot walks along a path to a point by pressing the movement keys.
+var _bot_path := PackedVector2Array()
+var _bot_repath := 0.0
+
+func _bot_walk(goal: Vector2) -> void:
+	_bot_repath -= get_process_delta_time()
+	if _bot_repath <= 0.0 or _bot_path.is_empty():
+		_bot_repath = 0.5
+		_bot_path = room.path_to(player.global_position + Vector2(0, -3), goal + Vector2(0, -3))
+		if _bot_path.size() > 0:
+			_bot_path.remove_at(0)
+	while _bot_path.size() > 0 and player.global_position.distance_to(_bot_path[0] + Vector2(0, 3)) < 5.0:
+		_bot_path.remove_at(0)
+	var d := (goal if _bot_path.is_empty() else _bot_path[0] + Vector2(0, 3)) - player.global_position
+	if d.x > 2.0: Input.action_press("move_right")
+	if d.x < -2.0: Input.action_press("move_left")
+	if d.y > 2.0: Input.action_press("move_down")
+	if d.y < -2.0: Input.action_press("move_up")

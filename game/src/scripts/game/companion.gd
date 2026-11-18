@@ -49,16 +49,19 @@ func short_name() -> String:
 
 func _ready() -> void:
 	collision_layer = 0
-	collision_mask = Room.LAYER_SOLID | Room.LAYER_PLATFORM
-	floor_snap_length = 6.0
-	z_index = 4
+	collision_mask = World.LAYER_SOLID
+	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	var shape := CollisionShape2D.new()
 	var r := RectangleShape2D.new()
-	r.size = Vector2(10, 22)
+	r.size = Vector2(10, 6)
 	shape.shape = r
-	shape.position = Vector2(0, -11)
+	shape.position = Vector2(0, -3)
 	add_child(shape)
+	var shadow := Sprite2D.new()
+	shadow.texture = Player.shadow_tex()
+	shadow.modulate = Color(0, 0, 0, 0.35)
+	add_child(shadow)
 	visual = Node2D.new()
 	visual.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(visual)
@@ -80,15 +83,19 @@ func _ready() -> void:
 	tag = Label.new()
 	tag.label_settings = Art.label_settings(8, Color(0.6, 1.0, 0.6), 2)
 	tag.text = short_name().to_upper()
-	tag.position = Vector2(-20, -44)
+	tag.position = Vector2(-20, -40)
 	tag.size = Vector2(40, 10)
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tag.z_index = 20
+	tag.z_index = 60
 	add_child(tag)
 
 
 func hurt_rect() -> Rect2:
-	return Rect2(global_position + Vector2(-5, -22), Vector2(10, 22))
+	return Rect2(global_position + Vector2(-6, -20), Vector2(12, 22))
+
+
+func airborne() -> bool:
+	return false
 
 
 func is_down() -> bool:
@@ -100,8 +107,8 @@ func is_invulnerable() -> bool:
 
 
 ## Places the companion behind the hero at the start of a room.
-func arrive(at: Vector2, hero_facing: int) -> void:
-	global_position = at + Vector2(-hero_facing * (14.0 + 12.0 * index), 0)
+func arrive(at: Vector2, _hero_facing: int = 1) -> void:
+	global_position = game.room.open_spot(at + _slot_offset(Vector2.UP))
 	velocity = Vector2.ZERO
 	reset_physics_interpolation()
 	_rage_room = false
@@ -113,13 +120,18 @@ func arrive(at: Vector2, hero_facing: int) -> void:
 		game.log_line("The party patches up %s (1 HP)." % short_name())
 
 
+## Where this companion walks relative to the hero: a loose fan behind them.
+func _slot_offset(hero_aim: Vector2) -> Vector2:
+	var back := -hero_aim if hero_aim.length() > 0.1 else Vector2.DOWN
+	var spread: float = [-0.6, 0.6, -1.2, 1.2][index % 4]
+	return back.rotated(spread) * (18.0 + 6.0 * (index / 2))
+
+
 func _physics_process(delta: float) -> void:
 	if not game.accepting_input() or game.phase != 1:   # real-time rooms only
 		return
-	var g: float = ProjectSettings.get_setting("physics/2d/default_gravity")
-	velocity.y = minf(420.0, velocity.y + g * delta * (1.45 if velocity.y > 0.0 else 1.0))
 	if down:
-		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
+		velocity = velocity.move_toward(Vector2.ZERO, 900.0 * delta)
 		move_and_slide()
 		return
 	_cd = maxf(0.0, _cd - delta)
@@ -127,41 +139,59 @@ func _physics_process(delta: float) -> void:
 	var p: Player = game.player
 	_support(p)
 	var foe := _pick_foe()
-	var goal_x := p.global_position.x - p.facing * (16.0 + 12.0 * index)
+	var goal := p.global_position + _slot_offset(p.aim)
 	var reach := _reach()
 	if foe:
-		var dx := foe.global_position.x - global_position.x
-		facing = 1 if dx > 0 else -1
-		var dy := absf(foe.global_position.y - global_position.y)
-		if absf(dx) <= reach and dy < (40.0 if reach > 30.0 else 18.0):
-			goal_x = global_position.x
+		var to := foe.global_position - global_position
+		if absf(to.x) > 1.0:
+			facing = 1 if to.x > 0 else -1
+		if to.length() <= reach and game.room.line_clear(global_position + Vector2(0, -6), foe.global_position + Vector2(0, -6)):
+			goal = global_position
 			if _cd <= 0.0:
 				_attack(foe)
 		else:
-			goal_x = foe.global_position.x - facing * (reach * 0.7)
-	var to := goal_x - global_position.x
-	var want := 0.0 if absf(to) < 6.0 else signf(to)
+			goal = foe.global_position - to.normalized() * (reach * 0.7)
+	var move := goal - global_position
+	var want := Vector2.ZERO
+	if move.length() > 6.0:
+		want = _steer(goal)
 	var speed: float = Player.RUN_SPEED * float(stats.speed_ft) / 30.0
-	velocity.x = move_toward(velocity.x, want * speed, 1100.0 * delta)
-	if want != 0.0 and not foe:
-		facing = int(want)
+	velocity = velocity.move_toward(want * speed, 1100.0 * delta)
+	if want != Vector2.ZERO and not foe and absf(want.x) > 0.2:
+		facing = 1 if want.x > 0.0 else -1
 	visual.scale.x = facing
-	# Jump walls and ledges; climb toward a hero standing higher up.
-	var blocked := is_on_wall() and want != 0.0
-	var hero_above := p.global_position.y < global_position.y - 24.0 and absf(p.global_position.x - global_position.x) < 70.0
-	if is_on_floor() and (blocked or (hero_above and p.is_on_floor())):
-		velocity.y = JUMP_VELOCITY
 	move_and_slide()
-	sprite.play("run" if absf(velocity.x) > 10.0 and is_on_floor() else "idle")
+	sprite.play("run" if velocity.length() > 10.0 else "idle")
 	# Lost the hero? Catch up the way followers do: step out of the shadows beside them.
-	var far := global_position.distance_to(p.global_position) > 230.0
-	_stuck_t = _stuck_t + delta if (far or (blocked and absf(velocity.x) < 5.0)) else 0.0
-	if _stuck_t > 1.6 and p.is_on_floor():
+	var far := global_position.distance_to(p.global_position) > 200.0
+	_stuck_t = _stuck_t + delta if (far or (want != Vector2.ZERO and velocity.length() < 5.0)) else 0.0
+	if _stuck_t > 1.6:
 		_stuck_t = 0.0
 		SpellFx.burst(game, global_position + Vector2(0, -10), Color(0.7, 0.9, 0.7), 8.0, 0.3)
-		global_position = p.global_position + Vector2(-p.facing * 14.0, 0)
+		global_position = game.room.open_spot(p.global_position + _slot_offset(p.aim))
 		velocity = Vector2.ZERO
 		reset_physics_interpolation()
+
+
+var _path := PackedVector2Array()
+var _repath := 0.0
+
+## Straight there when the way is clear, else along a path around walls.
+func _steer(goal: Vector2) -> Vector2:
+	if game.room.line_clear(global_position + Vector2(0, -3), goal + Vector2(0, -3)):
+		_path = PackedVector2Array()
+		return (goal - global_position).normalized()
+	_repath -= get_physics_process_delta_time()
+	if _repath <= 0.0 or _path.is_empty():
+		_repath = 0.4
+		_path = game.room.path_to(global_position + Vector2(0, -3), goal + Vector2(0, -3))
+		if _path.size() > 0:
+			_path.remove_at(0)
+	while _path.size() > 0 and global_position.distance_to(_path[0] + Vector2(0, 3)) < 5.0:
+		_path.remove_at(0)
+	if _path.is_empty():
+		return (goal - global_position).normalized()
+	return (_path[0] + Vector2(0, 3) - global_position).normalized()
 
 
 func _reach() -> float:
@@ -176,7 +206,7 @@ func _pick_foe() -> Enemy:
 	var bd := 170.0
 	for e: Enemy in game.living_enemies():
 		var d := e.global_position.distance_to(global_position)
-		if d < bd and absf(e.global_position.y - global_position.y) < 90.0:
+		if d < bd:
 			bd = d
 			best = e
 	return best
@@ -216,7 +246,7 @@ func _attack(e: Enemy) -> void:
 	tw.tween_property(weapon_pivot, "rotation", -2.2, 0.15)
 	tw.tween_property(weapon_pivot, "rotation", 1.9, 0.07)
 	tw.tween_property(weapon_pivot, "rotation", -0.55, 0.3)
-	var hand := global_position + Vector2(facing * 8.0, -16.0)
+	var hand := global_position + Vector2(facing * 6.0, -14.0)
 	if kind == "bolt":
 		var b := SpellFx.bolt(game, hand, (e.global_position + Vector2(0, -10) - hand).normalized() * 300.0, HeroKit.SPELL_COLORS.fire,
 			func(t): roll_attack(t, wpn))
@@ -246,7 +276,7 @@ func roll_attack(e: Enemy, wpn: Dictionary) -> Dictionary:
 		("%d damage" % dmg) + (" (glancing)" if glancing else "") if dmg > 0 else "miss"])
 	if dmg > 0:
 		game.sfx.play("hit", -7.0)
-		e.take_hit(dmg, atk.crit, facing, glancing)
+		e.take_hit(dmg, atk.crit, (e.global_position - global_position).normalized(), glancing)
 	return atk
 
 
@@ -291,7 +321,7 @@ func heal(amount: int) -> void:
 
 func _knock_out() -> void:
 	down = true
-	velocity.x = 0.0
+	velocity = Vector2.ZERO
 	visual.rotation = -1.4 * facing
 	visual.modulate = Color(0.7, 0.7, 0.7)
 	game.log_line("%s is knocked out! The party will patch them up after the fight." % short_name())

@@ -1,6 +1,7 @@
 class_name Enemy
 extends CharacterBody2D
-## Goblin in real time: chase, telegraphed wind-up, strike rolled against the hero's AC.
+## Goblin in real time, top-down: paths around walls to the hero (or the nearest companion),
+## telegraphs its strike, rolls against AC. Archers keep their distance and need a clear line.
 
 enum State { CHASE, WINDUP, STRIKE, RECOVER, STAGGER, RETREAT, DEAD }
 
@@ -9,7 +10,12 @@ var data: Dictionary
 var max_hp := 7
 var hp := 7
 var ac := 12
-var facing := -1
+var facing := -1                 # sprite flip
+var look := Vector2.LEFT          # which way it is facing (for "behind" and its strike arc)
+var _path := PackedVector2Array()
+var _repath := 0.0
+var _alert := false
+var _knock := Vector2.ZERO
 var state := State.CHASE
 var speed := 80.0
 var _t := 0.0
@@ -45,20 +51,24 @@ func setup(g: Node, d: Dictionary) -> void:
 		max_hp += v
 	max_hp = maxi(1, roundi(max_hp * float(d.get("hp_scale", 1.0))))
 	hp = max_hp
-	speed = 86.0 if d.name == "Goblin Minion" else (66.0 if d.get("ranged", false) else 74.0)
+	speed = 74.0 if d.name == "Goblin Minion" else (58.0 if d.get("ranged", false) else 64.0)
 	game.log_line("A %s appears." % d.name)
 
 
 func _ready() -> void:
 	collision_layer = 0
-	collision_mask = Room.LAYER_SOLID | Room.LAYER_PLATFORM
-	floor_snap_length = 4.0
+	collision_mask = World.LAYER_SOLID
+	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(10, 12)
+	rect.size = Vector2(10, 6)
 	shape.shape = rect
-	shape.position = Vector2(0, -6)
+	shape.position = Vector2(0, -3)
 	add_child(shape)
+	var shadow := Sprite2D.new()
+	shadow.texture = Player.shadow_tex()
+	shadow.modulate = Color(0, 0, 0, 0.35)
+	add_child(shadow)
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	visual = Node2D.new()
 	visual.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
@@ -72,27 +82,28 @@ func _ready() -> void:
 	sprite.play("idle")
 	visual.add_child(sprite)
 	weapon_pivot = Node2D.new()
-	weapon_pivot.position = Vector2(4, -6)
-	weapon_pivot.rotation = 0.5
-	visual.add_child(weapon_pivot)
+	weapon_pivot.position = Vector2(0, -6)
+	add_child(weapon_pivot)
 	var w := Sprite2D.new()
 	w.texture = Art.region(data.weapon_sprite)
 	w.offset = Vector2(0, -w.texture.get_height() / 2.0 + 2.0)
+	w.rotation = PI / 2.0
 	weapon_pivot.add_child(w)
 	warn = Label.new()
 	warn.label_settings = Art.label_settings(16, Color(1, 0.85, 0.2), 3, true)
 	warn.text = "!"
-	warn.position = Vector2(-3, -34)
+	warn.position = Vector2(-3, -float(fr[1]) - 18.0)
 	warn.visible = false
 	add_child(warn)
 	bar = Node2D.new()
 	bar.set_script(preload("res://scripts/game/enemy_bar.gd"))
-	bar.position = Vector2(0, -22)
+	bar.position = Vector2(0, -float(fr[1]) - 6.0)
+	bar.z_index = 60
 	add_child(bar)
 
 
 func hurt_rect() -> Rect2:
-	return Rect2(global_position + Vector2(-6, -14), Vector2(12, 14))
+	return Rect2(global_position + Vector2(-7, -15), Vector2(14, 17))
 
 
 func save_bonus(ability: String) -> int:
@@ -102,7 +113,7 @@ func save_bonus(ability: String) -> int:
 
 func restrain(secs: float) -> void:
 	restrained_t = maxf(restrained_t, secs)
-	velocity.x = 0.0
+	velocity = Vector2.ZERO
 	FloatText.fling(game, global_position + Vector2(0, -22), Vector2(0, -1), "RESTRAINED", "", Color(0.55, 0.9, 0.45), 0, 0.9)
 
 
@@ -130,64 +141,42 @@ func _go(s: int) -> void:
 func _physics_process(delta: float) -> void:
 	_t += delta
 	_cd = maxf(0.0, _cd - delta)
-	_jump_cd = maxf(0.0, _jump_cd - delta)
-	if _drop_t > 0.0:
-		_drop_t -= delta
-		if _drop_t <= 0.0:
-			collision_mask |= Room.LAYER_PLATFORM
 	var p: Node2D = game.enemy_target(self)
-	var dx := p.global_position.x - global_position.x
-	var dy := p.global_position.y - global_position.y
-	var dir := signf(dx)
+	var to_p := p.global_position - global_position
+	var dist := to_p.length()
+	var dir := to_p.normalized() if dist > 0.5 else look
 	restrained_t = maxf(0.0, restrained_t - delta)
 	frightened_t = maxf(0.0, frightened_t - delta)
 	visual.modulate = Color(0.75, 1.0, 0.7) if restrained_t > 0.0 else (Color(0.85, 0.7, 1.0) if frightened_t > 0.0 else Color.WHITE)
-
+	# Goblins notice you when they can see you (they have darkvision), or once hurt.
+	if not _alert and dist < 170.0 and game.room.line_clear(global_position + Vector2(0, -6), p.global_position + Vector2(0, -6)):
+		_alert = true
+	var want := Vector2.ZERO
+	var spd := speed
 	match state:
 		State.DEAD:
-			velocity.x = move_toward(velocity.x, 0.0, 400.0 * delta)
+			pass
 		State.CHASE:
-			if frightened_t > 0.0 and state != State.DEAD:
+			if frightened_t > 0.0:
 				# Flee from the hero; no attacks while terrified.
-				if dir != 0.0:
-					facing = -int(dir)
-				var away := -dir if dir != 0.0 else 1.0
-				if restrained_t <= 0.0 and (_ground_ahead_dir(away) or not is_on_floor()):
-					velocity.x = move_toward(velocity.x, away * speed * 0.9, 700.0 * delta)
-				else:
-					velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
-			elif data.get("ranged", false) and not p.is_down() and game.accepting_input():
-				_archer_chase(delta, dx, dy)
+				want = -dir
+				look = -dir
+				spd = speed * 0.9
+			elif not _alert or not game.accepting_input():
+				want = Vector2.ZERO
 			elif p.is_down():
 				_go(State.RETREAT)
-			elif not game.accepting_input():
-				velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+			elif data.get("ranged", false):
+				want = _archer_chase(p, to_p, dist)
 			else:
-				if dir != 0.0:
-					facing = int(dir)
-				var close := absf(dx) < 22.0 and absf(dy) < 18.0
-				if close and _cd <= 0.0 and is_on_floor():
+				look = dir
+				if dist <= 18.0 and _cd <= 0.0:
 					_go(State.WINDUP)
-					velocity.x = 0.0
-				elif absf(dx) > 14.0 and (_ground_ahead() or dy > 8.0 or (absf(dy) < 12.0 and absf(dx) > 30.0)):
-					velocity.x = move_toward(velocity.x, facing * speed, 700.0 * delta)
-				else:
-					velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
-				# Goblins are nimble: hop up ledges, out of pits and onto platforms after the hero.
-				# Drop through a platform when the hero is below.
-				if is_on_floor() and dy > 20.0 and absf(dx) < 80.0 and _on_platform():
-					collision_mask &= ~Room.LAYER_PLATFORM
-					_drop_t = 0.25
-					position.y += 2.0
-				var gap_jump := not _ground_ahead() and absf(dy) < 12.0 and absf(dx) > 30.0
-				if is_on_floor() and _jump_cd <= 0.0 and (is_on_wall() or gap_jump or (dy < -20.0 and absf(dx) < 56.0)):
-					velocity.y = -300.0
-					velocity.x = facing * speed
-					_jump_cd = 1.2
+				elif dist > 14.0:
+					want = _follow_path(p.global_position)
 		State.WINDUP:
-			# Facing is locked during the wind-up: dodge behind it for advantage.
-			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
-			weapon_pivot.rotation = 0.0 if data.get("ranged", false) else lerpf(0.5, -2.0, minf(1.0, _t / (data.windup * 0.6)))
+			# Facing is locked during the wind-up: get behind it, or out of its reach.
+			weapon_pivot.rotation = look.angle() + (0.0 if data.get("ranged", false) else -1.6 * minf(1.0, _t / (data.windup * 0.6)))
 			warn.visible = true
 			_flash = 0.35 + 0.25 * sin(_t * 40.0)
 			(sprite.material as ShaderMaterial).set_shader_parameter("flash_color", Color(1, 0.85, 0.3))
@@ -198,104 +187,101 @@ func _physics_process(delta: float) -> void:
 				warn.visible = false
 		State.STRIKE:
 			if data.get("ranged", false):
-				velocity.x = 0.0
 				if not _struck:
 					_struck = true
-					var from := global_position + Vector2(facing * 6.0, -8.0)
-					var aim := (p.global_position + Vector2(0, -12) - from).normalized()
-					Projectile.fire(game, from, aim * 210.0, data.name, data.weapon, Color(0.85, 0.75, 0.55))
+					var from := global_position + Vector2(0, -8)
+					var aim_at := (p.global_position + Vector2(0, -8) - from).normalized()
+					Projectile.fire(game, from, aim_at * 190.0, data.name, data.weapon, Color(0.85, 0.75, 0.55))
 					game.sfx.play("swing", -14.0, 0.3)
 			else:
-				weapon_pivot.rotation = lerpf(-2.0, 1.9, minf(1.0, _t / 0.08))
-				velocity.x = facing * 60.0 if _t < 0.06 else 0.0
+				weapon_pivot.rotation = look.angle() + lerpf(-1.6, 1.3, minf(1.0, _t / 0.08))
+				if _t < 0.06:
+					want = look * 0.8
 				if not _struck and _t >= 0.04:
 					_struck = true
 					game.sfx.play("swing", -10.0, 0.2)
-					if _strike_rect().intersects(p.hurt_rect()):
-						p.receive_attack(self, data.weapon)
+					# It lands if the target is still in reach and in front: a roll or a step away beats it.
+					for t in _strike_targets():
+						var d: Vector2 = t.global_position - global_position
+						if d.length() <= 24.0 and look.dot(d.normalized()) > 0.1 and not t.is_invulnerable():
+							t.receive_attack(self, data.weapon)
 			if _t >= 0.12:
 				_go(State.RECOVER)
 				_cd = data.cooldown
 		State.RECOVER:
-			weapon_pivot.rotation = 0.0 if data.get("ranged", false) else lerpf(1.9, 0.5, minf(1.0, _t / 0.3))
+			if not data.get("ranged", false):
+				weapon_pivot.rotation = look.angle() + lerpf(1.3, 0.0, minf(1.0, _t / 0.3))
 			if data.name == "Goblin Minion" and _t < 0.25:
 				# Nimble Escape: hop back out of reach after stabbing.
-				velocity.x = -facing * 90.0
-			else:
-				velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+				want = -look * 1.2
 			if _t >= 0.4:
 				_go(State.CHASE)
 		State.STAGGER:
-			velocity.x = move_toward(velocity.x, 0.0, 500.0 * delta)
 			if _t >= 0.3:
 				_go(State.CHASE)
 		State.RETREAT:
-			# Boar-vhal is down: goblins back off and jeer instead of finishing him.
-			velocity.x = move_toward(velocity.x, -signf(dx) * 40.0 if absf(dx) < 60.0 else 0.0, 300.0 * delta)
+			# The hero is down: goblins back off and jeer instead of finishing them.
+			want = -dir * 0.5 if dist < 60.0 else Vector2.ZERO
 			if not p.is_down():
 				_go(State.CHASE)
-
+	if state == State.CHASE and not data.get("ranged", false) and state != State.WINDUP:
+		weapon_pivot.rotation = lerp_angle(weapon_pivot.rotation, look.angle(), 0.3)
 	# Keep personal space from other goblins so a pack reads as separate bodies.
 	if state != State.DEAD and state != State.STRIKE:
-		var push := 0.0
 		for o: Enemy in game.living_enemies():
 			if o == self:
 				continue
-			var ox := global_position.x - o.global_position.x
-			if absf(ox) < 20.0 and absf(global_position.y - o.global_position.y) < 14.0:
-				var side := signf(ox) if ox != 0.0 else (1.0 if get_instance_id() > o.get_instance_id() else -1.0)
-				push += side * (20.0 - absf(ox)) * 30.0
-		if push != 0.0 and (_ground_ahead_dir(signf(push)) or not is_on_floor()):
-			velocity.x = clampf(velocity.x + push * delta * 10.0, -speed * 1.3, speed * 1.3)
-
+			var off := global_position - o.global_position
+			if off.length() < 14.0:
+				want += (off.normalized() if off.length() > 0.1 else Vector2.RIGHT.rotated(get_instance_id())) * (14.0 - off.length()) / 14.0
 	if restrained_t > 0.0 and state != State.DEAD:
-		velocity.x = 0.0
-		if velocity.y < 0.0:
-			velocity.y = 0.0
-	var g: float = ProjectSettings.get_setting("physics/2d/default_gravity")
-	velocity.y = minf(420.0, velocity.y + g * delta)
+		want = Vector2.ZERO
+	velocity = velocity.move_toward(want * spd, 700.0 * delta) + _knock
+	_knock = _knock.move_toward(Vector2.ZERO, 900.0 * delta)
 	move_and_slide()
+	if absf(look.x) > 0.1:
+		facing = 1 if look.x > 0.0 else -1
 	visual.scale.x = facing
+	weapon_pivot.z_index = -1 if look.y < -0.3 else 1
 	if state != State.DEAD:
-		sprite.play("run" if absf(velocity.x) > 10.0 else "idle")
+		sprite.play("run" if velocity.length() > 10.0 else "idle")
 
 
+func _strike_targets() -> Array:
+	var out: Array = [game.player]
+	for c in game.companions:
+		if is_instance_valid(c) and not c.is_down():
+			out.append(c)
+	return out
 
-## Archers keep their distance and shoot when they have a line on the hero.
-func _archer_chase(delta: float, dx: float, dy: float) -> void:
-	if dx != 0.0:
-		facing = 1 if dx > 0.0 else -1
-	var dist := absf(dx)
-	var want := 0.0
-	if dist < 60.0:
-		want = -signf(dx)
-	elif dist > 150.0:
-		want = signf(dx)
-	if want != 0.0 and is_on_floor() and _ground_ahead_dir(want):
-		velocity.x = move_toward(velocity.x, want * speed, 600.0 * delta)
-	else:
-		velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
-	if _cd <= 0.0 and dist < 220.0 and absf(dy) < 70.0 and is_on_floor():
+
+func _follow_path(target: Vector2) -> Vector2:
+	_repath -= get_physics_process_delta_time()
+	if _repath <= 0.0 or _path.is_empty():
+		_repath = 0.35
+		_path = game.room.path_to(global_position + Vector2(0, -3), target + Vector2(0, -3))
+		if _path.size() > 0:
+			_path.remove_at(0)
+	while _path.size() > 0 and global_position.distance_to(_path[0] + Vector2(0, 3)) < 5.0:
+		_path.remove_at(0)
+	if _path.is_empty():
+		return (target - global_position).normalized()
+	return (_path[0] + Vector2(0, 3) - global_position).normalized()
+
+
+## Archers keep their distance and shoot when they have a clear line on the target.
+func _archer_chase(p: Node2D, to_p: Vector2, dist: float) -> Vector2:
+	look = to_p.normalized() if dist > 0.5 else look
+	var sees: bool = game.room.line_clear(global_position + Vector2(0, -8), p.global_position + Vector2(0, -8))
+	var want := Vector2.ZERO
+	if dist < 56.0:
+		want = -look
+	elif dist > 140.0 or not sees:
+		want = _follow_path(p.global_position)
+	if _cd <= 0.0 and sees and dist < 200.0:
 		_go(State.WINDUP)
-		velocity.x = 0.0
-
-
-func _on_platform() -> bool:
-	var room: Room = game.room
-	var y := floori((global_position.y + 2.0) / Room.T)
-	if y < 0 or y >= room.h:
-		return false
-	var on_plat := false
-	for ox in [-5.0, 0.0, 5.0]:
-		var x := floori((global_position.x + ox) / Room.T)
-		if x < 0 or x >= room.w:
-			continue
-		var ch := room.rows[y][x]
-		if ch == "#":
-			return false
-		if ch == "=":
-			on_plat = true
-	return on_plat
+		want = Vector2.ZERO
+	return want
 
 
 func _process(delta: float) -> void:
@@ -306,47 +292,33 @@ func _process(delta: float) -> void:
 		bar.call("set_values", hp, max_hp, data.display, _show_bar > 0.0 or hp < max_hp)
 
 
-func _ground_ahead_dir(d: float) -> bool:
-	return game.room.is_ground_at(global_position + Vector2(d * 9.0, 4.0))
-
-
-func _ground_ahead() -> bool:
-	var probe := global_position + Vector2(facing * 9.0, 4.0)
-	return game.room.is_ground_at(probe)
-
-
-func _strike_rect() -> Rect2:
-	var r := Rect2(Vector2(0, -16), Vector2(20, 18))
-	if facing < 0:
-		r.position.x = -r.size.x
-	r.position += global_position
-	return r
-
-
-func take_hit(amount: int, crit: bool, from_facing: int, glancing: bool) -> void:
+func take_hit(amount: int, crit: bool, from_dir: Variant, glancing: bool) -> void:
 	if state == State.DEAD:
 		return
+	_alert = true
+	var dir: Vector2 = from_dir if from_dir is Vector2 else Vector2(float(from_dir), 0.0)
 	hp = maxi(0, hp - amount)
 	_flash = 1.0
 	_show_bar = 3.0
 	if hp <= 0:
-		_die(from_facing)
+		_die(dir)
 		return
 	if not glancing:
 		warn.visible = false
 		(sprite.material as ShaderMaterial).set_shader_parameter("flash_color", Color.WHITE)
 		_go(State.STAGGER)
-		velocity = Vector2(from_facing * (150.0 if crit else 90.0), -70.0)
+		_knock = dir * (150.0 if crit else 90.0)
 
 
-func _die(from_facing: int) -> void:
+func _die(dir: Vector2) -> void:
 	_go(State.DEAD)
 	warn.visible = false
 	bar.visible = false
+	collision_mask = 0
 	game.on_enemy_killed(self)
-	velocity = Vector2(from_facing * 120.0, -140.0)
+	_knock = dir * 120.0
 	var tw := create_tween()
-	tw.tween_property(visual, "rotation", PI / 2 * from_facing, 0.25)
+	tw.tween_property(visual, "rotation", PI / 2 * (1.0 if dir.x >= 0.0 else -1.0), 0.25)
 	tw.tween_interval(0.5)
 	tw.tween_property(self, "modulate:a", 0.0, 0.5)
 	tw.tween_callback(queue_free)

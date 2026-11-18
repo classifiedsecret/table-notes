@@ -232,13 +232,13 @@ static func level_features(key: String, lv: int) -> String:
 
 ## Key hints for the run, per hero: [key, what it does].
 static func hints(key: String) -> Array:
-	var head := [["A/D", "MOVE"], ["SPACE", "JUMP"]]
-	var tail := [["K", "DODGE"], ["E", "USE"], ["H", "POTION"], ["TAB", "ROLL LOG"], ["WHEEL", "MUSIC VOL"], ["ESC", "PAUSE"]]
+	var head := [["WASD", "MOVE"], ["SPACE", "HOP"]]
+	var tail := [["SHIFT/K", "DODGE ROLL"], ["E", "USE"], ["H", "POTION"], ["TAB", "ROLL LOG"], ["WHEEL", "MUSIC VOL"], ["ESC", "PAUSE"]]
 	var mid: Array = []
 	match key:
 		"ceridwen": mid = [["J", "FIRE BOLT"], ["L", "MAGIC MISSILE"], ["R", "SCORCHING RAY"], ["U", "FORESIGHT"]]
 		"erwar": mid = [["J", "MACE"], ["L", "HEALING WORD"], ["R", "SPIRIT WEAPON"], ["U", "WAR BLESSING"]]
 		"lyburnum": mid = [["J", "LONGSWORD"], ["L", "LAY ON HANDS"], ["R", "DIVINE SMITE"], ["U", "DREAD AURA"]]
 		"suilean": mid = [["J", "THORN WHIP"], ["L", "ENTANGLE"], ["R", "MOONBEAM"], ["U", "BEAR FORM"], ["Y", "SPIDER FORM"]]
-		_: mid = [["J", "ATTACK"], ["L", "RAGE"], ["R", "RECKLESS"], ["U", "ECHO / SWAP"], ["Y/RMB", "MOVE ECHO"]]
+		_: mid = [["J/CLICK", "ATTACK"], ["L", "RAGE"], ["R", "RECKLESS"], ["U", "ECHO / SWAP"], ["Y/RMB", "MOVE ECHO"]]
 	return head + mid + tail

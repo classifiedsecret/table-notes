@@ -40,7 +40,7 @@ func interact(p: Player) -> void:
 	if not chk.success:
 		game.toast("The lid holds. The racket echoes through the warren...")
 		if game.dice.die(100) <= 35:
-			game.spawn_monster("minion", global_position + Vector2(-60 if p.global_position.x > global_position.x else 60, 0))
+			game.spawn_monster("minion", game.room.open_spot(global_position + (global_position - p.global_position).normalized() * 60.0))
 			game.toast("The noise draws a goblin!")
 		return
 	opened = true

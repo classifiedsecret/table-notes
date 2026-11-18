@@ -1,93 +1,19 @@
 class_name Inn
 extends Node2D
-## The Gryphon's Roost Inn, Waterdeep: the party's tavern and the hub between delves.
-## Ground floor: front door, stage, tables, fireplace and couch, bar, kitchen, stairs, cellar door.
-## Upper floor: rooms to let and the party's private rooms.
+## The Gryphon's Roost Inn, Waterdeep, seen from above: the party's tavern and the hub between
+## delves. Taproom (front door, stage, tables, hearth and couch, bar, kitchen, the cellar
+## trapdoor), the upstairs hallway, and each hero's private room. Each is its own map (TDMaps);
+## walking onto stairs or through a doorway moves you between them.
 
-const FLOOR_Y := 208.0
-const UP_Y := 96.0
-const CELLAR_X := 984.0
-
-## The party's private rooms: [hallway door x upstairs, chamber index, wallpaper tint].
-## Each chamber is a walled room off to the right of the map (10 x 6 tiles), reached by its door.
-const ROOMS := {
-	"boarvhal": [88.0, 0, Color(0.55, 0.3, 0.2)],
-	"erwar": [232.0, 1, Color(0.95, 0.8, 0.45)],
-	"lyburnum": [376.0, 2, Color(0.2, 0.45, 0.28)],
-	"suilean": [520.0, 3, Color(0.3, 0.55, 0.45)],
-	"ceridwen": [664.0, 4, Color(0.35, 0.25, 0.6)],
-}
-const CHAMBER_COL := 70
-const CHAMBER_STEP := 30
-const CHAMBER_W := 160.0
-const CHAMBER_TOP := 112.0
-
-
-static func chamber_x0(i: int) -> float:
-	return float((CHAMBER_COL + i * CHAMBER_STEP) * 16)
-
-
-## The chamber a point is in (-1 when in the inn itself).
-static func chamber_at(p: Vector2) -> int:
-	for i in 5:
-		var x0 := chamber_x0(i)
-		if p.x >= x0 - 8.0 and p.x <= x0 + CHAMBER_W + 8.0:
-			return i
-	return -1
-
-
-## Camera limits: the whole inn, or just the chamber you are in (centred).
-static func view_limits(p: Vector2) -> Rect2:
-	var i := chamber_at(p)
-	if i < 0:
-		return Rect2(0, 0, 1024, 272)
-	var mid := chamber_x0(i) + CHAMBER_W / 2.0
-	return Rect2(mid - 240.0, 0, 480, 272)
-
-
-## A door at this spot: {"to": where it leads, "label": prompt}. Empty when there is none.
-func door_at(p: Vector2) -> Dictionary:
-	for k in ROOMS:
-		var r: Array = ROOMS[k]
-		var nm: String = Kits.info(k).short
-		var hall := Vector2(float(r[0]), UP_Y)
-		var inside := Vector2(chamber_x0(int(r[1])) + 14.0, FLOOR_Y)
-		if absf(p.x - hall.x) < 10.0 and absf(p.y - hall.y) < 4.0:
-			return {"to": inside + Vector2(12, 0), "label": "ENTER %s'S ROOM" % nm.to_upper()}
-		if absf(p.x - inside.x) < 10.0 and absf(p.y - inside.y) < 4.0:
-			return {"to": hall + Vector2(0, 0), "label": "LEAVE %s'S ROOM" % nm.to_upper()}
-	return {}
-
-
-## Where a hero wakes up: inside their own room.
-func room_spawn(hero_key: String) -> Vector2:
-	var r: Array = ROOMS.get(hero_key, ROOMS["boarvhal"])
-	return Vector2(chamber_x0(int(r[1])) + 64.0, FLOOR_Y)
-const EXIT_X := 40.0
-const LAYER_STAIRS := 8
-const STAIR_FOOT := Vector2(896, 208)
-const STAIR_TOP := Vector2(784, 96)
 ## What the Hooded Stranger says the first time, one line per press of E.
 const QUEST_LINES := [
 	"You there. Yes, you, with the axe. Sit a moment.",
 	"Three nights ago the floor of Kieran's cellar fell away into the dark. Something old breathes down there.",
 	"Goblins have been crawling up out of it ever since, led by a bugbear who calls himself chief.",
 	"The Guild pays for every level you clear. Put an end to that chief and the Roost sleeps easier.",
-	"The cellar stair is at the far end of the taproom. Go on, then. Roll well.",
+	"The trapdoor by the bar leads down. Go on, then. Roll well.",
 ]
 
-var game: Node
-var room: Room
-var npcs: Array[InnNPC] = []
-var dm: InnNPC
-var staff_npcs := {}          # role key -> InnNPC
-var board: Label
-var _chat_t := 4.0
-var _chat_queue: Array = []
-var _hidden_key := ""
-var keg: Sprite2D
-var _mug: Sprite2D
-var _drink_t := 2.0
 
 ## Party members and the DM. Lines are short and in character; easy to edit.
 const CAST := [
@@ -179,245 +105,100 @@ const CHATTER := [
 ]
 
 
+var game: Node
+var room: World               # the map you are in
+var current := ""
+var dm: InnNPC
+var staff_npcs := {}          # role -> InnNPC in the taproom
+var staff_names := {}         # role -> name from Session Scribe
+var _hidden_key := ""
+var _away := {}               # npc key -> slot: party members waiting at the trapdoor
+var _chat_t := 4.0
+var _chat_queue: Array = []
+var _drink_t := 2.0
+var _link_cool := 0.0
+
+
 func build(g: Node) -> void:
 	game = g
-	room = Room.new()
-	room.back_color = Color(0.82, 0.78, 0.74)
-	room.wood_tiles = preload("res://assets/sprites/inn_tiles.png")
+
+
+## Moves to another inn map. The game adopts the new World (hero and companions move into it).
+func go(map_name: String, spawn := "") -> void:
+	current = map_name
+	if is_instance_valid(room):
+		room.queue_free()
+	room = World.new()
 	add_child(room)
-	room.build(FileAccess.get_file_as_string("res://rooms/inn_gryphons_roost.txt"))
-	_furnish()
-	_stairs()
-	_people()
+	room.build(game, TDMaps.get_map(map_name))
+	npcs_from_map()
+	var at: Vector2 = room.map.spawns.get(spawn, room.map.spawns.values()[0]) * World.T if not room.map.spawns.is_empty() else Vector2(64, 64)
+	room.player_spawn = at
+	_link_cool = 0.5
+	game.on_inn_map(room, at)
 
 
-func _spr(name: String, pos: Vector2, z := -3, from_bottom := true, flip := false) -> Sprite2D:
-	var s := Sprite2D.new()
-	s.texture = InnProps.tex(name) if InnProps.RECTS.has(name) else Art.region(name)
-	s.centered = true
-	s.position = pos - Vector2(0, s.texture.get_height() / 2.0 if from_bottom else 0.0)
-	s.z_index = z
-	s.flip_h = flip
-	add_child(s)
-	return s
+func npcs_from_map() -> void:
+	dm = null
+	staff_npcs.clear()
+	for d in room.map.npcs:
+		var key: String = d[0]
+		var info := _cast_data(key)
+		var pos: Vector2 = Vector2(d[1], d[2]) * World.T
+		var sit: bool = d[4]
+		var face: int = d[3]
+		var lift: float = float(d[6]) if d.size() > 6 else 0.0
+		var hero_key := key.trim_prefix("npc_")
+		if _away.has(key):
+			# Agreed to come along: waiting by the trapdoor.
+			pos = Vector2(28.6 - _away[key] * 1.1, 12.2) * World.T
+			sit = false
+			lift = 0.0
+			face = 1
+		var patrol: Variant = d[5] if d.size() > 5 else null
+		var n := room.add_npc(key, info.name, pos, info.lines, sit, face, lift, patrol == null)
+		if patrol != null:
+			n.patrol = Vector2(patrol[0], patrol[1]) * World.T
+			n.speed = 30.0
+		n.visible = key != _hidden_key
+		if n.visible == false:
+			n.set_process(false)
+		if key == "npc_dm":
+			dm = n
+		for role in STAFF:
+			if STAFF[role].key == key:
+				staff_npcs[role] = n
+				if staff_names.has(role):
+					n.rename(staff_names[role])
+		if hero_key == "boarvhal" and not _away.has(key):
+			n.set_meta("drinking", true)
 
 
-func _label(text: String, pos: Vector2, color: Color, size := 8, z := -2, width := 0.0) -> Label:
-	var l := Label.new()
-	l.label_settings = Art.label_settings(size, color, 2)
-	l.text = text
-	l.position = pos
-	if width > 0.0:
-		l.size = Vector2(width, 10)
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.z_index = z
-	add_child(l)
-	return l
+func _cast_data(key: String) -> Dictionary:
+	for c in CAST + PATRONS:
+		if c.key == key:
+			return c
+	for r in STAFF:
+		if STAFF[r].key == key:
+			return STAFF[r]
+	return {"name": key.trim_prefix("npc_").capitalize(), "lines": ["..."]}
 
 
-func _furnish() -> void:
-	# Floorboards on both floors.
-	for x in range(16, 1008, 16):
-		_spr("plank", Vector2(x + 8, FLOOR_Y + 4), -4)
-		if x < 784:
-			_spr("plank", Vector2(x + 8, UP_Y + 4), -4)
-	# Ground floor, left to right.
-	_spr("doors_leaf_closed", Vector2(40, FLOOR_Y), -6)
-	_label("EXIT", Vector2(31, 158), Color(0.8, 0.75, 0.6))
-	_spr("window", Vector2(84, 166), -6)
-	_spr("curtain", Vector2(104, FLOOR_Y), -5)
-	_spr("curtain", Vector2(216, FLOOR_Y), -5)
-	_spr("stage", Vector2(160, FLOOR_Y), -4)
-	_spr("table", Vector2(246, FLOOR_Y), 2)
-	_spr("chair_r", Vector2(228, FLOOR_Y), 1)
-	_spr("table", Vector2(320, FLOOR_Y), 2)
-	_spr("chair_r", Vector2(298, FLOOR_Y), 1)
-	_spr("chair_l", Vector2(342, FLOOR_Y), 1)
-	_spr("book", Vector2(314, FLOOR_Y - 13), 2)
-	_spr("mug", Vector2(328, FLOOR_Y - 13), 2)
-	_spr("table", Vector2(412, FLOOR_Y), 2)
-	_spr("stool", Vector2(394, FLOOR_Y), 1)
-	_spr("stool", Vector2(430, FLOOR_Y), 1)
-	_spr("mug", Vector2(406, FLOOR_Y - 13), 2)
-	_spr("mug", Vector2(418, FLOOR_Y - 13), 2)
-	_spr("window", Vector2(468, 166), -6)
-	_spr("fireplace", Vector2(528, FLOOR_Y), -5)
-	var fire := Node2D.new()
-	fire.set_script(preload("res://scripts/game/hearth_fire.gd"))
-	fire.position = Vector2(528, FLOOR_Y - 3)
-	fire.z_index = -4
-	add_child(fire)
-	_spr("rug", Vector2(500, FLOOR_Y + 1), -3)
-	_spr("couch", Vector2(474, FLOOR_Y), 0)   # left of the hearth, facing the fire
-	board = _label("", Vector2(564, 124), Color(0.92, 0.95, 0.9), 8, -3)
-	_spr("chalkboard", Vector2(588, 160), -6)
-	_label("TONIGHT", Vector2(566, 122), Color(1, 0.9, 0.6), 8, -2)
-	board.position = Vector2(566, 131)
-	board.label_settings.line_spacing = -3.0
-	set_prices("Meals -- 8sp\nAle -- 2cp\nWine -- 2sp\nRoom per night -- 2gp")
-	_spr("shelf", Vector2(664, 166), -6)
-	_spr("bar_end", Vector2(613, FLOOR_Y), 3)
-	for x in range(616, 728, 16):
-		_spr("bar", Vector2(x + 8, FLOOR_Y), 3)
-	_spr("bar_end", Vector2(731, FLOOR_Y), 3)
-	_spr("stool", Vector2(626, FLOOR_Y), 4)
-	_spr("stool", Vector2(728, FLOOR_Y), 4)
-	_spr("stool", Vector2(698, FLOOR_Y), 4)
-	keg = _spr("barrel", Vector2(708, FLOOR_Y - 26), 4)   # Boar-vhal's keg, on the counter
-	_spr("mug", Vector2(650, FLOOR_Y - 25), 4)
-	_spr("doors_leaf_closed", Vector2(776, FLOOR_Y), -6)
-	_label("KITCHEN", Vector2(756, 162), Color(0.8, 0.75, 0.6))
-	_spr("barrel", Vector2(836, FLOOR_Y), -5)
-	_spr("barrel", Vector2(852, FLOOR_Y), -5)
-	_spr("barrel", Vector2(844, FLOOR_Y - 17), -5)
-	_label("CELLAR", Vector2(966, 160), Color(1, 0.75, 0.45))
-	for x in [200.0, 360.0, 480.0, 690.0]:
-		_spr("lantern", Vector2(x, 112), -2, false)
-		_glow(Vector2(x, 128))
-	# Upper floor: a hallway with a named door for each of the party.
-	for k in ROOMS:
-		var r: Array = ROOMS[k]
-		var dx: float = r[0]
-		_spr("doors_leaf_closed", Vector2(dx, UP_Y), -6)
-		_label(Kits.info(k).short.to_upper(), Vector2(dx - 50, 44), Color(1, 0.88, 0.6), 8, -2, 100.0)
-	for x in [160.0, 448.0, 736.0]:
-		_spr("window", Vector2(x, 56), -6)
-	for x in [160.0, 304.0, 448.0, 592.0]:
-		_spr("lantern", Vector2(x, 16), -2, false)
-		_glow(Vector2(x, 32))
-	_spr("rug", Vector2(232, UP_Y + 1), -3)
-	_spr("rug", Vector2(520, UP_Y + 1), -3)
-	# The rooms themselves, each decorated for who lives there.
-	for k in ROOMS:
-		var r: Array = ROOMS[k]
-		var x0 := chamber_x0(int(r[1]))
-		var tint := ColorRect.new()
-		tint.color = Color(r[2].r, r[2].g, r[2].b, 0.22)
-		tint.position = Vector2(x0, CHAMBER_TOP)
-		tint.size = Vector2(CHAMBER_W, FLOOR_Y - CHAMBER_TOP)
-		tint.z_index = -19
-		add_child(tint)
-		_label(Kits.info(k).short.to_upper() + "'S ROOM", Vector2(x0 + 10, CHAMBER_TOP + 3), Color(1, 0.88, 0.6), 8, -2, 140.0)
-		_spr("lantern", Vector2(x0 + 96, CHAMBER_TOP), -2, false)
-		_glow(Vector2(x0 + 96, CHAMBER_TOP + 16))
-		_spr("doors_leaf_closed", Vector2(x0 + 14, FLOOR_Y), -6)
-		for x in range(0, int(CHAMBER_W), 16):
-			_spr("plank", Vector2(x0 + x + 8, FLOOR_Y + 4), -4)
-	var c := func(i: int, name: String, x: float, y: float, z: int) -> void:
-		_spr(name, Vector2(chamber_x0(i) + x, y), z)
-	var F := FLOOR_Y
-	# Boar-vhal (goliath barbarian): a bed long enough for a goliath, a bear pelt, his axe, a hunting trophy and a keg.
-	c.call(0, "boar_head", 58, 150, -6)
-	c.call(0, "mountain_painting", 100, 152, -6)
-	c.call(0, "axe_rack", 140, 164, -6)
-	c.call(0, "big_bed", 60, F, -4)
-	c.call(0, "pelt", 112, F + 1, -3)
-	c.call(0, "barrel", 148, F, -4)
-	# Erwar (aasimar cleric): an altar to the sun under a stained-glass window, a plain cot, his chain and shield.
-	c.call(1, "sun_window", 96, 160, -6)
-	c.call(1, "altar", 96, F, -4)
-	c.call(1, "cot", 52, F, -4)
-	c.call(1, "chain_stand", 144, F, -4)
-	# Lyburnum (half-orc paladin): his order's green banner, plate on a stand, sword and shield, a battered dummy, a cot.
-	c.call(2, "banner_green", 68, 162, -6)
-	c.call(2, "sword_rack", 44, F, -4)
-	c.call(2, "plate_stand", 70, F, -4)
-	c.call(2, "dummy", 100, F, -4)
-	c.call(2, "cot", 136, F, -4)
-	# Suilean (elf druid): a moonlit round window, vines and drying herbs, a bed of moss and leaves, plants and mushrooms.
-	c.call(3, "hanging_vines", 46, CHAMBER_TOP + 26, -6)
-	c.call(3, "moon_window", 96, 156, -6)
-	c.call(3, "herb_rack", 140, CHAMBER_TOP + 18, -6)
-	c.call(3, "plant_tall", 36, F, -4)
-	c.call(3, "leaf_bed", 84, F, -4)
-	c.call(3, "mushrooms", 124, F, -4)
-	c.call(3, "plant_pot", 148, F, -4)
-	# Ceridwen (half-elf wizard): a crammed bookcase, a desk with her spellbook, a star chart, her bed and a crystal ball.
-	c.call(4, "bookcase", 44, F, -4)
-	c.call(4, "star_chart", 80, 154, -6)
-	c.call(4, "desk", 80, F, -4)
-	c.call(4, "bed", 118, F, -4)
-	c.call(4, "stool", 148, F, -4)
-	c.call(4, "crystal_ball", 148, F - 10, -4)
-	for x in range(736, 784, 16):
-		_spr("railing", Vector2(x + 8, UP_Y), 2)
+func _by_key(k: String) -> InnNPC:
+	if not is_instance_valid(room):
+		return null
+	for n in room.npcs:
+		if n.key == k:
+			return n
+	return null
 
 
-func _glow(pos: Vector2) -> void:
-	var g := Node2D.new()
-	g.set_script(preload("res://scripts/game/lamp_glow.gd"))
-	g.position = pos
-	g.z_index = -7
-	add_child(g)
-
-
-## A 45-degree staircase you can walk up, jump through from below and drop through with S + Space.
-func _stairs() -> void:
-	var a := STAIR_FOOT
-	var b := STAIR_TOP
-	var body := StaticBody2D.new()
-	body.collision_layer = LAYER_STAIRS
-	body.collision_mask = 0
-	var cs := CollisionShape2D.new()
-	var seg := SegmentShape2D.new()
-	seg.a = a
-	seg.b = b
-	cs.shape = seg
-	cs.one_way_collision = true
-	cs.one_way_collision_margin = 4.0
-	body.add_child(cs)
-	add_child(body)
-	var steps := Node2D.new()
-	steps.set_script(preload("res://scripts/game/stair_art.gd"))
-	steps.set("a", a)
-	steps.set("b", b)
-	steps.z_index = -4
-	add_child(steps)
-
-
-func _people() -> void:
-	for c in CAST:
-		_add(c)
-	for role in STAFF:
-		var n := _add(STAFF[role])
-		staff_npcs[role] = n
-	staff_npcs["server"].patrol = Vector2(250, 470)
-	staff_npcs["server"].speed = 30.0
-	for p in PATRONS:
-		_add(p)
-
-
-func _add(d: Dictionary) -> InnNPC:
-	var n := InnNPC.make(d.key, d.name, Vector2(d.x, d.y), d.lines, d.get("sit", false), d.get("face", 1))
-	# Seated people draw over their seats: couch (z 0), table stools (z 1), bar stools (z 4).
-	# Kieran works behind the counter (z 3); everyone at the bar sits on the near side of it.
-	n.z_index = 2
-	if d.key == "npc_kieran":
-		n.z_index = 2
-	elif d.get("sit", false) and d.y > FLOOR_Y - 20.0 and d.x > 600.0 and d.x < 740.0:
-		n.z_index = 5
-	elif d.get("sit", false):
-		n.z_index = 2
-	add_child(n)
-	npcs.append(n)
-	if d.key == "npc_dm":
-		dm = n
-	return n
-
-
-## The hero being played leaves their seat; everyone else stays. When someone other than
-## Boar-vhal is the hero, Boar-vhal is at the bar working through a keg of ale.
+## The hero being played isn't sitting around in the inn as well.
 func set_playing(hero_key: String) -> void:
 	_hidden_key = "npc_" + hero_key
-	for n in npcs:
-		n.visible = n.key != _hidden_key
-	var boar := _by_key("npc_boarvhal")
-	if boar and _mug == null:
-		_mug = Sprite2D.new()
-		_mug.texture = InnProps.tex("mug")
-		_mug.scale = Vector2(1.6, 1.6)   # a goliath-sized tankard
-		_mug.position = Vector2(-7, -12)
-		boar.add_child(_mug)
+	if is_instance_valid(room):
+		for n in room.npcs:
+			n.visible = n.key != _hidden_key
 
 
 ## Staff from Session Scribe's Business tab: names by role (barkeep, server, dishwasher).
@@ -434,86 +215,148 @@ func apply_staff(list: Array) -> void:
 			key = "server"
 		elif role.contains("dish"):
 			key = "dishwasher"
-		if key != "" and staff_npcs.has(key) and nm != "":
-			staff_npcs[key].rename(nm)
+		if key != "" and nm != "":
+			staff_names[key] = nm
+			if staff_npcs.has(key):
+				staff_npcs[key].rename(nm)
 
 
-## Prices from the Business tab's notes: lines like "Ale -- 2cp" go on the chalkboard.
+## Prices from the Business tab (kept for when the taproom gets its chalkboard back).
+var prices: Array[String] = []
+
 func set_prices(text: String) -> void:
-	var rows: Array[String] = []
+	prices.clear()
 	for raw in text.split("\n"):
-		var line := raw.strip_edges()
-		var parts := line.split("--")
+		var parts := raw.strip_edges().split("--")
 		if parts.size() == 2:
-			var item := parts[0].strip_edges().replace("Room per night", "Room")
-			rows.append("%s %s" % [item.to_upper(), parts[1].strip_edges().to_upper()])
-	if not rows.is_empty():
-		board.text = "\n".join(rows.slice(0, 3))   # the board holds three lines
+			prices.append("%s %s" % [parts[0].strip_edges().to_upper(), parts[1].strip_edges().to_upper()])
 
 
+## The person closest to p, if near enough to talk to.
 func nearest(p: Vector2) -> InnNPC:
+	if not is_instance_valid(room):
+		return null
 	var best: InnNPC = null
-	var bd := 26.0
-	for n in npcs:
+	var bd := 30.0
+	for n in room.npcs:
 		if not n.visible:
 			continue
-		var d := absf(n.global_position.x - p.x)
+		var d := n.global_position.distance_to(p)
 		if n == dm and dm.marker and dm.marker.visible:
-			d -= 14.0   # whoever has a quest to give answers first
-		if d < bd and absf(n.global_position.y - p.y) < 30.0:
+			d -= 10.0   # whoever has a quest to give answers first
+		if d < bd:
 			bd = d
 			best = n
 	return best
 
 
-## The stairs only carry you when you mean to use them: press W (up) at the foot,
-## or walk onto them from the landing. Otherwise you pass underneath.
-var _on_stairs := false
-
-func _physics_process(_delta: float) -> void:
-	var pl: CharacterBody2D = game.player if game and is_inside_tree() else null
-	if pl == null:
-		return
-	var p := pl.global_position
-	var line_y := STAIR_FOOT.y + (p.x - STAIR_FOOT.x) * (STAIR_TOP.y - STAIR_FOOT.y) / (STAIR_TOP.x - STAIR_FOOT.x)
-	if not _on_stairs:
-		var at_foot := p.y > FLOOR_Y - 40.0 and p.y < FLOOR_Y + 3.0 and p.x > STAIR_FOOT.x - 24.0 and p.x < STAIR_FOOT.x + 18.0 and Input.is_action_pressed("move_up")
-		var at_top := absf(p.y - UP_Y) < 3.0 and p.x > STAIR_TOP.x - 10.0 and p.x < STAIR_TOP.x + 6.0
-		_on_stairs = at_foot or at_top
-	else:
-		var off_bottom := absf(p.y - FLOOR_Y) < 3.0 and (p.x > STAIR_FOOT.x + 4.0 or p.x < STAIR_FOOT.x - 40.0)
-		var off_top := absf(p.y - UP_Y) < 3.0 and p.x < STAIR_TOP.x - 12.0
-		var below := p.y > line_y + 8.0
-		var dropping := Input.is_action_pressed("move_down") and Input.is_action_just_pressed("jump")
-		if off_bottom or off_top or below or dropping:
-			_on_stairs = false
-	pl.set_collision_mask_value(4, _on_stairs)   # LAYER_STAIRS
-	# Name tags only for people close by, so the room doesn't drown in labels.
-	for n in npcs:
-		if n.tag:
-			n.tag.visible = absf(n.global_position.x - p.x) < 90.0 and absf(n.global_position.y - p.y) < 60.0
+## A door or stair at this spot that you use with E: {"to", "spawn", "label"}.
+func door_at(p: Vector2) -> Dictionary:
+	if not is_instance_valid(room):
+		return {}
+	var l := room.near_link(p)
+	if l.is_empty() or l.to == "exit":
+		return {}
+	return l
 
 
-## The front door (far left) leads back to Session Scribe.
 func at_exit(p: Vector2) -> bool:
-	return absf(p.x - EXIT_X) < 14.0 and absf(p.y - FLOOR_Y) < 4.0
+	if not is_instance_valid(room):
+		return false
+	var l := room.near_link(p)
+	return not l.is_empty() and l.to == "exit"
 
 
+## Standing on the open trapdoor down to the cellar.
 func at_cellar(p: Vector2) -> bool:
-	return p.x < 1024.0 and p.x > CELLAR_X - 14.0 and absf(p.y - FLOOR_Y) < 4.0
+	if not is_instance_valid(room) or current != "taproom":
+		return false
+	var l := room.link_at(room.to_cell(p), true)
+	return not l.is_empty() and l.to == "cellar"
+
+
+func near_cellar(p: Vector2) -> bool:
+	return current == "taproom" and p.distance_to(Vector2(31.5, 13.8) * World.T) < 30.0
+
+
+## Map and spawn point where a hero wakes up: their own room.
+func room_spawn(hero_key: String) -> Array:
+	return ["room_" + (hero_key if TDMaps.HEROES.has(hero_key) else "boarvhal"), "bed"]
+
+
+## A party member who agreed to come along waits by the trapdoor.
+func send_to_cellar(k: String, slot: int) -> void:
+	_away[k] = slot
+	if current == "taproom":
+		go_keep_player()
+		var n := _by_key(k)
+		if n:
+			n.say("Ready when you are.", 2.0)
+
+
+func return_home(k: String) -> void:
+	if _away.has(k):
+		_away.erase(k)
+		if current == "taproom":
+			go_keep_player()
+
+
+## Rebuilds the current map with the hero where they stand (after the cast changes).
+func go_keep_player() -> void:
+	var p: Vector2 = game.player.global_position
+	var name := current
+	current = ""
+	if is_instance_valid(room):
+		room.queue_free()
+	current = name
+	room = World.new()
+	add_child(room)
+	room.build(game, TDMaps.get_map(name))
+	npcs_from_map()
+	room.player_spawn = p
+	game.on_inn_map(room, p)
+
+
+func clear_party() -> void:
+	_away.clear()
+
+
+func _physics_process(delta: float) -> void:
+	if not is_instance_valid(room) or not is_instance_valid(game.player) or not game.accepting_input():
+		return
+	_link_cool -= delta
+	var p: Vector2 = game.player.global_position
+	if _link_cool <= 0.0:
+		var l := room.link_at(room.to_cell(p), true)
+		if not l.is_empty() and l.to != "cellar":
+			_link_cool = 0.6
+			game.sfx.play("step", -4.0)
+			go(l.to, l.get("spawn", ""))
+			return
+	# Name tags only for whoever is close, so the room doesn't drown in labels.
+	var near := nearest(p)
+	for n in room.npcs:
+		if n.tag:
+			n.tag.visible = n == near or n.global_position.distance_to(p) < 44.0
 
 
 func _process(delta: float) -> void:
-	if not visible:
+	if not is_instance_valid(room) or not is_instance_valid(game.player):
 		return
-	_physics_process_drink(delta)
+	var boar := _by_key("npc_boarvhal")
+	if boar and boar.visible and boar.has_meta("drinking"):
+		_drink_t -= delta
+		if _drink_t <= 0.0:
+			_drink_t = randf_range(4.0, 7.0)
+			if randf() < 0.35:
+				boar.say("*glug*", 1.4)
 	_chat_t -= delta
 	if _chat_t <= 0.0 and _chat_queue.is_empty():
 		_chat_t = randf_range(5.0, 9.0)
 		var options := []
 		for ex in CHATTER:
 			var first := _by_key(ex[0][0])
-			if first and first.visible and absf(first.global_position.x - game.player.global_position.x) < 260.0:
+			if first and first.visible and first.global_position.distance_to(game.player.global_position) < 200.0:
 				options.append(ex)
 		if not options.is_empty():
 			_chat_queue = options[randi() % options.size()].duplicate()
@@ -524,52 +367,3 @@ func _process(delta: float) -> void:
 		if who and who.visible:
 			who.say(step[1])
 		_chat_t = 2.4 if not _chat_queue.is_empty() else randf_range(5.0, 9.0)
-
-
-func _physics_process_drink(delta: float) -> void:
-	var boar := _by_key("npc_boarvhal")
-	if not boar or not boar.visible or _mug == null:
-		return
-	_drink_t -= delta
-	if _drink_t <= 0.0:
-		_drink_t = randf_range(3.0, 5.5)
-		var tw := create_tween()
-		tw.tween_property(_mug, "position", Vector2(-4, -21), 0.35)
-		tw.parallel().tween_property(_mug, "rotation", 1.1, 0.35)
-		tw.tween_interval(0.9)
-		tw.tween_property(_mug, "position", Vector2(-7, -12), 0.3)
-		tw.parallel().tween_property(_mug, "rotation", 0.0, 0.3)
-		if randf() < 0.3:
-			boar.say("*glug*", 1.4)
-
-
-## A party member who agreed to come along waits by the cellar stair.
-func send_to_cellar(k: String, slot: int) -> void:
-	var n := _by_key(k)
-	if not n:
-		return
-	if not n.has_meta("home"):
-		n.set_meta("home", [n.position, n.sitting, n.z_index])
-	n.set_sitting(false)
-	n.position = Vector2(CELLAR_X - 70.0 - slot * 16.0, FLOOR_Y)
-	n.z_index = 2
-	n.face_toward(CELLAR_X)
-	n.say("Ready when you are.", 2.0)
-
-
-func return_home(k: String) -> void:
-	var n := _by_key(k)
-	if not n or not n.has_meta("home"):
-		return
-	var h: Array = n.get_meta("home")
-	n.position = h[0]
-	n.set_sitting(h[1])
-	n.z_index = h[2]
-	n.remove_meta("home")
-
-
-func _by_key(k: String) -> InnNPC:
-	for n in npcs:
-		if n.key == k:
-			return n
-	return null

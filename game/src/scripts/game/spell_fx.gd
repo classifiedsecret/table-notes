@@ -86,8 +86,8 @@ func _physics_process(delta: float) -> void:
 				var want: Vector2 = (target.global_position + Vector2(0, -10) - global_position).normalized() * vel.length()
 				vel = vel.lerp(want, minf(1.0, delta * 6.0))
 			global_position += vel * delta
-			var room: Room = game.room
-			if room.is_solid_cell(floori(global_position.x / Room.T), floori(global_position.y / Room.T)):
+			var room: World = game.room
+			if room.is_solid_cell(floori(global_position.x / World.T), floori((global_position.y + 10.0) / World.T)):
 				SpellFx.burst(game, global_position, color, 8.0, 0.25)
 				queue_free()
 				return

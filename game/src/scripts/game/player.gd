@@ -9,7 +9,7 @@ signal died(reason: String)
 
 enum State { NORMAL, ATTACK, DODGE, HURT, DOWN, DEAD }
 
-const RUN_SPEED := 108.0          # 30 ft speed
+const RUN_SPEED := 92.0           # 30 ft speed, top-down
 const ACCEL_GROUND := 1100.0
 const ACCEL_AIR := 700.0
 const FRICTION := 1300.0
@@ -18,7 +18,7 @@ const FALL_GRAVITY_MULT := 1.45
 const MAX_FALL := 420.0
 const COYOTE := 0.09
 const JUMP_BUFFER := 0.12
-const DODGE_SPEED := 210.0
+const DODGE_SPEED := 190.0
 const DODGE_TIME := 0.32
 const DODGE_IFRAMES := 0.28
 const DODGE_COOLDOWN := 0.75
@@ -44,7 +44,14 @@ var _mouse_screen := Vector2.ZERO
 var max_hp := 15
 var hp := 15
 var ac := 14
-var facing := 1
+var facing := 1                  # which way the sprite faces (east 1 / west -1)
+var aim := Vector2.RIGHT         # where you are aiming (mouse, stick or the way you walk)
+var _roll_dir := Vector2.RIGHT
+var _hop_t := 0.0
+const HOP_TIME := 0.42           # Space: a quick hop over spikes and arrows
+var _space_held := false
+var _mouse_idle := 9.0
+var _last_mouse := Vector2.ZERO
 var state := State.NORMAL
 var rage_uses := 2
 var rage_time := 0.0
@@ -86,18 +93,20 @@ func _ready() -> void:
 	rage_uses = stats.rage_uses
 	recovery = RECOVERY * (0.5 if hero and hero.has_extra_attack() else 1.0)
 	collision_layer = 0
-	collision_mask = Room.LAYER_SOLID | Room.LAYER_PLATFORM
-	floor_snap_length = 6.0
-	floor_max_angle = deg_to_rad(50.0)   # the inn's stairs are 45 degrees
+	collision_mask = World.LAYER_SOLID
+	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(10, 22)
+	rect.size = Vector2(10, 6)
 	shape.shape = rect
-	shape.position = Vector2(0, -11)
+	shape.position = Vector2(0, -3)
 	add_child(shape)
+	var shadow := Sprite2D.new()
+	shadow.texture = shadow_tex()
+	shadow.modulate = Color(0, 0, 0, 0.35)
+	add_child(shadow)
 
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
-	z_index = 5   # in front of the inn's counters, couches and patrons
 	visual = Node2D.new()
 	visual.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(visual)
@@ -107,20 +116,38 @@ func _ready() -> void:
 	sprite = AnimatedSprite2D.new()
 	sprite.material = Art.flash_material()
 	visual.add_child(sprite)
+	# The weapon turns to wherever you aim; the swing sweeps across that direction.
 	weapon_pivot = Node2D.new()
-	weapon_pivot.position = Vector2(3, -9)
-	weapon_pivot.rotation = -0.55
-	visual.add_child(weapon_pivot)
+	weapon_pivot.position = Vector2(0, -10)
+	add_child(weapon_pivot)
 	weapon_sprite = Sprite2D.new()
 	weapon_sprite.offset = Vector2(0, -9)
+	weapon_sprite.rotation = PI / 2.0
 	weapon_pivot.add_child(weapon_sprite)
 	slash = Node2D.new()
-	slash.set_script(preload("res://scripts/game/slash.gd"))
-	visual.add_child(slash)
+	slash.set_script(preload("res://scripts/td/td_slash.gd"))
+	weapon_pivot.add_child(slash)
 	_apply_look()
 	kit = HeroKit.new()
 	add_child(kit)
 	kit.setup(self, game)
+
+
+static var _shadow: Texture2D
+
+static func shadow_tex() -> Texture2D:
+	if _shadow == null:
+		var img := Image.create(12, 5, false, Image.FORMAT_RGBA8)
+		for y in 5:
+			for x in 12:
+				if Vector2((x - 5.5) / 6.0, (y - 2.0) / 2.5).length() <= 1.0:
+					img.set_pixel(x, y, Color(1, 1, 1, 1))
+		_shadow = ImageTexture.create_from_image(img)
+	return _shadow
+
+
+func airborne() -> bool:
+	return _hop_t > 0.0
 
 
 ## The hero's sprite sheet and weapon (or the Wild Shape beast's).
@@ -222,7 +249,7 @@ func raging() -> bool:
 
 
 func hurt_rect() -> Rect2:
-	return Rect2(global_position + Vector2(-5, -22), Vector2(10, 22))
+	return Rect2(global_position + Vector2(-6, -20), Vector2(12, 22))
 
 
 func _physics_process(delta: float) -> void:
@@ -241,35 +268,32 @@ func _physics_process(delta: float) -> void:
 	(sprite.material as ShaderMaterial).set_shader_parameter("flash", _flash)
 	rage_glow.visible = raging() and not is_down()
 
-	if _drop_time > 0.0:
-		_drop_time -= delta
-		if _drop_time <= 0.0:
-			collision_mask |= Room.LAYER_PLATFORM
+	if _hop_t > 0.0:
+		_hop_t = maxf(0.0, _hop_t - delta)
+		visual.position.y = -sin((1.0 - _hop_t / HOP_TIME) * PI) * 12.0
+		weapon_pivot.position.y = -10.0 + visual.position.y
+	elif visual.position.y != 0.0 and state != State.DOWN and state != State.DEAD:
+		visual.position.y = 0.0
+		weapon_pivot.position.y = -10.0
 
 	if state == State.DEAD:
-		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
-		_apply_gravity(delta)
+		velocity = velocity.move_toward(Vector2.ZERO, FRICTION * delta)
 		move_and_slide()
 		return
 	if state == State.DOWN:
 		_process_down(delta)
 		return
 
-	var input_x := 0.0
+	var input := Vector2.ZERO
 	if game.accepting_input():
-		input_x = Input.get_axis("move_left", "move_right")
-		if Input.is_action_just_pressed("jump"):
-			_buffer = JUMP_BUFFER
+		input = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 		if Input.is_action_just_pressed("interact"):
 			game.try_interact()
-		if game.peaceful():
-			if Input.is_action_just_pressed("attack") and not Input.is_action_just_pressed("interact"):
-				pass   # no axe-swinging in the taproom
-		else:
+		if not game.peaceful():
 			if Input.is_action_just_pressed("attack"):
 				_attack_queued = true
 			if Input.is_action_just_pressed("dodge"):
-				_try_dodge(input_x)
+				_try_dodge(input)
 			if Input.is_action_just_pressed("rage"):
 				kit.press("L")
 			if Input.is_action_just_pressed("potion"):
@@ -280,92 +304,66 @@ func _physics_process(delta: float) -> void:
 				kit.press("U")
 			if Input.is_action_just_pressed("form"):
 				kit.press("Y")
-	_buffer = maxf(0.0, _buffer - delta)
-	if is_on_floor():
-		_coyote = COYOTE
-	else:
-		_coyote = maxf(0.0, _coyote - delta)
-
+			# Space (or the gamepad's A): a quick hop. Spikes and arrows pass beneath you.
+			var space := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_joy_button_pressed(0, JOY_BUTTON_A)
+			if space and not _space_held and _hop_t <= 0.0 and (state == State.NORMAL or state == State.ATTACK):
+				_hop_t = HOP_TIME
+				game.sfx.play("jump", -10.0)
+			_space_held = space
+	_update_aim(input, delta)
 	if _potion_t > 0.0:
 		_potion_t -= delta
-		input_x *= 0.3
+		input *= 0.3
 	match state:
 		State.NORMAL:
-			_move(input_x, delta, 1.0)
+			_move(input, delta, 1.0)
 			if _attack_queued and not kit.busy():
 				_start_attack()
 		State.ATTACK:
-			_move(input_x, delta, 0.35 if is_on_floor() else 0.8)
+			_move(input, delta, 0.35)
 			_process_attack()
 		State.DODGE:
-			velocity.x = DODGE_SPEED * facing * (1.0 - 0.5 * (_state_time / DODGE_TIME))
+			velocity = _roll_dir * DODGE_SPEED * (1.0 - 0.5 * (_state_time / DODGE_TIME))
 			if _state_time >= DODGE_TIME:
 				_set_state(State.NORMAL)
 		State.HURT:
-			if is_on_floor():
-				velocity.x = move_toward(velocity.x, 0, FRICTION * 0.5 * delta)
-			if _state_time >= 0.22 and (is_on_floor() or _state_time >= 0.45):
+			velocity = velocity.move_toward(Vector2.ZERO, FRICTION * 0.5 * delta)
+			if _state_time >= 0.22:
 				_set_state(State.NORMAL)
-
-	if state != State.DODGE and state != State.HURT and _buffer > 0.0 and _coyote > 0.0:
-		if Input.is_action_pressed("move_down") and _on_platform():
-			collision_mask &= ~Room.LAYER_PLATFORM
-			_drop_time = 0.22
-			position.y += 2
-		else:
-			velocity.y = JUMP_VELOCITY
-			game.sfx.play("jump", -10.0)
-		_buffer = 0.0
-		_coyote = 0.0
-	if velocity.y < 0.0 and not Input.is_action_pressed("jump") and state != State.HURT:
-		velocity.y *= 0.55 if velocity.y < -120.0 else 1.0
-
-	# Giant wolf spider: push into a wall to climb it.
-	_climbing = form_data.get("climb", false) and is_on_wall() and input_x != 0.0 and signf(get_wall_normal().x) == -signf(input_x)
-	if _climbing:
-		velocity.y = -70.0
-	else:
-		_apply_gravity(delta)
-	var was_air := not is_on_floor()
 	move_and_slide()
-	if was_air and is_on_floor():
-		game.sfx.play("step", -12.0)
 	_check_spikes()
 	_animate(delta)
 
 
-func _apply_gravity(delta: float) -> void:
-	var g: float = ProjectSettings.get_setting("physics/2d/default_gravity")
-	velocity.y = minf(MAX_FALL, velocity.y + g * (FALL_GRAVITY_MULT if velocity.y > 0.0 else 1.0) * delta)
+func _move(input: Vector2, delta: float, control: float) -> void:
+	var target := input * run_speed() * control
+	var accel := ACCEL_GROUND if input != Vector2.ZERO else FRICTION
+	velocity = velocity.move_toward(target, accel * delta)
 
 
-func _move(input_x: float, delta: float, control: float) -> void:
-	_update_facing(input_x)
-	var target := input_x * run_speed() * control
-	var accel := (ACCEL_GROUND if is_on_floor() else ACCEL_AIR)
-	if input_x == 0.0 and is_on_floor():
-		accel = FRICTION
-	velocity.x = move_toward(velocity.x, target, accel * delta)
-
-
-## Facing: toward the mouse cursor once the mouse has been used (even while running the other way),
-## the right stick on a gamepad, otherwise the direction you are moving.
-## You can turn while attacking, except during the instant the axe lands.
-func _update_facing(input_x: float) -> void:
-	if state != State.NORMAL and state != State.ATTACK:
-		return
-	if state == State.ATTACK and _attack_phase == 1:
-		return
-	var stick := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X) if Input.get_connected_joypads().size() > 0 else 0.0
-	if absf(stick) > 0.5:
-		_mouse_aim = false
-		facing = 1 if stick > 0.0 else -1
-	elif _mouse_aim:
-		var dx := get_global_mouse_position().x - global_position.x
-		if absf(dx) > 3.0:
-			facing = 1 if dx > 0.0 else -1
-	elif input_x != 0.0:
-		facing = 1 if input_x > 0.0 else -1
+## Aim: at the mouse while it's being used, else the right stick, else the way you walk.
+## The aim holds still during the instant a swing lands.
+func _update_aim(input: Vector2, delta: float) -> void:
+	var mp := get_viewport().get_mouse_position()
+	if mp.distance_to(_last_mouse) > 0.5:
+		_mouse_idle = 0.0
+	_last_mouse = mp
+	_mouse_idle += delta
+	var locked := state == State.ATTACK and _attack_phase == 1
+	if not locked and (state == State.NORMAL or state == State.ATTACK):
+		var stick := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)) if Input.get_connected_joypads().size() > 0 else Vector2.ZERO
+		var mouse := get_global_mouse_position() - (global_position + Vector2(0, -10))
+		if stick.length() > 0.5:
+			aim = stick.normalized()
+		elif _mouse_aim and _mouse_idle < 1.5 and mouse.length() > 4.0:
+			aim = mouse.normalized()
+		elif input != Vector2.ZERO:
+			aim = input.normalized()
+		if absf(aim.x) > 0.15:
+			facing = 1 if aim.x > 0.0 else -1
+	if state != State.ATTACK and form_data.is_empty():
+		weapon_pivot.rotation = lerp_angle(weapon_pivot.rotation, aim.angle(), 0.35)
+	weapon_pivot.z_index = -1 if aim.y < -0.3 else 1
 
 
 func _input(event: InputEvent) -> void:
@@ -374,24 +372,6 @@ func _input(event: InputEvent) -> void:
 		_mouse_screen = (event as InputEventMouse).position
 	elif event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.5):
 		_mouse_aim = false
-
-
-func _on_platform() -> bool:
-	var room: Room = game.room
-	var y := floori((global_position.y + 2.0) / Room.T)
-	if y < 0 or y >= room.h:
-		return false
-	var on_plat := false
-	for ox in [-5.0, 0.0, 5.0]:
-		var x := floori((global_position.x + ox) / Room.T)
-		if x < 0 or x >= room.w:
-			continue
-		var ch := room.rows[y][x]
-		if ch == "#":
-			return false
-		if ch == "=":
-			on_plat = true
-	return on_plat
 
 
 func _set_state(s: int) -> void:
@@ -420,13 +400,14 @@ func _start_attack() -> void:
 	_hit_this_swing.clear()
 	if not form_data.is_empty():
 		var bite := create_tween()
-		bite.tween_property(visual, "position:x", 4.0 * facing, WINDUP + ACTIVE)
-		bite.tween_property(visual, "position:x", 0.0, _recovery())
+		bite.tween_property(visual, "position", aim * 4.0, WINDUP + ACTIVE)
+		bite.tween_property(visual, "position", Vector2.ZERO, _recovery())
 		return
+	var a0 := aim.angle()
 	var tw := create_tween()
-	tw.tween_property(weapon_pivot, "rotation", -2.3, WINDUP).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.tween_property(weapon_pivot, "rotation", 1.95, ACTIVE).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
-	tw.tween_property(weapon_pivot, "rotation", -0.55, _recovery()).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(weapon_pivot, "rotation", a0 - 1.5, WINDUP).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(weapon_pivot, "rotation", a0 + 1.4, ACTIVE).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
+	tw.tween_property(weapon_pivot, "rotation", a0, _recovery()).set_trans(Tween.TRANS_SINE)
 
 
 func _process_attack() -> void:
@@ -436,7 +417,7 @@ func _process_attack() -> void:
 		if kind == "melee":
 			game.sfx.play("swing", -4.0)
 			if form_data.is_empty():
-				slash.call("play")
+				slash.call("play", 1.0)
 	if _attack_phase == 1:
 		if kind == "melee":
 			_resolve_hits()
@@ -457,68 +438,44 @@ func _process_attack() -> void:
 ## Fire Bolt (a missile) or Thorn Whip (a 30-foot lash that pulls).
 func _fire_primary(kind: String) -> void:
 	var wpn := current_weapon()
+	var hand := global_position + Vector2(0, -12) + aim * 8.0
 	if kind == "bolt":
 		# Fire Bolt locks onto the nearest foe in sight and curves after it.
 		var tgt := nearest_enemy(260.0)
+		var dir := aim
 		if tgt:
-			facing = 1 if tgt.global_position.x >= global_position.x else -1
-			visual.scale.x = facing
-		var hand := global_position + Vector2(facing * 9.0, -16.0)
-		var aim := Vector2(facing, 0.0)
-		if tgt:
-			aim = (tgt.global_position + Vector2(0, -10) - hand).normalized()
+			dir = (tgt.global_position + Vector2(0, -10) - hand).normalized()
+			aim = dir
 		game.sfx.play("swing", -8.0, 0.3)
-		var b := SpellFx.bolt(game, hand, aim * 300.0, HeroKit.SPELL_COLORS.fire, func(e): roll_attack(e, wpn))
+		var b := SpellFx.bolt(game, hand, dir * 300.0, HeroKit.SPELL_COLORS.fire, func(e): roll_attack(e, wpn))
 		b.target = tgt
 		return
-	# Thorn whip lashes at the nearest foe within 30 feet, on either side.
+	# Thorn whip lashes at the nearest foe within 30 feet, in any direction.
 	var reach: float = wpn.get("reach", 72.0)
 	var near := nearest_enemy(reach + 8.0)
-	if near:
-		facing = 1 if near.global_position.x >= global_position.x else -1
-		visual.scale.x = facing
-		var h2 := global_position + Vector2(facing * 9.0, -16.0)
-		SpellFx.line(game, h2, near.global_position + Vector2(0, -10), HeroKit.SPELL_COLORS.nature, 0.22, true)
+	if near and game.room.line_clear(global_position + Vector2(0, -4), near.global_position + Vector2(0, -4)):
+		aim = (near.global_position - global_position).normalized()
+		SpellFx.line(game, hand, near.global_position + Vector2(0, -10), HeroKit.SPELL_COLORS.nature, 0.22, true)
 		game.sfx.play("swing", -6.0, 0.3)
 		_hit_this_swing.append(near)
 		var hit := roll_attack(near, wpn)
 		if hit.get("hit", false) and not near.is_dead():
-			near.velocity = Vector2(signf(global_position.x - near.global_position.x) * 230.0, -60.0)
+			near._knock = (global_position - near.global_position).normalized() * 230.0   # pulled 10 feet
 		return
-	var hand := global_position + Vector2(facing * 9.0, -16.0)
-	var lash := Rect2(global_position + Vector2(0 if facing > 0 else -reach, -24), Vector2(reach, 20))
-	var best: Enemy = null
-	var bd := 9999.0
-	for e: Enemy in game.living_enemies():
-		if lash.intersects(e.hurt_rect()):
-			var d := absf(e.global_position.x - global_position.x)
-			if d < bd:
-				bd = d
-				best = e
-	var tip := hand + Vector2(facing * (bd if best else reach), 2.0)
-	SpellFx.line(game, hand, tip, HeroKit.SPELL_COLORS.nature, 0.22, true)
+	SpellFx.line(game, hand, hand + aim * reach, HeroKit.SPELL_COLORS.nature, 0.22, true)
 	game.sfx.play("swing", -6.0, 0.3)
-	if best:
-		_hit_this_swing.append(best)
-		var atk := roll_attack(best, wpn)
-		if atk.get("hit", false) and not best.is_dead():
-			# Pulled up to 10 feet toward Suilean.
-			best.velocity = Vector2(signf(global_position.x - best.global_position.x) * 230.0, -60.0)
 
 
-func attack_rect() -> Rect2:
-	var reach: float = current_weapon().get("reach", 24.0)
-	var r := Rect2(Vector2(2, -30), Vector2(reach, 34))
-	if facing < 0:
-		r.position.x = -2 - r.size.x
-	r.position += global_position
-	return r
+## Melee: everything within reach in a wide arc across the aim.
+func _in_swing(e: Enemy) -> bool:
+	var reach: float = float(current_weapon().get("reach", 24.0)) + 4.0
+	var to := e.global_position + Vector2(0, -6) - (global_position + Vector2(0, -8))
+	return to.length() <= reach and absf(aim.angle_to(to)) <= 1.25
 
 
 func _resolve_hits() -> void:
-	var area := attack_rect()
 	for e: Enemy in game.living_enemies():
-		if e in _hit_this_swing or not area.intersects(e.hurt_rect()):
+		if e in _hit_this_swing or not _in_swing(e):
 			continue
 		_hit_this_swing.append(e)
 		roll_attack(e, current_weapon())
@@ -533,12 +490,11 @@ func roll_attack(e: Enemy, wpn: Dictionary) -> Dictionary:
 	var ranged: bool = wpn.get("kind", "melee") == "bolt" or (wpn.get("spell", false) and wpn.get("kind", "") == "")
 	if not ranged:
 		# Behind: the goblin faces away from the hero.
-		var side_of_me := signf(global_position.x - e.global_position.x)
-		if side_of_me != 0.0 and int(side_of_me) != e.facing:
+		if e.look.dot(global_position - e.global_position) < -2.0:
 			adv += 1
 			reasons.append("behind")
-		# From above: airborne and attacking down onto it.
-		if not is_on_floor() and global_position.y < e.global_position.y - 6.0:
+		# From above: in the middle of a hop, coming down onto it.
+		if airborne() and _hop_t < HOP_TIME * 0.5:
 			adv += 1
 			reasons.append("from above")
 	if reckless:
@@ -587,7 +543,7 @@ func roll_attack(e: Enemy, wpn: Dictionary) -> Dictionary:
 	if not dmg.is_empty() and hero:
 		hero.biggest_hit = maxi(hero.biggest_hit, int(dmg.total))
 	if atk.hit or glancing:
-		e.take_hit(dmg.total, atk.crit, facing, glancing)
+		e.take_hit(dmg.total, atk.crit, (e.global_position - global_position).normalized(), glancing)
 	elif atk.fumble:
 		_fumble_self(wpn.name)
 	return atk
@@ -595,7 +551,7 @@ func roll_attack(e: Enemy, wpn: Dictionary) -> Dictionary:
 
 func _foe_adjacent() -> bool:
 	for e: Enemy in game.living_enemies():
-		if absf(e.global_position.x - global_position.x) < 20.0 and absf(e.global_position.y - global_position.y) < 18.0:
+		if e.global_position.distance_to(global_position) < 22.0:
 			return true
 	return false
 
@@ -605,7 +561,7 @@ func _fumble_self(what := "attack") -> void:
 	var f: Dictionary = Creatures.FUMBLE_SELF
 	var d := Rules.damage(game.dice, f.count, f.sides, f.bonus)
 	game.show_fumble(self, d, what)
-	take_damage(d.total, false, -facing)
+	take_damage(d.total, false, -aim)
 
 
 # ---------------- defence ----------------
@@ -630,12 +586,12 @@ func receive_attack(enemy: Node2D, wpn: Dictionary) -> void:
 		dmg = Rules.damage(game.dice, wpn.count, wpn.sides, wpn.bonus, atk.crit, resisted)
 	game.show_attack(enemy, self, wpn.name, atk, dmg, reasons, false)
 	if atk.hit:
-		take_damage(dmg.total, atk.crit, signf(global_position.x - enemy.global_position.x))
+		take_damage(dmg.total, atk.crit, (global_position - enemy.global_position).normalized())
 	else:
 		game.sfx.play("deflect", -4.0)
 
 
-func take_damage(amount: int, crit: bool, from_dir: float) -> void:
+func take_damage(amount: int, crit: bool, from_dir: Variant = Vector2.ZERO) -> void:
 	if state == State.DEAD:
 		return
 	if state == State.DOWN:
@@ -663,7 +619,8 @@ func take_damage(amount: int, crit: bool, from_dir: float) -> void:
 		return
 	if state != State.ATTACK:
 		_set_state(State.HURT)
-	velocity = Vector2(from_dir * 110.0, -110.0)
+	var push: Vector2 = from_dir if from_dir is Vector2 else Vector2(float(from_dir), 0.0)
+	velocity = push * 120.0
 
 
 func _go_down() -> void:
@@ -671,7 +628,7 @@ func _go_down() -> void:
 	death_saves.reset()
 	rage_time = 0.0
 	_death_timer = 1.2
-	velocity.y = -80.0
+	velocity = Vector2.ZERO
 	weapon_pivot.visible = false
 	sprite.play("hit")
 	var tw := create_tween()
@@ -684,8 +641,7 @@ func _go_down() -> void:
 
 
 func _process_down(delta: float) -> void:
-	velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
-	_apply_gravity(delta)
+	velocity = velocity.move_toward(Vector2.ZERO, FRICTION * delta)
 	move_and_slide()
 	_death_timer -= delta
 	if _death_timer <= 0.0:
@@ -747,7 +703,7 @@ func revive_full() -> void:
 	visual.position = Vector2.ZERO
 	kit.long_rest()
 	weapon_pivot.visible = true
-	weapon_pivot.rotation = -0.55
+	weapon_pivot.rotation = aim.angle()
 	sprite.play("idle")
 	if is_instance_valid(echo):
 		echo.queue_free()
@@ -763,14 +719,14 @@ func force_down() -> void:
 
 # ---------------- abilities ----------------
 
-func _try_dodge(input_x: float) -> void:
+func _try_dodge(input: Vector2) -> void:
 	if _dodge_cd > 0.0 or state == State.HURT or state == State.DODGE:
 		return
 	if state == State.ATTACK and _attack_phase == 1:
 		return
-	if input_x != 0.0:
-		facing = 1 if input_x > 0.0 else -1
-	weapon_pivot.rotation = -0.55
+	_roll_dir = input.normalized() if input != Vector2.ZERO else aim
+	if absf(_roll_dir.x) > 0.15:
+		facing = 1 if _roll_dir.x > 0.0 else -1
 	_set_state(State.DODGE)
 	_iframes = DODGE_IFRAMES
 	_dodge_cd = DODGE_COOLDOWN
@@ -884,9 +840,8 @@ func _try_echo() -> void:
 		ghost.modulate = Color(0.55, 0.75, 1.0, 0.55)
 		ghost.scale.x = facing
 		echo.add_child(ghost)
+		game.room.ysort.add_child(echo)
 		echo.global_position = global_position
-		echo.z_index = -1
-		game.add_child(echo)
 		_echo_round = 2.0
 		echo_target = Vector2.INF
 		game.log_line("Bonus action: Boar-vhal leaves an Echo. Goblins beside it are flanked.")
@@ -906,56 +861,40 @@ func _try_echo() -> void:
 # ---------------- hazards and animation ----------------
 
 func _check_spikes() -> void:
-	if _spike_cd > 0.0:
+	if _spike_cd > 0.0 or airborne() or not game.room.has_method("spike_up_at"):
 		return
-	var feet := Rect2(global_position + Vector2(-4, -6), Vector2(8, 6))
-	for r: Rect2 in game.room.spike_rects:
-		if feet.intersects(r):
-			_spike_cd = 1.4
-			var ds_mode := Dice.Mode.ADVANTAGE if hero and hero.key == "boarvhal" and hero.level >= 2 else Dice.Mode.NORMAL
-			var sv := Rules.save(game.dice, stats.dex_save, Creatures.SPIKES.dc, ds_mode)
-			var dmg := Rules.damage(game.dice, Creatures.SPIKES.count, Creatures.SPIKES.sides, 0, false,
-				raging())
-			var total: int = dmg.total if not sv.success else floori(dmg.total / 2.0)
-			game.show_save(self, "DEX save", sv, total, dmg)
-			if total > 0:
-				take_damage(total, false, 0.0)
-			if not is_down():
-				# Throw the hero up and toward the nearer edge so the pit can't chain-kill them.
-				var cx := r.position.x + r.size.x / 2.0
-				var left_edge := r.position.x
-				var right_edge := r.position.x + r.size.x
-				for o: Rect2 in game.room.spike_rects:
-					left_edge = minf(left_edge, o.position.x) if absf(o.position.y - r.position.y) < 1.0 and o.position.x + o.size.x >= left_edge - 1.0 else left_edge
-					right_edge = maxf(right_edge, o.position.x + o.size.x) if absf(o.position.y - r.position.y) < 1.0 and o.position.x <= right_edge + 1.0 else right_edge
-				var mid := (left_edge + right_edge) / 2.0
-				var dir := -1.0 if global_position.x < mid else 1.0
-				facing = int(dir)
-				_set_state(State.HURT)
-				velocity = Vector2(dir * 130.0, -330.0)
-				_iframes = maxf(_iframes, 0.5)
-			return
+	if not game.room.spike_up_at(global_position + Vector2(0, -2)):
+		return
+	_spike_cd = 1.4
+	var ds_mode := Dice.Mode.ADVANTAGE if hero and hero.key == "boarvhal" and hero.level >= 2 else Dice.Mode.NORMAL
+	var sv := Rules.save(game.dice, stats.dex_save, Creatures.SPIKES.dc, ds_mode)
+	var dmg := Rules.damage(game.dice, Creatures.SPIKES.count, Creatures.SPIKES.sides, 0, false, raging())
+	var total: int = dmg.total if not sv.success else floori(dmg.total / 2.0)
+	game.show_save(self, "DEX save", sv, total, dmg)
+	var back := -velocity.normalized() if velocity.length() > 5.0 else -aim
+	if total > 0:
+		take_damage(total, false, back)
+	if not is_down():
+		# Thrown back the way you came, so a spike field can't chain-hit you.
+		_set_state(State.HURT)
+		velocity = back * 140.0
+		_iframes = maxf(_iframes, 0.5)
 
 
 func _animate(_delta: float) -> void:
-	if game.has_method("_arg") and visual.scale.x != facing and game.get("_face_log"):
-		print("[facing] %d state=%s moving=%s" % [facing, State.keys()[state], Input.is_action_pressed("move_right") or Input.is_action_pressed("move_left")])
 	visual.scale.x = facing
 	if state == State.DODGE:
 		return
 	if state == State.HURT:
 		sprite.play("hit")
 		return
-	if absf(velocity.x) > 12.0 and is_on_floor():
+	if velocity.length() > 12.0:
 		sprite.play("run")
 		_step_time -= _delta
-		if _step_time <= 0.0:
+		if _step_time <= 0.0 and not airborne():
 			_step_time = 0.28
 			game.sfx.play("step", -16.0)
 	else:
 		sprite.play("idle")
-	if not is_on_floor() and not _climbing:
-		sprite.play("run")
-		sprite.frame = 1 if velocity.y < 0 else 3
 	var blink := _iframes > 0.0 and state != State.DODGE and fmod(_iframes, 0.12) < 0.06
 	sprite.modulate.a = 0.45 if blink else 1.0

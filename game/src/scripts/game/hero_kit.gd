@@ -121,7 +121,7 @@ func press(slot: String) -> void:
 		"echo": p._try_echo()
 		"echo_move":
 			if is_instance_valid(p.echo):
-				p.command_echo(p.echo.global_position + Vector2(p.facing * Player.ECHO_RANGE_PX, 0))
+				p.command_echo(p.echo.global_position + p.aim * Player.ECHO_RANGE_PX)
 			else:
 				game.toast("No echo to command. Press U to make one.")
 		"magic_missile": _magic_missile()
@@ -166,19 +166,20 @@ func _enemies_in_view() -> Array:
 	var out := []
 	for e: Enemy in game.living_enemies():
 		var d: Vector2 = e.global_position - p.global_position
-		if absf(d.x) < 250.0 and absf(d.y) < 140.0:
+		if absf(d.x) < 250.0 and absf(d.y) < 150.0 and game.room.line_clear(p.global_position + Vector2(0, -6), e.global_position + Vector2(0, -6)):
 			out.append(e)
 	out.sort_custom(func(x, y): return x.global_position.distance_to(p.global_position) < y.global_position.distance_to(p.global_position))
 	return out
 
 
 func _face(e: Node2D) -> void:
-	p.facing = 1 if e.global_position.x >= p.global_position.x else -1
+	p.aim = (e.global_position - p.global_position).normalized()
+	p.facing = 1 if p.aim.x >= 0.0 else -1
 	p.visual.scale.x = p.facing
 
 
 func _hand() -> Vector2:
-	return p.global_position + Vector2(p.facing * 8.0, -14.0)
+	return p.global_position + Vector2(0, -12) + p.aim * 8.0
 
 
 ## A spell attack roll against an enemy, reported like a weapon attack.
@@ -199,7 +200,7 @@ func _damage_enemy(e: Enemy, amount: int, col: Color, label: String) -> void:
 		return
 	FloatText.fling(game, e.global_position + Vector2(0, -16), Vector2(randf_range(-1.2, 1.2), -0.8), str(amount), "", col, 0, 1.1)
 	game.sfx.play("hit", -5.0)
-	e.take_hit(amount, false, int(signf(e.global_position.x - p.global_position.x)), false)
+	e.take_hit(amount, false, (e.global_position - p.global_position).normalized(), false)
 	if not label.is_empty():
 		game.log_line(label)
 
@@ -382,7 +383,7 @@ func smite_damage(crit: bool) -> Dictionary:
 	var dmg := Rules.damage(game.dice, 1 + lvl, 8, 0, crit)
 	if slots[0] + slots[1] <= 0:
 		smite_on = false
-	SpellFx.burst(game, p.global_position + Vector2(p.facing * 18.0, -14.0), SPELL_COLORS.radiant, 16.0)
+	SpellFx.burst(game, p.global_position + Vector2(0, -12) + p.aim * 18.0, SPELL_COLORS.radiant, 16.0)
 	game.log_line("Divine Smite (%s-level slot): %dd8 %s = %d radiant." % ["1st" if lvl == 1 else "2nd", dmg.faces.size(), str(dmg.faces), dmg.total])
 	return dmg
 
@@ -452,7 +453,7 @@ func _moonbeam() -> void:
 	_cast_t = 0.5
 	p.cast_pose()
 	concentration = SpellZone.make(game, self, SpellZone.Kind.MOONBEAM, at, 30.0)
-	concentration.half_w = 10.0
+	concentration.half_w = 16.0
 	game.log_line("Moonbeam: a silver beam (Constitution save DC %d, 2d10 radiant, half on a success). Press R again to move it." % s.spell_dc)
 	game.sfx.play("dodge", -6.0)
 
@@ -464,36 +465,13 @@ func moonbeam_hit(e: Enemy) -> void:
 	_damage_enemy(e, total, Color(0.85, 0.92, 1.0), "Moonbeam: 2d10 %s = %d radiant to %s%s." % [str(dmg.faces), dmg.total, e.data.name, " (halved: %d)" % total if sv.success else ""])
 
 
-## Ground spells land under the nearest foe in range (auto-aim), else in front of the hero.
+## Ground spells land under the nearest foe in range (auto-aim), else where you aim.
 func _ground_at_foe(fallback: float) -> Vector2:
 	var e := p.nearest_enemy(180.0)
 	if e:
-		p.facing = 1 if e.global_position.x >= p.global_position.x else -1
-		p.visual.scale.x = p.facing
-		return Vector2(e.global_position.x, e.global_position.y) if e.is_on_floor() else _ground_below(e.global_position)
-	return _ground_ahead(fallback)
-
-
-func _ground_below(at: Vector2) -> Vector2:
-	var room: Room = game.room
-	var y := at.y
-	for i in 12:
-		if room.is_solid_cell(floori(at.x / Room.T), floori((y + 1.0) / Room.T)):
-			break
-		y += Room.T
-	return Vector2(at.x, floorf(y / Room.T) * Room.T)
-
-
-## A point on the floor in front of the hero (the zone sits on the ground).
-func _ground_ahead(dist: float) -> Vector2:
-	var room: Room = game.room
-	var x := p.global_position.x + p.facing * dist
-	var y := p.global_position.y
-	for i in 8:
-		if room.is_solid_cell(floori(x / Room.T), floori((y + 1.0) / Room.T)):
-			break
-		y += Room.T
-	return Vector2(x, floorf(y / Room.T) * Room.T if y != p.global_position.y else y)
+		_face(e)
+		return e.global_position
+	return game.room.open_spot(p.global_position + p.aim * fallback)
 
 
 func zone_ended(z: SpellZone) -> void:
@@ -505,12 +483,13 @@ func zone_ended(z: SpellZone) -> void:
 		game.log_line("The spectral mace fades.")
 
 
-func end_zone(z: SpellZone) -> void:
+func end_zone(z: Variant) -> void:
 	if is_instance_valid(z):
 		z.queue_free()
-	if z == concentration:
-		concentration = null
-	if z == spirit:
+	if not is_instance_valid(concentration) or z == concentration:
+		if z == concentration or not is_instance_valid(concentration):
+			concentration = null
+	if not is_instance_valid(spirit) or z == spirit:
 		spirit = null
 
 
