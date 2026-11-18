@@ -414,9 +414,9 @@ func _build_hud() -> void:
 	var title := _lab(hud, Vector2(180, 4), "TOP-DOWN TEST ROOM (PROTOTYPE)", Color(0.6, 0.85, 1.0))
 	title.size = Vector2(296, 10)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var hints := _panel(Vector2(4, 196), Vector2(112, 70))
-	_lab(hints, Vector2(5, 3), "WASD\\nJ / CLICK\\nK / SPACE\\nE\\nH\\nESC".replace("\\n", "\n"), Color(1, 0.85, 0.45))
-	_lab(hints, Vector2(52, 3), "MOVE\\nATTACK\\nDODGE ROLL\\nOPEN\\nPOTION\\nBACK TO GAME".replace("\\n", "\n"), Color(0.82, 0.8, 0.86))
+	var hints := _panel(Vector2(4, 186), Vector2(112, 80))
+	_lab(hints, Vector2(5, 3), "WASD\nJ / CLICK\nSHIFT / K\nSPACE\nE\nH\nESC", Color(1, 0.85, 0.45))
+	_lab(hints, Vector2(52, 3), "MOVE\nATTACK\nDODGE ROLL\nJUMP\nOPEN CHEST\nPOTION\nBACK TO GAME", Color(0.82, 0.8, 0.86))
 	log_label = _lab(hud, Vector2(122, 222), "", Color(0.75, 0.75, 0.8))
 	log_label.size = Vector2(354, 44)
 	log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

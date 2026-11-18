@@ -29,7 +29,7 @@ func _physics_process(delta: float) -> void:
 				return
 	else:
 		var p: TDHero = game.player
-		if global_position.distance_to(p.global_position + Vector2(0, -10)) < 8.0:
+		if global_position.distance_to(p.global_position + Vector2(0, -10)) < 8.0 and not p.airborne():
 			p.receive_attack(shooter, weapon)
 			queue_free()
 			return

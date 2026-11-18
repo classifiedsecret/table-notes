@@ -28,6 +28,8 @@ var down := false
 var _last_mouse := Vector2.ZERO
 var _mouse_idle := 99.0
 var _space_held := false
+var _hop_t := 0.0
+const HOP_TIME := 0.42
 
 
 func _ready() -> void:
@@ -83,6 +85,14 @@ static func _shadow_tex() -> Texture2D:
 
 func _physics_process(delta: float) -> void:
 	_attack_t = maxf(0.0, _attack_t - delta)
+	if _hop_t > 0.0:
+		_hop_t = maxf(0.0, _hop_t - delta)
+		var k := 1.0 - _hop_t / HOP_TIME
+		visual.position.y = -sin(k * PI) * 12.0
+		weapon_pivot.position.y = -10.0 + visual.position.y
+	elif visual.position.y != 0.0:
+		visual.position.y = 0.0
+		weapon_pivot.position.y = -10.0
 	_iframes = maxf(0.0, _iframes - delta)
 	_flash = maxf(0.0, _flash - delta * 4.0)
 	sprite.modulate = Color(1, 1 - _flash * 0.6, 1 - _flash * 0.6, 0.55 if _iframes > 0.0 and _roll_t <= 0.0 and int(_iframes * 20) % 2 == 0 else 1.0)
@@ -108,11 +118,8 @@ func _physics_process(delta: float) -> void:
 			visual.rotation = 0.0
 	else:
 		velocity = velocity.move_toward(input * SPEED, 900.0 * delta)
-		# Roll on K, Space or the gamepad's dodge button (not W: that's walking up here).
-		var space := Input.is_physical_key_pressed(KEY_SPACE)
-		var space_tap := space and not _space_held
-		_space_held = space
-		if (Input.is_action_just_pressed("dodge") or space_tap) and input != Vector2.ZERO:
+		# Dodge roll: Shift, K or C (or the gamepad's B), as in the side-scroller.
+		if Input.is_action_just_pressed("dodge") and input != Vector2.ZERO:
 			_roll_t = ROLL_TIME
 			_roll_dir = input.normalized()
 			_iframes = ROLL_TIME + 0.05
@@ -121,6 +128,12 @@ func _physics_process(delta: float) -> void:
 			_attack()
 		if Input.is_action_just_pressed("interact"):
 			game.try_open_chest()
+		# Space (or the gamepad's A): a quick hop. While airborne, spike traps and arrows pass beneath you.
+		var space := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_joy_button_pressed(0, JOY_BUTTON_A)
+		if space and not _space_held and _hop_t <= 0.0:
+			_hop_t = HOP_TIME
+			game.sfx.play("jump", -8.0)
+		_space_held = space
 		if Input.is_action_just_pressed("potion"):
 			_potion()
 	move_and_slide()
@@ -220,8 +233,12 @@ func receive_attack(foe_name: String, wpn: Dictionary) -> void:
 		game.sfx.play("deflect", -6.0)
 
 
+func airborne() -> bool:
+	return _hop_t > 0.08 and _hop_t < HOP_TIME - 0.06
+
+
 func spike_hit() -> void:
-	if _iframes > 0.0 or down:
+	if _iframes > 0.0 or down or airborne():
 		return
 	var sv := Rules.save(game.dice, int(stats.dex_save), 13)
 	var d := Rules.damage(game.dice, 2, 4, 0)
