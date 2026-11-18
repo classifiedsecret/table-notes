@@ -274,7 +274,7 @@ func take_damage(amount: int) -> void:
 		game.log_line("Lyburnum's Relentless Endurance keeps him on his feet at 1 HP.")
 	hp = maxi(0, hp - amount)
 	FloatText.fling(game, global_position + Vector2(0, -20), Vector2(randf_range(-1, 1), -0.8), str(amount), "", Color(1, 0.4, 0.35), 0, 1.0)
-	game.sfx.play("hurt", -8.0)
+	game.sfx.play("hit_light", -8.0)
 	var tw := create_tween()
 	visual.modulate = Color(1, 0.5, 0.5)
 	tw.tween_property(visual, "modulate", Color.WHITE, 0.25)

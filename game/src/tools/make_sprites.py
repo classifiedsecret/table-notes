@@ -147,6 +147,8 @@ with open(G + '/scripts/data/inn_sprites.gd', 'w') as f:
 
 # Atlas rects used directly by the game (tiles, props, weapons, UI).
 want = ['wall_mid', 'wall_top_mid', 'wall_left', 'wall_right', 'floor_1', 'floor_2', 'floor_3', 'floor_4',
+        'floor_5', 'floor_6', 'floor_7', 'floor_8', 'wall_top_left', 'wall_top_right', 'wall_outer_mid_left', 'wall_outer_mid_right',
+        'wall_outer_top_left', 'wall_outer_top_right', 'wall_outer_front_left', 'wall_outer_front_right', 'doors_frame_top',
         'wall_banner_red', 'wall_banner_blue', 'wall_banner_green', 'wall_banner_yellow', 'column', 'column_wall',
         'wall_hole_1', 'wall_hole_2', 'weapon_double_axe', 'weapon_knife', 'weapon_machete',
         'ui_heart_full', 'ui_heart_half', 'ui_heart_empty', 'skull', 'crate', 'edge_down',

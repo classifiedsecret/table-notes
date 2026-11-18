@@ -70,6 +70,13 @@ var _stat_t := 0.0
 func _ready() -> void:
 	Art.setup_fonts()
 	_setup_input()
+	if _arg("topdown"):
+		# The top-down test room is its own little scene; hand over to it.
+		RenderingServer.set_default_clear_color(Color(0.05, 0.04, 0.07))
+		var td := TDMain.new()
+		get_parent().add_child.call_deferred(td)
+		queue_free()
+		return
 	# Physics interpolation smooths only bodies moved in physics steps (hero, goblins, arrows, camera).
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	dice = Dice.new(randi() % 900000 + 100000)
@@ -441,6 +448,7 @@ func _tavern_options() -> Array:
 		["Difficulty: %s (%s)%s" % [Creatures.TIERS[hero.tier].name, Creatures.TIERS[hero.tier].levels, "  - press to change" if hero.tier_unlocked > 1 else "  - clear it to unlock Tier II"], "tier"],
 		["Buy a Potion of Healing (%d gp)" % POTION_PRICE, "potion"],
 		["Back to the taproom", "back"],
+		["Try the top-down test room (prototype)", "topdown"],
 		["Return to Session Scribe", "leave"],
 	]
 
@@ -518,6 +526,10 @@ func _tavern_input() -> void:
 				player.global_position.x = Inn.CELLAR_X - 40.0
 				player.facing = -1
 				player.reset_physics_interpolation()
+			"topdown":
+				save_hero()
+				if OS.has_feature("web"):
+					JavaScriptBridge.eval("window.location.search = '?test=topdown&hero=%s'" % hero.key)
 			"leave":
 				_leave_to_site()
 			"potion":
