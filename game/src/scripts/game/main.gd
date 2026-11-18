@@ -875,6 +875,9 @@ func _process(delta: float) -> void:
 	var mpos := get_viewport().get_mouse_position()
 	_mouse_moved = mpos.distance_to(_last_mouse) > 0.5
 	_last_mouse = mpos
+	# Right-click in a room commands Boar-vhal's echo to that spot.
+	if phase == Phase.RUN and right_clicked() and is_instance_valid(player.echo):
+		player.command_echo(get_global_mouse_position())
 	if Input.is_action_just_pressed("back") and not get_tree().paused and _loaded:
 		if phase == Phase.TAVERN and _confirm_join:
 			_answer_join(false)
@@ -1330,6 +1333,20 @@ func _bot_battle() -> void:
 	var b = battle
 	match b.mode:
 		1:  # MENU
+			if _arg("echobattle") and not has_meta("eb"):
+				set_meta("eb", true)
+				var hc0: Dictionary = b._hero()
+				b._choose(["", "echo", true])
+				print("[eb] echo at col %d (hero %d)" % [b.echo_col, hc0.col])
+				await b._move_echo(clampi(hc0.col - 6, b.min_col, b.max_col) if b.echo_col > hc0.col else clampi(hc0.col + 6, b.min_col, b.max_col))
+				print("[eb] moved echo to col %d, %d ft of echo movement left" % [b.echo_col, b.echo_move * 5])
+				var far: int = b.min_col if hc0.col - b.min_col > b.max_col - hc0.col else b.max_col
+				b.echo_move = 99
+				await b._move_echo(far)
+				print("[eb] pushed echo to col %d (%d squares away); ending turn" % [b.echo_col, absi(b.echo_col - hc0.col)])
+				b._choose(["", "end", true])
+				print("[eb] after end of turn: echo col %d" % b.echo_col)
+				return
 			var want := "end"
 			var adjacent: bool = absi(b._hero().col - b._boss_c().get("col", -99)) <= 1
 			var prefs := ["heal", "hands", "rage", "reckless", "summon", "spirit", "bless", "smite", "aura", "entangle", "moonbeam", "bear",
@@ -1433,6 +1450,12 @@ func _bot(delta: float) -> void:
 			return
 	if player.is_down():
 		return
+	if _arg("echotest") and phase == Phase.RUN and is_instance_valid(player.echo) and not has_meta("echo_sent"):
+		set_meta("echo_sent", true)
+		print("[echo] sending the echo 220 px away at t=%.1f" % _bot_t)
+		player.command_echo(player.global_position + Vector2(220, -60))
+		get_tree().create_timer(1.0).timeout.connect(func(): print("[echo] after 1s: valid=%s dist=%.0f" % [is_instance_valid(player.echo), player.echo.global_position.distance_to(player.global_position) if is_instance_valid(player.echo) else -1.0]))
+		get_tree().create_timer(4.5).timeout.connect(func(): print("[echo] after 4.5s: valid=%s" % is_instance_valid(player.echo)))
 	if _arg("abtest") and phase == Phase.RUN:
 		# Ability test: press L, R, U, Y in turn near the first goblins.
 		var acts := ["rage", "reckless", "echo", "form"]

@@ -174,11 +174,12 @@ static func stats(key: String, level: int) -> Dictionary:
 			s.weapon = {"name": "Greataxe", "kind": "melee", "attack": strm + p, "count": 1, "sides": 12, "bonus": strm,
 				"type": "slashing", "reach": 26.0, "swing": 1.0}
 			s.abilities = {"L": "rage"}
-			s.locked = {"R": [2, "Reckless Attack"], "U": [3, "Echo"]}
+			s.locked = {"R": [2, "Reckless Attack"], "U": [3, "Echo"], "Y": [3, "Move Echo"]}
 			if level >= 2:
 				s.abilities.R = "reckless"
 			if level >= 3:
 				s.abilities.U = "echo"
+				s.abilities.Y = "echo_move"
 	return s
 
 
@@ -223,7 +224,7 @@ static func level_features(key: String, lv: int) -> String:
 		_:
 			match lv:
 				2: return "Reckless Attack (R / right trigger): advantage on your attacks, but enemies get advantage on you. Danger Sense: advantage on Dexterity saves."
-				3: return "Echo (U / right bumper): leave a shimmering double of yourself. Goblins next to it are flanked, so you attack them with advantage. Press again to swap places. Rage uses: 3."
+				3: return "Echo (U): leave a shimmering double of yourself; goblins next to it are flanked. U again swaps places. Right-click (or Y) moves it anywhere; more than 30 ft from you and it fades. Rage uses: 3."
 				4: return "Ability Score Improvement: Strength 19. +1 to hit and damage."
 				5: return "Extra Attack: much faster axe swings. Fast Movement: +10 ft speed. Proficiency +3."
 	return ""
@@ -239,5 +240,5 @@ static func hints(key: String) -> Array:
 		"erwar": mid = [["J", "MACE"], ["L", "HEALING WORD"], ["R", "SPIRIT WEAPON"], ["U", "WAR BLESSING"]]
 		"lyburnum": mid = [["J", "LONGSWORD"], ["L", "LAY ON HANDS"], ["R", "DIVINE SMITE"], ["U", "DREAD AURA"]]
 		"suilean": mid = [["J", "THORN WHIP"], ["L", "ENTANGLE"], ["R", "MOONBEAM"], ["U", "BEAR FORM"], ["Y", "SPIDER FORM"]]
-		_: mid = [["J", "ATTACK"], ["L", "RAGE"], ["R", "RECKLESS"], ["U", "ECHO"]]
+		_: mid = [["J", "ATTACK"], ["L", "RAGE"], ["R", "RECKLESS"], ["U", "ECHO / SWAP"], ["Y/RMB", "MOVE ECHO"]]
 	return head + mid + tail

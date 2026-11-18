@@ -119,6 +119,11 @@ func press(slot: String) -> void:
 		"rage": p._try_rage()
 		"reckless": p._toggle_reckless()
 		"echo": p._try_echo()
+		"echo_move":
+			if is_instance_valid(p.echo):
+				p.command_echo(p.echo.global_position + Vector2(p.facing * Player.ECHO_RANGE_PX, 0))
+			else:
+				game.toast("No echo to command. Press U to make one.")
 		"magic_missile": _magic_missile()
 		"scorching_ray": _scorching_ray()
 		"foresight": _cycle_foresight()

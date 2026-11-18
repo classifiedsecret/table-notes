@@ -2,7 +2,7 @@ extends Node2D
 ## Turn-based boss encounter on a side-view grid of 5-foot squares (one tile = one square).
 ## Initiative, action / bonus action / movement, telegraphed boss intents, death saves.
 
-enum Mode { IDLE, MENU, MOVE, TARGET, BUSY }
+enum Mode { IDLE, MENU, MOVE, TARGET, BUSY, ECHO }
 
 const T := 16
 const REACH_HERO := 1
@@ -31,6 +31,8 @@ var reckless_on := false
 var rage_rounds := 0
 var echo_col := -1
 var echo_node: Node2D
+const ECHO_RANGE := 6       # 30 feet: how far the echo may move per turn, and how far it may end from you
+var echo_move := 0          # squares the echo can still move this turn (free, no action)
 var conc := ""            # "entangle" or "moonbeam" while Suilean concentrates
 var beam_col := -1
 var sw_rounds := 0        # Spiritual Weapon rounds left
@@ -253,6 +255,7 @@ func _hero_turn_start() -> void:
 	h_attacks = 0
 	h_dodging = false
 	h_disengaged = false
+	echo_move = ECHO_RANGE
 	h_move = int(p.form_data.get("speed_ft", p.stats.speed_ft)) / 5
 	if sw_rounds > 0:
 		sw_rounds -= 1
@@ -348,7 +351,10 @@ func _open_menu() -> void:
 				menu_items.append(["Reckless Attack: " + ("ON" if reckless_on else "OFF"), "reckless", true])
 			menu_items.append(["Rage (bonus action, %d left)" % p.rage_uses, "rage", h_bonus > 0 and p.rage_uses > 0 and rage_rounds == 0])
 			if p.hero.has_echo():
-				menu_items.append(["Echo (bonus action)", "echo", h_bonus > 0])
+				menu_items.append(["Echo (bonus action)" if echo_col < 0 else "New echo (bonus action)", "echo", h_bonus > 0])
+				if echo_col >= 0:
+					menu_items.append(["Move echo (%d ft, free)" % (echo_move * 5), "echomove", echo_move > 0])
+					menu_items.append(["Swap with echo (15 ft of move)", "echoswap", h_move >= 3 and not _occupied(echo_col, _hero())])
 	menu_items.append(["Dash / Dodge (action)", "dashdodge", can_act])
 	menu_items.append(["Disengage (action)" + (": ON" if h_disengaged else ""), "disengage", can_act and not h_disengaged])
 	menu_items.append(["Drink potion (action, %d)" % game.run_potions, "potion", can_act and game.run_potions > 0])
@@ -437,6 +443,23 @@ func _process(_delta: float) -> void:
 				_do_move(cursor_col)
 			elif Input.is_action_just_pressed("back") or Input.is_action_just_pressed("dodge"):
 				_open_menu()
+		Mode.ECHO:
+			var emc := floori(get_global_mouse_position().x / T)
+			var e_ok: bool = absi(emc - echo_col) <= echo_move and emc >= min_col and emc <= max_col
+			if e_ok and emc != cursor_col and game.mouse_moved():
+				cursor_col = emc
+				queue_redraw()
+			if game.clicked() and e_ok:
+				_move_echo(emc)
+			elif game.right_clicked() or Input.is_action_just_pressed("back"):
+				_open_menu()
+			elif Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right"):
+				var ed := -1 if Input.is_action_just_pressed("move_left") else 1
+				if absi(cursor_col + ed - echo_col) <= echo_move and cursor_col + ed >= min_col and cursor_col + ed <= max_col:
+					cursor_col += ed
+				queue_redraw()
+			elif _confirm():
+				_move_echo(cursor_col)
 		Mode.TARGET:
 			var tm := get_global_mouse_position()
 			var thov := -1
@@ -601,7 +624,15 @@ func _choose(item: Array) -> void:
 			h_bonus = 0
 			k.end_form(true)
 			_open_menu()
+		"echomove":
+			cursor_col = echo_col
+			mode = Mode.ECHO
+			_info("CLICK A SQUARE, OR LEFT/RIGHT + ENTER: MOVE THE ECHO    RIGHT-CLICK / ESC: BACK")
+			queue_redraw()
+		"echoswap":
+			await _echo_swap()
 		"end":
+			_echo_range_check()
 			mode = Mode.BUSY
 			menu_label.text = ""
 			for l in menu_lines:
@@ -1006,6 +1037,58 @@ func _hero_hit(amount: int) -> void:
 		conc = ""
 		beam_col = -1
 		_clear_restraints()
+
+
+## The echo moves where you command it, free, up to 30 feet a turn. It can pass anyone but
+## must stop on an empty square.
+func _move_echo(col: int) -> void:
+	if col == echo_col:
+		_open_menu()
+		return
+	if _occupied(col, null):
+		game.toast("The echo can pass through, but not stop on, an occupied square.")
+		return
+	echo_move -= absi(col - echo_col)
+	echo_col = col
+	mode = Mode.BUSY
+	if is_instance_valid(echo_node):
+		var tw := create_tween()
+		tw.tween_property(echo_node, "global_position:x", col * T + 8.0, 0.2)
+		await tw.finished
+	game.log_line("Boar-vhal sends his echo across the field (free movement).")
+	if absi(echo_col - _hero().col) > ECHO_RANGE:
+		game.toast("The echo is more than 30 ft away: it fades at the end of your turn.")
+	_open_menu()
+
+
+## Swap places with the echo for 15 feet of movement.
+func _echo_swap() -> void:
+	var hc := _hero()
+	var p: Player = game.player
+	h_move -= 3
+	var mine: int = hc.col
+	hc.col = echo_col
+	echo_col = mine
+	mode = Mode.BUSY
+	p.global_position.x = hc.col * T + 8.0
+	p.reset_physics_interpolation()
+	if is_instance_valid(echo_node):
+		echo_node.global_position.x = echo_col * T + 8.0
+	game.sfx.play("dodge", -6.0)
+	game.log_line("Boar-vhal swaps places with his echo (15 ft of movement).")
+	await get_tree().create_timer(0.25).timeout
+	_face_nearest(p, hc)
+	_open_menu()
+
+
+## End of the hero's turn: an echo more than 30 feet away is destroyed.
+func _echo_range_check() -> void:
+	if echo_col >= 0 and absi(echo_col - _hero().col) > ECHO_RANGE:
+		echo_col = -1
+		if is_instance_valid(echo_node):
+			echo_node.queue_free()
+		game.log_line("The echo is more than 30 ft from Boar-vhal and fades away.")
+		game.toast("Your echo fades (more than 30 ft away).")
 
 
 func _place_echo() -> void:
@@ -1480,6 +1563,15 @@ func _draw() -> void:
 			var free := not _occupied(col, hc)
 			draw_rect(Rect2(col * T + 1, floor_y - 2, T - 2, 3), Color(0.4, 0.8, 1.0, 0.55) if free else Color(1, 0.3, 0.3, 0.4))
 		draw_rect(Rect2(cursor_col * T, floor_y - 30, T, 30), Color(0.4, 0.8, 1.0, 0.9), false, 1.0)
+	elif mode == Mode.ECHO:
+		for col in range(echo_col - echo_move, echo_col + echo_move + 1):
+			if col < min_col or col > max_col:
+				continue
+			var ok := not _occupied(col, null) or col == echo_col
+			draw_rect(Rect2(col * T + 1, floor_y - 2, T - 2, 3), Color(0.55, 0.75, 1.0, 0.55) if ok else Color(1, 0.3, 0.3, 0.4))
+		draw_rect(Rect2(cursor_col * T, floor_y - 30, T, 30), Color(0.55, 0.75, 1.0, 0.9), false, 1.0)
+		# 30 ft from Boar-vhal: where the echo must be at the end of the turn.
+		draw_rect(Rect2((hc.col - ECHO_RANGE) * T, floor_y + 4, (ECHO_RANGE * 2 + 1) * T, 1), Color(0.55, 0.75, 1.0, 0.35))
 	elif mode == Mode.TARGET and not target_list.is_empty():
 		var t: Dictionary = target_list[target_pick]
 		var h := 40.0 if t.node == boss else 20.0

@@ -34,6 +34,9 @@ var hero: Hero
 var reckless := false
 var echo: Node2D
 var _echo_cd := 0.0
+var echo_target := Vector2.INF   # where the echo is gliding to (free movement)
+var _echo_round := 2.0           # end-of-turn check for the echo, once a "round"
+const ECHO_RANGE_PX := 96.0      # 30 feet
 var _potion_t := 0.0
 var recovery := RECOVERY
 var _mouse_aim := false
@@ -228,6 +231,7 @@ func _physics_process(delta: float) -> void:
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
 	bonus_cd = maxf(0.0, bonus_cd - delta)
 	_echo_cd = maxf(0.0, _echo_cd - delta)
+	_update_echo(delta)
 	_spike_cd = maxf(0.0, _spike_cd - delta)
 	if rage_time > 0.0:
 		rage_time = maxf(0.0, rage_time - delta)
@@ -826,6 +830,41 @@ func _try_potion() -> void:
 	game.sfx.play("dodge", -4.0)
 
 
+## Free movement: command the echo anywhere; it glides there (it can float up, too).
+func command_echo(to: Vector2) -> void:
+	if not is_instance_valid(echo):
+		game.toast("No echo to command. Press U to make one.")
+		return
+	echo_target = to
+	game.sfx.play("dodge", -12.0, 0.4)
+
+
+func _update_echo(delta: float) -> void:
+	if not is_instance_valid(echo):
+		echo_target = Vector2.INF
+		return
+	if echo_target != Vector2.INF:
+		var dv := echo_target - echo.global_position
+		var step := 150.0 * delta
+		if dv.length() <= step:
+			echo.global_position = echo_target
+			echo_target = Vector2.INF
+		else:
+			echo.global_position += dv.normalized() * step
+	var far := echo.global_position.distance_to(global_position) > ECHO_RANGE_PX
+	echo.modulate.a = (0.45 + 0.4 * absf(sin(Time.get_ticks_msec() / 90.0))) if far else 1.0
+	# End of a "turn" (a round every 2 seconds): more than 30 feet away and it fades.
+	_echo_round -= delta
+	if _echo_round <= 0.0:
+		_echo_round = 2.0
+		if far:
+			echo.queue_free()
+			echo = null
+			echo_target = Vector2.INF
+			game.log_line("The echo is more than 30 ft from Boar-vhal and fades away.")
+			game.toast("Your echo fades (more than 30 ft away).")
+
+
 func _try_echo() -> void:
 	if not hero or not hero.has_echo():
 		game.toast("Echo unlocks at level 3.")
@@ -848,6 +887,8 @@ func _try_echo() -> void:
 		echo.global_position = global_position
 		echo.z_index = -1
 		game.add_child(echo)
+		_echo_round = 2.0
+		echo_target = Vector2.INF
 		game.log_line("Bonus action: Boar-vhal leaves an Echo. Goblins beside it are flanked.")
 		game.sfx.play("dodge", -8.0)
 	else:
