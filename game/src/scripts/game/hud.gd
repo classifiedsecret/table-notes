@@ -176,7 +176,7 @@ func build(g: Node) -> void:
 	dfoot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	doors_panel.visible = false
 
-	tavern_panel = _panel(Vector2(40, 12), Vector2(400, 240), 0.97)
+	tavern_panel = _panel(Vector2(40, 5), Vector2(400, 260), 0.97)
 	tavern_title = _label(tavern_panel, Vector2(0, 6), "THE CELLAR STAIR", 24, Color(1, 0.88, 0.55), true)
 	tavern_title.size = Vector2(400, 24)
 	tavern_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -443,8 +443,10 @@ func show_tavern(sheet: String, options: Array, pick: int, foot: String) -> void
 	tavern_panel.visible = true
 	tavern_sheet.text = sheet.to_upper()
 	tavern_opts.text = ""
-	# One line per option, laid out from the option count so nothing overlaps.
-	var y := 100.0
+	# Options start below however many lines the hero sheet takes (a party adds one),
+	# then one line per option, so nothing overlaps.
+	var sheet_lines := sheet.count("\n") + 1
+	var y := 46.0 + sheet_lines * 13.0 + 4.0
 	for i in tavern_lines.size():
 		var l := tavern_lines[i]
 		l.visible = i < options.size()
@@ -453,9 +455,9 @@ func show_tavern(sheet: String, options: Array, pick: int, foot: String) -> void
 		l.position.y = y
 		l.text = ("> " if i == pick else "  ") + str(options[i]).to_upper()
 		l.label_settings.font_color = Color(0.45, 1.0, 0.45) if i == pick else Color(0.92, 0.92, 0.9)
-		y += 12.0
-	tavern_help.position.y = y + 4.0
-	tavern_foot.position.y = y + 20.0
+		y += 11.0
+	tavern_help.position.y = y + 3.0
+	tavern_foot.position.y = y + 17.0
 	tavern_foot.text = (foot + "\nArt: 0x72 (CC0). Fonts and sounds: Kenney (CC0). Includes material from SRD 5.1 and 5.2 by Wizards of the Coast LLC, CC-BY-4.0.").to_upper()
 
 

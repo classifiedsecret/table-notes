@@ -36,6 +36,7 @@ var beam_col := -1
 var sw_rounds := 0        # Spiritual Weapon rounds left
 var sw_node: Node2D
 var pending := ""
+var order_panel: Control
 var h_disengaged := false   # Disengage: no opportunity attacks this turn         # an action waiting for a target ("attack", "ray", "spirit", "moonbeam", "entangle")
 
 var menu_items: Array = []    # [label, id, enabled]
@@ -1385,7 +1386,9 @@ func _build_ui() -> void:
 	ui.layer = 11
 	add_child(ui)
 	var top := _panel(Vector2(166, 4), Vector2(116, 52))
+	order_panel = top
 	order_label = _label(top, Vector2(5, 3), 8, Color(0.92, 0.9, 0.85))
+	order_label.label_settings.line_spacing = -3.0
 	menu_panel = _panel(Vector2(4, 72), Vector2(186, 100))
 	menu_label = _label(menu_panel, Vector2(6, 4), 8, Color.WHITE)
 	menu_lines.clear()
@@ -1447,11 +1450,15 @@ func _refresh_order() -> void:
 			var e: Enemy = c.node
 			tag = "UNHURT" if e.hp == e.max_hp else ("BLOODIED" if e.hp <= e.max_hp / 2 else "HURT")
 		elif c.side == "ally":
-			tag = "%d HP (ALLY)" % (c.node as Companion).hp
+			tag = "%d HP" % (c.node as Companion).hp
 		else:
 			tag = "%d HP" % game.player.hp
 		lines.append(("> " if i == turn_index else "  ") + "%s  %s" % [str(c.name).to_upper(), tag])
 	order_label.text = "\n".join(lines)
+	# The box grows with the initiative list (allies make it longer); the action menu moves below it.
+	var sz := order_label.get_minimum_size()
+	order_panel.size = Vector2(maxf(116.0, sz.x + 10.0), sz.y + 6.0)
+	menu_panel.position.y = maxf(72.0, order_panel.position.y + order_panel.size.y + 4.0) if order_panel.position.x < menu_panel.position.x + menu_panel.size.x else 72.0
 	if combatants[turn_index].side != "hero":
 		for l in menu_lines:
 			l.visible = false

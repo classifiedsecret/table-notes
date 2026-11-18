@@ -308,7 +308,12 @@ func _on_hero_loaded(args: Array) -> void:
 	if _arg("t3"):
 		hero.tier_unlocked = 3
 		hero.tier = 3
-	for a in OS.get_cmdline_user_args():
+	var party_args := OS.get_cmdline_user_args()
+	if OS.has_feature("web"):
+		var q = JavaScriptBridge.eval("window.location.search", true)
+		if q is String and (q as String).contains("party="):
+			party_args.append("--party=" + (q as String).get_slice("party=", 1).get_slice("&", 0))
+	for a in party_args:
 		if a.begins_with("--party="):
 			for k in a.substr(8).split(","):
 				if Kits.has(k):
@@ -355,6 +360,11 @@ func _on_hero_loaded(args: Array) -> void:
 			if t == 70: Input.action_release("jump")
 			if t > 18 and t % 3 == 0 and t < 60: print("[jump] t=%d y=%.1f vy=%.0f floor=%s state=%s" % [t, start_y - player.global_position.y, player.velocity.y, player.is_on_floor(), Player.State.keys()[player.state]]))
 		add_child(tm)
+		return
+	if _arg("card"):
+		party.append_array(["lyburnum", "ceridwen"])
+		_open_tavern()
+		get_tree().create_timer(1.5).timeout.connect(_open_card)
 		return
 	if _arg("note"):
 		get_tree().create_timer(1.0).timeout.connect(func(): hud.level_note(Kits.level_features(hero.key, 2)))
