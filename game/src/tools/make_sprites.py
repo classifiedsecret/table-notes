@@ -58,7 +58,7 @@ INN = {
     'npc_ceridwen': ('wizzard_f', {'#5698cc': '#8a5cc4', '#5956bd': '#5d3a99', '#fdf7ed': '#d2452c', '#d3bfa9': '#962d1f', '#b58057': '#eac3a6', '#8a503e': '#c4957b'}),
     'npc_erwar': ('knight_m', {'#72d6ce': '#e8c35a', '#417089': '#a8782c', '#da4e38': '#fdf7ed', '#ee8e2e': '#d8d3e8'}),
     'npc_lyburnum': ('knight_m', {'#72d6ce': '#55555f', '#417089': '#2e2e38', '#da4e38': '#4ba747', '#ee8e2e': '#3d734f'}),
-    'npc_suilean': ('elf_f', None),
+    'npc_suilean': ('elf_f', {'#facb3e': '#3f3946', '#ee8e2e': '#2a2630', '#fccba3': '#c98d62'}),
     'npc_galinnadin': ('elf_m', {'#4ba747': '#3b3b48', '#3d734f': '#2a2a33', '#facb3e': '#4a3426', '#ee8e2e': '#33241a'}),
     'npc_orfi': ('dwarf_f', {'#facb3e': '#8a3324', '#ee8e2e': '#6b2418', '#dc4a7b': '#e8952e', '#9f294e': '#b8641c'}),
     'npc_dm': ('doc', None),
