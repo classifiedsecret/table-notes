@@ -57,7 +57,7 @@ static func taproom() -> Dictionary:
 			["bar_mid", 27.5, 8.0, {}], ["bar_end", 27.5, 9.75, {}],
 			["barrel", 27.5, 7.02, {}],
 			["stool", 26.2, 5.15, {}], ["stool", 26.2, 6.95, {}], ["stool", 26.2, 8.75, {}],
-			["stairs_up", 33.0, 2.85, {"floor": true}],
+			["stairs_up", 33.0, 1.625, {"floor": true}],
 			["table", 10.0, 9.0, {"solid": [30, 8], "on": [["mug_pair", -6, -16], ["plate", 6, -14]]}],
 			["chair_front", 9.5, 7.78, {}],
 			["chair_side", 11.7, 9.05, {"flip": true}],
