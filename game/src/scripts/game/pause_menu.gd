@@ -10,6 +10,8 @@ var title: Label
 var lines: Array[Label] = []
 var note: Label
 var _opened := 0
+var _rmb_held := true
+var _last_m := Vector2.ZERO
 
 
 func setup(g: Node) -> void:
@@ -78,10 +80,29 @@ func _render() -> void:
 	note.text = "LEAVING MID-DELVE LOSES THIS DELVE'S GOLD." if game.phase in [1, 2, 3] and items[pick][1] == "exit" else "ESC: BACK TO THE GAME"
 
 
+func _hovered() -> int:
+	var m := get_viewport().get_mouse_position()
+	for i in items.size():
+		if lines[i].get_global_rect().grow(2.0).has_point(m):
+			return i
+	return -1
+
+
 func _process(_delta: float) -> void:
 	if not visible or Engine.get_process_frames() == _opened:
+		_last_m = get_viewport().get_mouse_position()
 		return
-	if Input.is_action_just_pressed("back"):
+	var m := get_viewport().get_mouse_position()
+	var hov := _hovered()
+	if hov >= 0 and hov != pick and m.distance_to(_last_m) > 0.5:
+		pick = hov
+		_render()
+	_last_m = m
+	var lmb := Input.is_action_just_pressed("attack") and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	var rmb := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	var right_click := rmb and not _rmb_held
+	_rmb_held = rmb
+	if Input.is_action_just_pressed("back") or right_click:
 		close()
 	elif Input.is_action_just_pressed("move_down"):
 		pick = (pick + 1) % items.size()
@@ -89,7 +110,10 @@ func _process(_delta: float) -> void:
 	elif Input.is_action_just_pressed("move_up"):
 		pick = (pick - 1 + items.size()) % items.size()
 		_render()
-	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("interact"):
+	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("interact") or \
+			(Input.is_action_just_pressed("attack") and not lmb) or (lmb and hov >= 0):
+		if lmb:
+			pick = hov
 		match items[pick][1]:
 			"resume":
 				close()

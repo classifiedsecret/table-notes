@@ -52,6 +52,8 @@ var stats_panel: Control
 var dlg_panel: PanelContainer
 var dlg_name: Label
 var dlg_text: Label
+var dlg_yes: Label
+var dlg_no: Label
 const HINTS_INN := [["A/D", "MOVE"], ["SPACE", "JUMP"], ["E", "TALK"], ["W", "CLIMB STAIRS"], ["S+SPACE", "DROP DOWN"],
 	["M", "MUSIC ON/OFF"], ["WHEEL", "MUSIC VOL"], ["ESC", "PAUSE"], ["", "CELLAR: FAR RIGHT"]]
 
@@ -167,7 +169,7 @@ func build(g: Node) -> void:
 		h.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		door_hints.append(h)
-	var dfoot := _label(doors_panel, Vector2(0, 96), "LEFT / RIGHT TO PICK, ATTACK OR ENTER TO GO", 8, Color(0.6, 0.6, 0.66))
+	var dfoot := _label(doors_panel, Vector2(0, 96), "CLICK A DOOR, OR LEFT / RIGHT AND ENTER", 8, Color(0.6, 0.6, 0.66))
 	dfoot.size = Vector2(360, 10)
 	dfoot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	doors_panel.visible = false
@@ -186,7 +188,7 @@ func build(g: Node) -> void:
 		var tl := _label(tavern_panel, Vector2(18, 100 + i * 12), "", 8, Color.WHITE)
 		tl.visible = false
 		tavern_lines.append(tl)
-	tavern_help = _label(tavern_panel, Vector2(18, 150), "UP / DOWN TO CHOOSE, ATTACK OR ENTER TO SELECT", 8, Color(0.7, 0.7, 0.76))
+	tavern_help = _label(tavern_panel, Vector2(18, 150), "CLICK AN OPTION, OR UP / DOWN AND ENTER", 8, Color(0.7, 0.7, 0.76))
 	tavern_foot = _label(tavern_panel, Vector2(18, 166), "", 8, Color(0.6, 0.6, 0.68))
 	tavern_foot.size = Vector2(364, 50)
 	tavern_foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -197,6 +199,11 @@ func build(g: Node) -> void:
 	dlg_text = _label(dlg_panel, Vector2(8, 13), "", 8, Color(0.94, 0.94, 0.9))
 	dlg_text.size = Vector2(324, 24)
 	dlg_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dlg_yes = _label(dlg_panel, Vector2(262, 3), "[ YES ]", 8, Color(0.45, 1.0, 0.45))
+	dlg_no = _label(dlg_panel, Vector2(304, 3), "[ NO ]", 8, Color(1.0, 0.55, 0.5))
+	for l in [dlg_yes, dlg_no]:
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		l.visible = false
 	dlg_panel.visible = false
 
 	hints = _panel(Vector2(4, 180), Vector2(96, 86), 0.45)
@@ -329,6 +336,8 @@ func set_tavern_title(title: String, sub: String) -> void:
 
 func show_dialogue(who: String, text: String) -> void:
 	dlg_panel.visible = true
+	dlg_yes.visible = false
+	dlg_no.visible = false
 	dlg_name.text = who.to_upper() + "   (E: MORE)"
 	dlg_text.text = text.to_upper()
 
@@ -336,7 +345,9 @@ func show_dialogue(who: String, text: String) -> void:
 ## A yes/no question in the dialogue box.
 func show_confirm(title: String, text: String) -> void:
 	dlg_panel.visible = true
-	dlg_name.text = title.to_upper() + "   E / ENTER: YES    ESC: NO"
+	dlg_yes.visible = true
+	dlg_no.visible = true
+	dlg_name.text = title.to_upper() + "   E: YES  ESC: NO"
 	dlg_text.text = text.to_upper()
 
 

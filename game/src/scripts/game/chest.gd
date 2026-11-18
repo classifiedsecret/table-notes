@@ -47,9 +47,10 @@ func interact(p: Player) -> void:
 	sprite.play()
 	var gp: int = roundi(((game.dice.roll(2, 6).reduce(func(a, b): return a + b, 0)) * 5 + 5 * game.hero.level) * float(Creatures.TIERS[game.hero.tier].gold))
 	var potion: bool = game.dice.die(100) <= 50
-	game.run_gold += gp
+	var share: int = game.add_gold(gp)
 	if potion:
 		game.run_potions += 1
-	game.toast("The chest bursts open: %d gp%s." % [gp, " and a Potion of Healing" if potion else ""])
-	game.log_line("Chest: %d gp%s." % [gp, ", Potion of Healing" if potion else ""])
+	var split := "" if game.party_size() == 1 else " (your share %d)" % share
+	game.toast("The chest bursts open: %d gp%s%s." % [gp, split, " and a Potion of Healing" if potion else ""])
+	game.log_line("Chest: %d gp%s%s." % [gp, split, ", Potion of Healing" if potion else ""])
 	game.sfx.play("crit", -10.0)

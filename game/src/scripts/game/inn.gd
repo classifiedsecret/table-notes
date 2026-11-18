@@ -434,6 +434,31 @@ func _physics_process_drink(delta: float) -> void:
 			boar.say("*glug*", 1.4)
 
 
+## A party member who agreed to come along waits by the cellar stair.
+func send_to_cellar(k: String, slot: int) -> void:
+	var n := _by_key(k)
+	if not n:
+		return
+	if not n.has_meta("home"):
+		n.set_meta("home", [n.position, n.sitting, n.z_index])
+	n.set_sitting(false)
+	n.position = Vector2(CELLAR_X - 70.0 - slot * 16.0, FLOOR_Y)
+	n.z_index = 2
+	n.face_toward(CELLAR_X)
+	n.say("Ready when you are.", 2.0)
+
+
+func return_home(k: String) -> void:
+	var n := _by_key(k)
+	if not n or not n.has_meta("home"):
+		return
+	var h: Array = n.get_meta("home")
+	n.position = h[0]
+	n.set_sitting(h[1])
+	n.z_index = h[2]
+	n.remove_meta("home")
+
+
 func _by_key(k: String) -> InnNPC:
 	for n in npcs:
 		if n.key == k:

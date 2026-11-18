@@ -89,6 +89,17 @@ func set_marker(on: bool) -> void:
 		marker.visible = on
 
 
+## Stand up or sit down (moves the sprite and its labels).
+func set_sitting(on: bool) -> void:
+	var d := (5.0 if on else 0.0) - (5.0 if sitting else 0.0)
+	sitting = on
+	for n in [sprite, tag, bubble, marker]:
+		if n == sprite:
+			sprite.offset.y += d
+		elif n:
+			n.position.y += d
+
+
 func say(text: String, secs := 3.2) -> void:
 	bubble.call("show_text", text, secs)
 

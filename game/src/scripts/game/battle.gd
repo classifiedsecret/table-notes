@@ -35,7 +35,8 @@ var conc := ""            # "entangle" or "moonbeam" while Suilean concentrates
 var beam_col := -1
 var sw_rounds := 0        # Spiritual Weapon rounds left
 var sw_node: Node2D
-var pending := ""         # an action waiting for a target ("attack", "ray", "spirit", "moonbeam", "entangle")
+var pending := ""
+var h_disengaged := false   # Disengage: no opportunity attacks this turn         # an action waiting for a target ("attack", "ray", "spirit", "moonbeam", "entangle")
 
 var menu_items: Array = []    # [label, id, enabled]
 var menu_pick := 0
@@ -84,6 +85,12 @@ func start(g: Node) -> void:
 		rage_rounds = ceili(p.rage_time / 6.0)
 	combatants.clear()
 	_add(p, p.short_name(), "hero", 1 if p.hero.key != "ceridwen" and p.hero.key != "suilean" else 2)
+	for comp in game.companions:
+		if is_instance_valid(comp) and not comp.down:
+			comp.global_position.x = p.global_position.x - p.facing * T * (1 + comp.index)
+			comp.velocity = Vector2.ZERO
+			_add(comp, comp.short_name(), "ally", 1)
+			comp.reset_physics_interpolation()
 	p.kit.end_zone(p.kit.concentration)
 	if is_instance_valid(p.kit.spirit):
 		sw_rounds = 10
@@ -126,7 +133,7 @@ func _add(node: Node2D, nm: String, side: String, dex: int) -> void:
 	var col := clampi(floori(node.global_position.x / T), min_col, max_col)
 	while _occupied(col, null):
 		col += 1 if side == "foe" else -1
-	var c := {"node": node, "name": nm, "side": side, "col": col, "init": 0, "dex": dex, "restrained": false, "frightened": false}
+	var c := {"node": node, "name": nm, "side": side, "col": col, "init": 0, "dex": dex, "restrained": false, "frightened": false, "reaction": true}
 	combatants.append(c)
 	node.global_position = Vector2(col * T + 8, floor_y)
 
@@ -141,6 +148,8 @@ func _occupied(col: int, except: Variant) -> bool:
 func _alive(c: Dictionary) -> bool:
 	if c.side == "hero":
 		return true
+	if c.side == "ally":
+		return is_instance_valid(c.node) and not (c.node as Companion).down
 	return is_instance_valid(c.node) and not (c.node as Enemy).is_dead()
 
 
@@ -181,8 +190,15 @@ func _next_turn() -> void:
 	_refresh_order()
 	if c.side == "hero":
 		_hero_turn_start()
+	elif c.side == "ally":
+		mode = Mode.BUSY
+		await get_tree().create_timer(0.4).timeout
+		await _ally_turn(c)
+		await get_tree().create_timer(0.3).timeout
+		_next_turn()
 	else:
 		mode = Mode.BUSY
+		c.reaction = true
 		await get_tree().create_timer(0.5).timeout
 		await _foe_turn(c)
 		await get_tree().create_timer(0.35).timeout
@@ -235,6 +251,7 @@ func _hero_turn_start() -> void:
 	h_bonus = 1
 	h_attacks = 0
 	h_dodging = false
+	h_disengaged = false
 	h_move = int(p.form_data.get("speed_ft", p.stats.speed_ft)) / 5
 	if sw_rounds > 0:
 		sw_rounds -= 1
@@ -332,6 +349,7 @@ func _open_menu() -> void:
 			if p.hero.has_echo():
 				menu_items.append(["Echo (bonus action)", "echo", h_bonus > 0])
 	menu_items.append(["Dash / Dodge (action)", "dashdodge", can_act])
+	menu_items.append(["Disengage (action)" + (": ON" if h_disengaged else ""), "disengage", can_act and not h_disengaged])
 	menu_items.append(["Drink potion (action, %d)" % game.run_potions, "potion", can_act and game.run_potions > 0])
 	menu_items.append(["End turn", "end", true])
 	menu_pick = clampi(menu_pick, 0, menu_items.size() - 1)
@@ -363,7 +381,7 @@ func _render_menu() -> void:
 			l.label_settings.font_color = Color(0.92, 0.92, 0.9)
 	menu_panel.size.y = 8.0 + 10.0 * menu_items.size()
 	var res := "ACTION %s  BONUS %s  MOVE %d FT" % ["OK" if h_action > 0 else "USED", "OK" if h_bonus > 0 else "USED", h_move * 5]
-	_info(res + "    UP/DOWN PICK  ATTACK CONFIRM  ESC BACK")
+	_info(res + "    CLICK OR UP/DOWN + ENTER TO ACT")
 
 
 ## Moves the cursor to the next action that can be taken, wrapping around.
@@ -383,7 +401,14 @@ func _process(_delta: float) -> void:
 		return
 	match mode:
 		Mode.MENU:
-			if Input.is_action_just_pressed("move_down"):
+			var hov: int = game.under_mouse(menu_lines.slice(0, menu_items.size()))
+			if hov >= 0 and hov != menu_pick and game.mouse_moved() and menu_items[hov][2]:
+				menu_pick = hov
+				_render_menu()
+			if game.clicked() and hov >= 0:
+				menu_pick = hov
+				_choose(menu_items[hov])
+			elif Input.is_action_just_pressed("move_down"):
 				_step_menu(1)
 			elif Input.is_action_just_pressed("move_up"):
 				_step_menu(-1)
@@ -391,7 +416,17 @@ func _process(_delta: float) -> void:
 				_choose(menu_items[menu_pick])
 		Mode.MOVE:
 			var hc := _hero()
-			if Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right"):
+			var mc := floori(get_global_mouse_position().x / T)
+			var in_range: bool = absi(mc - hc.col) <= h_move and mc >= min_col and mc <= max_col
+			if in_range and mc != cursor_col and game.mouse_moved():
+				cursor_col = mc
+				queue_redraw()
+			if game.clicked() and in_range:
+				cursor_col = mc
+				_do_move(mc)
+			elif game.right_clicked():
+				_open_menu()
+			elif Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right"):
 				var d := -1 if Input.is_action_just_pressed("move_left") else 1
 				var nc: int = cursor_col + d
 				if absi(nc - hc.col) <= h_move and nc >= min_col and nc <= max_col:
@@ -402,7 +437,22 @@ func _process(_delta: float) -> void:
 			elif Input.is_action_just_pressed("back") or Input.is_action_just_pressed("dodge"):
 				_open_menu()
 		Mode.TARGET:
-			if Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right"):
+			var tm := get_global_mouse_position()
+			var thov := -1
+			for i in target_list.size():
+				var t: Dictionary = target_list[i]
+				var h := 40.0 if t.node == boss else 22.0
+				if Rect2(t.col * T - 3, floor_y - h, T + 6, h + 4).has_point(tm):
+					thov = i
+			if thov >= 0 and thov != target_pick and game.mouse_moved():
+				target_pick = thov
+				queue_redraw()
+			if game.clicked() and thov >= 0:
+				target_pick = thov
+				_target_chosen(target_list[thov])
+			elif game.right_clicked():
+				_open_menu()
+			elif Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right"):
 				target_pick = (target_pick + 1) % target_list.size()
 				queue_redraw()
 			elif _confirm():
@@ -413,7 +463,7 @@ func _process(_delta: float) -> void:
 
 
 func _confirm() -> bool:
-	return Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("interact")
+	return game.ui_confirm()
 
 
 func _camera() -> void:
@@ -431,7 +481,7 @@ func _ask_target(action: String, reach: int, hint: String) -> void:
 	pending = action
 	target_pick = 0
 	mode = Mode.TARGET
-	_info("LEFT/RIGHT: CHOOSE TARGET    ATTACK: %s    ESC: BACK" % hint)
+	_info("CLICK A FOE, OR LEFT/RIGHT + ENTER: %s    RIGHT-CLICK / ESC: BACK" % hint)
 	queue_redraw()
 
 
@@ -447,7 +497,7 @@ func _choose(item: Array) -> void:
 		"move":
 			cursor_col = _hero().col
 			mode = Mode.MOVE
-			_info("LEFT/RIGHT: CHOOSE A SQUARE    ATTACK: MOVE THERE    ESC: BACK")
+			_info("CLICK A SQUARE, OR LEFT/RIGHT + ENTER: MOVE    RIGHT-CLICK / ESC: BACK")
 			queue_redraw()
 		"dashdodge":
 			# Dash if there is ground to cover, otherwise Dodge.
@@ -458,6 +508,11 @@ func _choose(item: Array) -> void:
 			else:
 				h_dodging = true
 				game.log_line("Action: Dodge. Attacks against %s have disadvantage until the next turn." % p.short_name())
+			_open_menu()
+		"disengage":
+			h_action = 0
+			h_disengaged = true
+			game.log_line("Action: Disengage. Moving won't provoke opportunity attacks this turn.")
 			_open_menu()
 		"reckless":
 			reckless_on = not reckless_on
@@ -581,22 +636,24 @@ func _foe_adjacent() -> bool:
 	return not _targets_in_reach(1).is_empty()
 
 
+func _foe_reach(c: Dictionary) -> int:
+	if c.node == boss:
+		return int(boss.data.reach)
+	return 0 if str(c.node.data.weapon.name) == "Shortbow" else 1
+
+
+## Moving: you may pass through anyone's square but must stop on a free one. Stepping out
+## of a foe's reach provokes an opportunity attack (its reaction, once per round), unless
+## you took the Disengage action.
 func _do_move(col: int) -> void:
 	var hc := _hero()
 	if col == hc.col:
 		_open_menu()
 		return
 	if _occupied(col, hc):
-		game.toast("That square is taken.")
+		game.toast("You can pass through, but not stop on, an occupied square.")
 		return
-	# Can't pass through enemies.
 	var step := 1 if col > hc.col else -1
-	var x: int = hc.col + step
-	while x != col + step:
-		if _occupied(x, hc):
-			game.toast("A foe blocks the way.")
-			return
-		x += step
 	var dist := absi(col - hc.col)
 	h_move -= dist
 	mode = Mode.BUSY
@@ -604,20 +661,57 @@ func _do_move(col: int) -> void:
 	p.facing = step
 	p.visual.scale.x = step
 	p.sprite.play("run")
-	var tw := create_tween()
-	tw.tween_property(p, "global_position:x", col * T + 8.0, 0.09 * dist)
-	await tw.finished
+	var x: int = hc.col
+	while x != col:
+		var nx := x + step
+		if not h_disengaged:
+			for c in combatants:
+				if c.side == "foe" and _alive(c) and c.reaction and not c.restrained:
+					var r := _foe_reach(c)
+					if r > 0 and absi(c.col - x) <= r and absi(c.col - nx) > r:
+						p.sprite.play("idle")
+						await _opportunity_attack(c, hc)
+						if p.is_down() or not active:
+							hc.col = x
+							_next_turn_after_down()
+							return
+						p.sprite.play("run")
+		var tw := create_tween()
+		tw.tween_property(p, "global_position:x", nx * T + 8.0, 0.09)
+		await tw.finished
+		x = nx
 	p.sprite.play("idle")
 	hc.col = col
 	_face_nearest(p, hc)
 	_open_menu()
 
 
+func _next_turn_after_down() -> void:
+	mode = Mode.BUSY
+	await get_tree().create_timer(0.5).timeout
+	_next_turn()
+
+
+func _opportunity_attack(c: Dictionary, target: Dictionary) -> void:
+	c.reaction = false
+	var e: Enemy = c.node
+	game.log_line("%s takes an opportunity attack as %s leaves its reach!" % [c.name, target.name])
+	FloatText.fling(game, e.global_position + Vector2(0, -30), Vector2(0, -1), "OPPORTUNITY ATTACK", "", Color(1, 0.6, 0.4), 0, 1.0)
+	_face_nearest(e, c)
+	var tw := create_tween()
+	tw.tween_property(e.weapon_pivot, "rotation", -2.0, 0.18)
+	tw.tween_property(e.weapon_pivot, "rotation", 1.9, 0.08)
+	tw.tween_property(e.weapon_pivot, "rotation", 0.5, 0.2)
+	await get_tree().create_timer(0.26).timeout
+	game.sfx.play("swing", -6.0)
+	await _resolve_foe_attack(e, e.data.weapon, false, c, target)
+
+
 func _face_nearest(node: Node2D, me: Dictionary) -> void:
 	var best := 999
 	var dir := 1
 	for c in combatants:
-		if c.side != me.side and _alive(c) and absi(c.col - me.col) < best:
+		if (c.side == "foe") != (me.side == "foe") and _alive(c) and absi(c.col - me.col) < best:
 			best = absi(c.col - me.col)
 			dir = 1 if c.col >= me.col else -1
 	if node is Player:
@@ -626,6 +720,9 @@ func _face_nearest(node: Node2D, me: Dictionary) -> void:
 	elif node is Enemy:
 		(node as Enemy).facing = dir
 		(node as Enemy).visual.scale.x = dir
+	elif node is Companion:
+		(node as Companion).facing = dir
+		(node as Companion).visual.scale.x = dir
 
 
 func _do_attack(t: Dictionary) -> void:
@@ -961,9 +1058,20 @@ func _show_intent() -> void:
 	intent_label.text = txt.get(boss_intent, "")
 
 
+## Goblins and the chief go for the nearest of the hero and the allies.
+func _foe_target(c: Dictionary) -> Dictionary:
+	var best := _hero()
+	var bd := 999 if game.player.is_down() else absi(best.col - c.col)
+	for o in combatants:
+		if o.side == "ally" and _alive(o) and absi(o.col - c.col) < bd:
+			bd = absi(o.col - c.col)
+			best = o
+	return best
+
+
 func _foe_turn(c: Dictionary) -> void:
 	var e: Enemy = c.node
-	var hc := _hero()
+	var hc := _foe_target(c)
 	var p: Player = game.player
 	var k: HeroKit = p.kit
 	# Moonbeam burns whoever starts a turn in the light.
@@ -977,7 +1085,7 @@ func _foe_turn(c: Dictionary) -> void:
 		await get_tree().create_timer(0.4).timeout
 		if not _alive(c):
 			return
-	if p.is_down():
+	if p.is_down() and hc.side == "hero":
 		game.log_line("%s jeers at the fallen %s." % [c.name, p.short_name()])
 		return
 	# Restrained: the chief spends his action tearing free; goblins stay put.
@@ -995,17 +1103,17 @@ func _foe_turn(c: Dictionary) -> void:
 			await _foe_move_toward(c, hc, reach)
 			dist = absi(hc.col - c.col)
 		if dist <= reach:
-			match boss_intent:
+			match boss_intent if hc.side == "hero" or boss_intent != "shove" else "smash":
 				"shove":
 					await _boss_shove(c, hc)
 				"fury":
-					await _foe_attack(c, e.data.weapon)
-					if not p.is_down():
+					await _foe_attack(c, e.data.weapon, hc)
+					if _alive(hc) and not (hc.side == "hero" and p.is_down()):
 						await get_tree().create_timer(0.35).timeout
-						await _foe_attack(c, e.data.weapon)
+						await _foe_attack(c, e.data.weapon, hc)
 					boss_intent = "smash"
 				_:
-					await _foe_attack(c, e.data.weapon)
+					await _foe_attack(c, e.data.weapon, hc)
 		_pick_intent()
 		await _end_foe_turn(c)
 	else:
@@ -1021,8 +1129,111 @@ func _foe_turn(c: Dictionary) -> void:
 			if target != c.col:
 				game.log_line("%s disengages (Nimble Escape)." % c.name)
 				await _foe_slide(c, target)
-		await _foe_shoot(c)
+		await _foe_shoot(c, hc)
 		await _end_foe_turn(c)
+
+
+func _foe_hits_ally(e: Enemy, wpn: Dictionary, disadvantage: bool, c: Dictionary, tgt: Dictionary) -> void:
+	var ally: Companion = tgt.node
+	var dis := (1 if disadvantage else 0) + (1 if c.get("frightened", false) else 0) + (1 if c.get("restrained", false) else 0)
+	var atk := Rules.attack(game.dice, wpn.attack, ally.ac, Dice.combine(0, dis))
+	if atk.hit:
+		var d := Rules.damage(game.dice, wpn.count, wpn.sides, wpn.bonus, atk.crit)
+		game.log_line("%s: %s vs %s, d20 %d %+d = %d vs AC %d, %d damage." % [c.name, wpn.name, tgt.name, atk.kept, atk.bonus, atk.total, ally.ac, d.total])
+		ally.take_damage(int(d.total))
+		if ally.down:
+			_refresh_order()
+	else:
+		game.log_line("%s: %s vs %s, d20 %d %+d = %d vs AC %d, miss." % [c.name, wpn.name, tgt.name, atk.kept, atk.bonus, atk.total, ally.ac])
+		FloatText.fling(game, ally.global_position + Vector2(0, -20), Vector2(randf_range(-1, 1), -0.8), "MISS", "", Color(0.75, 0.75, 0.8), 0, 0.9)
+		game.sfx.play("deflect", -6.0)
+	await get_tree().create_timer(0.4).timeout
+
+
+## An ally's turn: heal the hero if it's needed, otherwise close in and fight.
+func _ally_turn(c: Dictionary) -> void:
+	var ally: Companion = c.node
+	var p: Player = game.player
+	var hc := _hero()
+	if ally.key == "erwar" and ally.slots > 0 and p.hp <= p.max_hp / 2:
+		ally.slots -= 1
+		var d := Rules.damage(game.dice, 1, 4, int(ally.stats.spell_mod))
+		p.heal(int(d.total))
+		if p.is_down():
+			p._rise("Erwar's Healing Word brings %s back to %d HP." % [p.short_name(), p.hp])
+		SpellFx.rise(game, p.global_position + Vector2(0, -6), Color(1.0, 0.95, 0.6))
+		game.log_line("Erwar casts Healing Word on %s: +%d HP." % [p.short_name(), d.total])
+	elif ally.key == "lyburnum" and ally.lay_pool > 0 and p.hp <= p.max_hp / 3 and absi(hc.col - c.col) <= 1:
+		var amt := mini(ally.lay_pool, p.max_hp - p.hp)
+		ally.lay_pool -= amt
+		p.heal(amt)
+		if p.is_down():
+			p._rise("Lyburnum's hands bring %s back to %d HP." % [p.short_name(), p.hp])
+		SpellFx.rise(game, p.global_position + Vector2(0, -6), Color(1.0, 0.95, 0.6))
+		game.log_line("Lyburnum lays hands on %s: +%d HP." % [p.short_name(), amt])
+		return
+	var wpn: Dictionary = ally.stats.weapon
+	var reach := _reach_cols(wpn)
+	var foes := []
+	for o in combatants:
+		if o.side == "foe" and _alive(o):
+			foes.append(o)
+	if foes.is_empty():
+		return
+	foes.sort_custom(func(a, b): return absi(a.col - c.col) < absi(b.col - c.col))
+	var t: Dictionary = foes[0]
+	if absi(t.col - c.col) > reach:
+		var step := 1 if t.col > c.col else -1
+		var dest: int = c.col
+		var moves := int(ally.stats.speed_ft) / 5
+		var x: int = c.col
+		for i in moves:
+			x += step
+			if x < min_col or x > max_col:
+				break
+			if not _occupied(x, c):
+				dest = x
+			if absi(t.col - x) <= reach and not _occupied(x, c):
+				dest = x
+				break
+		if dest != c.col:
+			ally.sprite.play("run")
+			var tw := create_tween()
+			tw.tween_property(ally, "global_position:x", dest * T + 8.0, 0.09 * absi(dest - c.col))
+			await tw.finished
+			ally.sprite.play("idle")
+			c.col = dest
+	_face_nearest(ally, c)
+	if absi(t.col - c.col) > reach:
+		return
+	var swings := 2 if ally.stats.extra_attack else 1
+	for i in swings:
+		if not _alive(t):
+			break
+		var tw2 := create_tween()
+		tw2.tween_property(ally.weapon_pivot, "rotation", -2.2, 0.15)
+		tw2.tween_property(ally.weapon_pivot, "rotation", 1.9, 0.07)
+		tw2.tween_property(ally.weapon_pivot, "rotation", -0.55, 0.25)
+		if str(wpn.get("kind", "")) != "melee":
+			SpellFx.line(game, ally.global_position + Vector2(ally.facing * 8, -14), t.node.global_position + Vector2(0, -10),
+				HeroKit.SPELL_COLORS.fire if wpn.kind == "bolt" else HeroKit.SPELL_COLORS.nature, 0.25, wpn.kind == "whip")
+		await get_tree().create_timer(0.2).timeout
+		var e: Enemy = t.node
+		var atk := Rules.attack(game.dice, int(wpn.attack), e.ac, Dice.Mode.ADVANTAGE if t.restrained else Dice.Mode.NORMAL)
+		var dmg := 0
+		if atk.hit:
+			dmg = int(Rules.damage(game.dice, int(wpn.count), int(wpn.sides), int(wpn.bonus), atk.crit).total)
+		elif not atk.fumble:
+			dmg = game.dice.die(4)
+		game.log_line("%s: %s vs %s, d20 %d %+d = %d, %s." % [c.name, wpn.name, t.name, atk.kept, atk.bonus, atk.total, ("%d damage" % dmg) if dmg > 0 else "miss"])
+		if dmg > 0:
+			_foe_damage_text(t, dmg, Color(0.7, 1.0, 0.7))
+		else:
+			FloatText.fling(game, e.global_position + Vector2(0, -18), Vector2(0, -0.8), "MISS", "", Color(0.75, 0.75, 0.8), 0, 0.9)
+		if dmg > 0:
+			game.sfx.play("hit", -6.0)
+			await _hurt_foe(t, dmg)
+		await get_tree().create_timer(0.3).timeout
 
 
 ## A frightened foe repeats its Wisdom save at the end of each of its turns.
@@ -1061,7 +1272,7 @@ func _foe_slide(c: Dictionary, col: int) -> void:
 	_face_nearest(e, c)
 
 
-func _foe_attack(c: Dictionary, wpn: Dictionary) -> void:
+func _foe_attack(c: Dictionary, wpn: Dictionary, tgt: Dictionary = {}) -> void:
 	var e: Enemy = c.node
 	var p: Player = game.player
 	_face_nearest(e, c)
@@ -1071,12 +1282,12 @@ func _foe_attack(c: Dictionary, wpn: Dictionary) -> void:
 	tw.tween_property(e.weapon_pivot, "rotation", 0.5, 0.25)
 	await get_tree().create_timer(0.33).timeout
 	game.sfx.play("swing", -6.0)
-	await _resolve_foe_attack(e, wpn, false, c)
+	await _resolve_foe_attack(e, wpn, false, c, tgt)
 
 
-func _foe_shoot(c: Dictionary) -> void:
+func _foe_shoot(c: Dictionary, tgt: Dictionary = {}) -> void:
 	var e: Enemy = c.node
-	var p: Player = game.player
+	var p: Node2D = game.player if tgt.is_empty() else tgt.node
 	_face_nearest(e, c)
 	var arrow := Node2D.new()
 	arrow.set_script(preload("res://scripts/game/arrow_fx.gd"))
@@ -1086,11 +1297,17 @@ func _foe_shoot(c: Dictionary) -> void:
 	tw.tween_property(arrow, "global_position", p.global_position + Vector2(0, -12), 0.3)
 	await tw.finished
 	arrow.queue_free()
-	var adjacent := absi(_hero().col - c.col) <= 1
-	await _resolve_foe_attack(e, e.data.weapon, adjacent, c)
+	var adjacent := false
+	for o in combatants:
+		if o.side != "foe" and _alive(o) and absi(o.col - c.col) <= 1:
+			adjacent = true
+	await _resolve_foe_attack(e, e.data.weapon, adjacent, c, tgt)
 
 
-func _resolve_foe_attack(e: Enemy, wpn: Dictionary, disadvantage: bool, c: Dictionary = {}) -> void:
+func _resolve_foe_attack(e: Enemy, wpn: Dictionary, disadvantage: bool, c: Dictionary = {}, tgt: Dictionary = {}) -> void:
+	if not tgt.is_empty() and tgt.side == "ally":
+		await _foe_hits_ally(e, wpn, disadvantage, c, tgt)
+		return
 	var p: Player = game.player
 	var adv := 0
 	var dis := 0
@@ -1229,6 +1446,8 @@ func _refresh_order() -> void:
 		if c.side == "foe":
 			var e: Enemy = c.node
 			tag = "UNHURT" if e.hp == e.max_hp else ("BLOODIED" if e.hp <= e.max_hp / 2 else "HURT")
+		elif c.side == "ally":
+			tag = "%d HP (ALLY)" % (c.node as Companion).hp
 		else:
 			tag = "%d HP" % game.player.hp
 		lines.append(("> " if i == turn_index else "  ") + "%s  %s" % [str(c.name).to_upper(), tag])

@@ -30,6 +30,10 @@ var music: Music
 var pause_menu: PauseMenu
 var _talking: InnNPC
 var _confirm_exit := false
+var _confirm_join: InnNPC        # asking a party member to come along
+var party: Array[String] = []    # companions for the next delve (hero keys)
+var companions: Array[Companion] = []
+const MAX_COMPANIONS := 4
 var _quest_i := -1      # >= 0 while the Hooded Stranger is giving the quest
 var _barred_t := 0.0
 var hero := Hero.new()
@@ -141,6 +145,58 @@ func _setup_input() -> void:
 	InputMap.action_add_event("attack", click)
 
 
+# ---------------- mouse ----------------
+# Menus, doors and the battle can be clicked: hover highlights, left click chooses,
+# right click goes back. A left click outside a menu is ignored (it no longer confirms
+# whatever happens to be highlighted).
+
+var _click_frame := -10
+var _rclick_frame := -10
+var _last_mouse := Vector2(-1, -1)
+var _mouse_moved := false
+
+
+func _input(event: InputEvent) -> void:
+	var mb := event as InputEventMouseButton
+	if mb and mb.pressed:
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			_click_frame = Engine.get_process_frames()
+		elif mb.button_index == MOUSE_BUTTON_RIGHT:
+			_rclick_frame = Engine.get_process_frames()
+
+
+func clicked() -> bool:
+	return _click_frame == Engine.get_process_frames()
+
+
+func right_clicked() -> bool:
+	return _rclick_frame == Engine.get_process_frames()
+
+
+func mouse_moved() -> bool:
+	return _mouse_moved
+
+
+## Keyboard/gamepad confirm (attack only counts when it didn't come from the mouse).
+func ui_confirm() -> bool:
+	return Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("interact") or \
+		(Input.is_action_just_pressed("attack") and not clicked())
+
+
+func ui_back() -> bool:
+	return Input.is_action_just_pressed("back") or right_clicked()
+
+
+## Index of the visible control under the mouse, or -1.
+func under_mouse(controls: Array) -> int:
+	var m := get_viewport().get_mouse_position()
+	for i in controls.size():
+		var c: Control = controls[i]
+		if is_instance_valid(c) and c.is_visible_in_tree() and c.get_global_rect().grow(1.0).has_point(m):
+			return i
+	return -1
+
+
 func accepting_input() -> bool:
 	return phase == Phase.RUN or phase == Phase.TAVERN
 
@@ -195,6 +251,11 @@ func _load_hero() -> void:
 
 ## Loads one hero's save (or starts them fresh) and makes them the hero being played.
 func _load_hero_key(key: String) -> void:
+	if party.has(key):
+		party.erase(key)
+		inn.return_home("npc_" + key)
+		for i in party.size():
+			inn.send_to_cellar("npc_" + party[i], i)
 	var owner := hero.owner
 	var heard := hero.quest_given
 	hero = Hero.new()
@@ -241,6 +302,11 @@ func _on_hero_loaded(args: Array) -> void:
 	if _arg("t3"):
 		hero.tier_unlocked = 3
 		hero.tier = 3
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--party="):
+			for k in a.substr(8).split(","):
+				if Kits.has(k):
+					party.append(k)
 	if _arg("boss"):
 		if not _arg("lv5"):
 			hero.level = 2
@@ -376,6 +442,8 @@ func _refresh_tavern() -> void:
 		hero.name, hero.level, hero.title, hero.max_hp(), hero.ac(), wtxt,
 		hero.xp, (" / %d" % next) if next > 0 else " (max level)", hero.gold, hero.potions,
 		hero.runs, hero.clears, hero.deaths, hero.kills]
+	if not party.is_empty():
+		sheet += "\nParty: %s   (gold split %d ways)" % [", ".join(party.map(func(k): return Kits.info(k).short)), party_size()]
 	var who := ("Playing as %s. " % hero.owner) if hero.owner != "" else ""
 	if _switching:
 		who = "Fetching %s's records... " % hero.short()
@@ -386,7 +454,15 @@ func _refresh_tavern() -> void:
 
 func _tavern_input() -> void:
 	var opts: Array = _tavern_options()
-	if Input.is_action_just_pressed("back"):
+	var hov := under_mouse(hud.tavern_lines)
+	if hov >= 0 and hov < opts.size() and hov != _menu_pick and mouse_moved():
+		_menu_pick = hov
+		sfx.play("step", -10.0)
+		_refresh_tavern()
+	var click_pick := clicked() and hov >= 0 and hov < opts.size()
+	if click_pick:
+		_menu_pick = hov
+	if ui_back():
 		hud.hide_tavern()
 		phase = Phase.TAVERN
 		player.global_position.x = Inn.CELLAR_X - 40.0
@@ -400,7 +476,7 @@ func _tavern_input() -> void:
 		_menu_pick = (_menu_pick - 1 + opts.size()) % opts.size()
 		sfx.play("step", -8.0)
 		_refresh_tavern()
-	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("interact"):
+	elif ui_confirm() or click_pick:
 		if _switching:
 			return
 		match opts[_menu_pick][1]:
@@ -460,6 +536,14 @@ func _start_run() -> void:
 	player.kit.long_rest()
 	player.hp_changed.emit()
 	hud.set_hero_hints(hero.key)
+	_clear_companions()
+	party.erase(hero.key)
+	for i in party.size():
+		var c := Companion.make(self, party[i], hero.level, i)
+		add_child(c)
+		companions.append(c)
+	if not party.is_empty():
+		log_line("The party: %s and %s. Gold is split %d ways." % [hero.short(), ", ".join(party.map(func(k): return Kits.info(k).short)), party_size()])
 	log_line("Delve %d begins with %s." % [hero.runs, hero.short()])
 	_enter_room("combat")
 
@@ -482,6 +566,9 @@ func _enter_room(kind: String) -> void:
 	_load_room(file)
 	player.global_position = room.player_spawn
 	player.velocity = Vector2.ZERO
+	for c in companions:
+		if is_instance_valid(c):
+			c.arrive(player.global_position, player.facing)
 	if is_instance_valid(player.echo):
 		player.echo.queue_free()
 	_snap_view()
@@ -558,6 +645,7 @@ func _set_camera_limits() -> void:
 ## Back in the Gryphon's Roost: at the front door on first arrival, at the cellar door after a delve.
 func _enter_inn(at_cellar := false) -> void:
 	music.play("tavern", 2.0)
+	_clear_companions()
 	_load_room("", true)
 	if not inn.is_inside_tree():
 		add_child(inn)
@@ -615,6 +703,9 @@ func try_interact() -> void:
 	if phase == Phase.TAVERN:
 		if _confirm_exit:
 			_leave_to_site()
+			return
+		if _confirm_join:
+			_answer_join(true)
 			return
 		if inn.at_exit(player.global_position):
 			_ask_exit()
@@ -682,11 +773,19 @@ func _show_doors() -> void:
 
 
 func _doors_input() -> void:
+	var hov := under_mouse(hud.door_boxes)
+	if hov >= 0 and hov < _door_options.size() and hov != _door_pick and mouse_moved():
+		_door_pick = hov
+		sfx.play("step", -10.0)
+		_show_doors()
+	var click_pick := clicked() and hov >= 0 and hov < _door_options.size()
+	if click_pick:
+		_door_pick = hov
 	if Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right"):
 		_door_pick = (_door_pick + 1) % _door_options.size()
 		sfx.play("step", -8.0)
 		_show_doors()
-	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("interact"):
+	elif ui_confirm() or click_pick:
 		hud.hide_doors()
 		sfx.play("chop", -8.0)
 		_enter_room(_door_options[_door_pick])
@@ -736,8 +835,14 @@ func note_swing(_connected: bool) -> void:
 # ---------------- frame ----------------
 
 func _process(delta: float) -> void:
+	var mpos := get_viewport().get_mouse_position()
+	_mouse_moved = mpos.distance_to(_last_mouse) > 0.5
+	_last_mouse = mpos
 	if Input.is_action_just_pressed("back") and not get_tree().paused and _loaded:
-		if phase == Phase.TAVERN and _talking:
+		if phase == Phase.TAVERN and _confirm_join:
+			_answer_join(false)
+			_close_talk()
+		elif phase == Phase.TAVERN and _talking:
 			_close_talk()
 		elif (phase == Phase.TAVERN and not _confirm_exit) or phase == Phase.RUN or (phase == Phase.BATTLE and int(battle.mode) == 1):
 			pause_menu.open()
@@ -746,6 +851,23 @@ func _process(delta: float) -> void:
 		_bot(delta)
 	match phase:
 		Phase.TAVERN:
+			if (_confirm_join or _confirm_exit) and clicked():
+				var yn := under_mouse([hud.dlg_yes, hud.dlg_no])
+				if yn == 0:
+					if _confirm_join:
+						_answer_join(true)
+					else:
+						_leave_to_site()
+				elif yn == 1:
+					if _confirm_join:
+						_answer_join(false)
+						_close_talk()
+					else:
+						_cancel_exit()
+			elif _talking and clicked() and under_mouse([hud.dlg_panel]) == 0:
+				_talk(_talking)
+			if _confirm_join and Input.is_action_just_pressed("confirm"):
+				_answer_join(true)
 			if _confirm_exit:
 				if Input.is_action_just_pressed("confirm"):
 					_leave_to_site()
@@ -816,6 +938,9 @@ func _talk(n: InnNPC) -> void:
 			toast("QUEST ACCEPTED: CLEAR THE CELLAR")
 			sfx.play("crit", -6.0)
 		return
+	if _member_key(n) != "" and _loaded:
+		_ask_join(n)
+		return
 	if n != _talking:
 		n.line_i = n.line_i % maxi(1, n.lines.size())
 	_talking = n
@@ -830,6 +955,8 @@ func _update_talk() -> void:
 
 
 func _close_talk() -> void:
+	if _confirm_join:
+		_confirm_join = null
 	if _quest_i >= 0:
 		_quest_i = -1   # walked off mid-briefing: he starts again next time
 	_talking = null
@@ -838,6 +965,80 @@ func _close_talk() -> void:
 
 func peaceful() -> bool:
 	return phase == Phase.TAVERN
+
+
+# ---------------- the party ----------------
+
+func party_size() -> int:
+	return 1 + party.size()
+
+
+## Gold found on a delve is split evenly; the hero banks their share.
+func add_gold(total: int) -> int:
+	var share := maxi(1, floori(total / float(party_size())))
+	run_gold += share
+	return share
+
+
+## Goblins go for whoever is nearest and still standing.
+func enemy_target(from: Node2D) -> Node2D:
+	var best: Node2D = player
+	var bd := INF if player.is_down() else from.global_position.distance_to(player.global_position)
+	for c in companions:
+		if is_instance_valid(c) and not c.down:
+			var d := from.global_position.distance_to(c.global_position)
+			if d < bd:
+				bd = d
+				best = c
+	return best
+
+
+func _member_key(n: InnNPC) -> String:
+	var k := n.key.trim_prefix("npc_")
+	return k if Kits.has(k) and k != hero.key else ""
+
+
+func _ask_join(n: InnNPC) -> void:
+	_talking = n
+	_confirm_join = n
+	n.face_toward(player.global_position.x)
+	var k := _member_key(n)
+	var line := n.next_line()
+	if party.has(k):
+		hud.show_confirm(n.display_name, "\"%s\"  Leave %s at the inn this time?" % [line, n.display_name])
+	elif party.size() >= MAX_COMPANIONS:
+		_confirm_join = null
+		hud.show_dialogue(n.display_name, line + "  (The whole party is already going.)")
+	else:
+		var n2 := party_size() + 1
+		hud.show_confirm(n.display_name, "\"%s\"  Invite %s on the delve? Gold will be split %d ways." % [line, n.display_name, n2])
+	sfx.play("step", -8.0)
+
+
+func _answer_join(yes: bool) -> void:
+	var n := _confirm_join
+	_confirm_join = null
+	hud.hide_dialogue()
+	if not yes or not is_instance_valid(n):
+		return
+	var k := _member_key(n)
+	if party.has(k):
+		party.erase(k)
+		inn.return_home(n.key)
+		toast("%s stays at the inn." % n.display_name)
+	else:
+		party.append(k)
+		inn.send_to_cellar(n.key, party.size() - 1)
+		toast("%s joins the delve! Gold is split %d ways." % [n.display_name, party_size()])
+	for i in party.size():
+		inn.send_to_cellar("npc_" + party[i], i)
+
+
+func _clear_companions() -> void:
+	for c in companions:
+		if is_instance_valid(c):
+			c.queue_free()
+	companions.clear()
 
 
 func _ask_exit() -> void:
@@ -945,7 +1146,10 @@ func _on_player_died(reason: String) -> void:
 
 func on_battle_end(victory: bool) -> void:
 	if victory:
-		run_gold += roundi((40 + dice.roll(4, 6).reduce(func(a, b): return a + b, 0) * 5) * float(Creatures.TIERS[hero.tier].gold))
+		var hoard := roundi((40 + dice.roll(4, 6).reduce(func(a, b): return a + b, 0) * 5) * float(Creatures.TIERS[hero.tier].gold))
+		var share := add_gold(hoard)
+		if party_size() > 1:
+			log_line("The chief's hoard: %d gp, split %d ways (%d each)." % [hoard, party_size(), share])
 		end_run("cleared")
 
 
@@ -1118,14 +1322,27 @@ func _bot_battle() -> void:
 			Input.action_press("confirm")
 		2:  # MOVE
 			var hc: Dictionary = b._hero()
+			if _arg("oatest") and not has_meta("oa_done"):
+				# Opportunity-attack test: put the chief next to the hero, then walk away through an ally.
+				set_meta("oa_done", true)
+				var bc0: Dictionary = b._boss_c()
+				bc0.col = hc.col + 1
+				bc0.node.global_position.x = bc0.col * 16 + 8
+				print("[oa] hero col %d, chief col %d, moving to %d" % [hc.col, bc0.col, hc.col - 3])
+				b._do_move(hc.col - 3)
+				return
 			var bc: Dictionary = b._boss_c()
 			var dir := 1 if bc.get("col", hc.col + 1) > hc.col else -1
 			var target: int = hc.col
-			for i in b.h_move:
-				var nc: int = target + dir
-				if b._occupied(nc, hc):
+			for i in range(1, b.h_move + 1):
+				var nc: int = hc.col + dir * i
+				if bc.has("col") and (nc - bc.col) * dir >= 0:
 					break
-				target = nc
+				if not b._occupied(nc, hc):
+					target = nc
+			if target == hc.col:
+				b._choose(["End turn", "end", true])
+				return
 			b.cursor_col = target
 			Input.action_press("confirm")
 		3:  # TARGET

@@ -32,11 +32,14 @@ func _physics_process(delta: float) -> void:
 	if _life <= 0.0 or room.is_solid_cell(floori(position.x / Room.T), floori(position.y / Room.T)):
 		queue_free()
 		return
-	var p: Player = game.player
-	if p != null and not p.is_down() and p.hurt_rect().has_point(global_position):
-		if not p.is_invulnerable():
-			p.receive_attack(self, weapon)
-			queue_free()
+	var targets: Array = [game.player]
+	targets.append_array(game.companions)
+	for p in targets:
+		if is_instance_valid(p) and not p.is_down() and p.hurt_rect().has_point(global_position):
+			if not p.is_invulnerable():
+				p.receive_attack(self, weapon)
+				queue_free()
+				return
 
 
 func _draw() -> void:

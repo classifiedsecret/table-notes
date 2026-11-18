@@ -135,7 +135,7 @@ func _physics_process(delta: float) -> void:
 		_drop_t -= delta
 		if _drop_t <= 0.0:
 			collision_mask |= Room.LAYER_PLATFORM
-	var p: Player = game.player
+	var p: Node2D = game.enemy_target(self)
 	var dx := p.global_position.x - global_position.x
 	var dy := p.global_position.y - global_position.y
 	var dir := signf(dx)
