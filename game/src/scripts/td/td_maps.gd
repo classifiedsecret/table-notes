@@ -116,7 +116,7 @@ static func private_room(k: String) -> Dictionary:
 	match k:
 		"boarvhal":   # goliath barbarian: a huge bed under a fur, a bear pelt, his axe, a trophy, a keg
 			p = [["bed_fur", 2.3, 5.6, {"solid": [26, 40]}], ["pelt", 6.2, 5.6, {"floor": true}],
-				["boar_head", 2.5, 2.0, {"wall": true}], ["mountain_painting", 6.0, 2.0, {"wall": true}], ["axe_rack", 9.0, 2.0, {"wall": true}],
+				["boar_head", 2.5, 2.0, {"wall": true}], ["mountain_painting", 6.0, 2.0, {"wall": true}], ["axe_rack", 9.0, 1.6, {"wall": true, "scale": 0.5}],
 				["barrel", 10.2, 3.3, {"solid": [12, 6], "tint": BARREL}], ["barrel", 9.3, 3.3, {"solid": [12, 6], "tint": BARREL}]]
 		"erwar":      # aasimar cleric: an altar to the sun under stained glass, his chain and shield, a cot
 			p = [["sun_window", 6.0, 2.0, {"wall": true}], ["altar", 6.0, 3.3, {"solid": [24, 8]}],

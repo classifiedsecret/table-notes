@@ -358,7 +358,9 @@ func _place(name: String, pos: Vector2, o: Dictionary) -> void:
 		base.position.y = (floorf((pos.y - 0.01) / T) + 1.0) * T + 0.5
 		lift = base.position.y - pos.y
 	world.add_child(base)
-	s.offset = Vector2(0, -tex.get_height() / 2.0 - lift)
+	s.offset = Vector2(0, -tex.get_height() / 2.0)
+	s.position.y = -lift
+	s.scale = Vector2.ONE * float(o.get("scale", 1.0))
 	if o.has("tint"):
 		s.modulate = o.tint
 	base.add_child(s)
