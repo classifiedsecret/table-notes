@@ -1038,7 +1038,7 @@ func add_gold(total: int) -> int:
 	return share
 
 
-## Goblins go for whoever is nearest and still standing.
+## Goblins go for whoever is nearest and still standing (the echo included).
 func enemy_target(from: Node2D) -> Node2D:
 	var best: Node2D = player
 	var bd := INF if player.is_down() else from.global_position.distance_to(player.global_position)
@@ -1048,6 +1048,9 @@ func enemy_target(from: Node2D) -> Node2D:
 			if d < bd:
 				bd = d
 				best = c
+	# Boar-vhal's echo is a target too: goblins near it attack it.
+	if is_instance_valid(player.echo) and from.global_position.distance_to(player.echo.global_position) < bd:
+		best = player.echo
 	return best
 
 
@@ -1352,18 +1355,20 @@ func _bot_battle() -> void:
 				set_meta("eb", true)
 				var hc0: Dictionary = b._hero()
 				b._choose(["", "echo", true])
-				print("[eb] echo at col %d (hero %d)" % [b.echo_col, hc0.col])
-				await b._move_echo(clampi(hc0.col - 6, b.min_col, b.max_col) if b.echo_col > hc0.col else clampi(hc0.col + 6, b.min_col, b.max_col))
-				print("[eb] moved echo to col %d, %d ft of echo movement left" % [b.echo_col, b.echo_move * 5])
-				var far: int = b.min_col if hc0.col - b.min_col > b.max_col - hc0.col else b.max_col
+				print("[eb] echo at %s (hero %s)" % [b.echo_col, hc0.col])
 				b.echo_move = 99
+				b._echo_opts = b._reach_map(b.echo_col, 12)
+				var far: Vector2i = b.echo_col
+				for cell in b._echo_opts:
+					if b._d(cell, hc0.col) > b._d(far, hc0.col) and not b._occupied(cell, null):
+						far = cell
 				await b._move_echo(far)
-				print("[eb] pushed echo to col %d (%d squares away); ending turn" % [b.echo_col, absi(b.echo_col - hc0.col)])
+				print("[eb] pushed echo to %s (%d squares away); ending turn" % [b.echo_col, b._d(b.echo_col, hc0.col)])
 				b._choose(["", "end", true])
-				print("[eb] after end of turn: echo col %d" % b.echo_col)
+				print("[eb] after end of turn: echo %s" % b.echo_col)
 				return
 			var want := "end"
-			var adjacent: bool = absi(b._hero().col - b._boss_c().get("col", -99)) <= 1
+			var adjacent: bool = not b._boss_c().is_empty() and b._d(b._hero().col, b._boss_c().col) <= 1
 			var prefs := ["heal", "hands", "rage", "reckless", "summon", "spirit", "bless", "smite", "aura", "entangle", "moonbeam", "bear",
 				"missile", "ray", "foresight", "attack", "move"]
 			if player.hp > player.max_hp / 2:
@@ -1394,24 +1399,22 @@ func _bot_battle() -> void:
 			Input.action_press("confirm")
 		2:  # MOVE
 			var hc: Dictionary = b._hero()
-			if _arg("oatest") and not has_meta("oa_done"):
-				# Opportunity-attack test: put the chief next to the hero, then walk away through an ally.
-				set_meta("oa_done", true)
-				var bc0: Dictionary = b._boss_c()
-				bc0.col = hc.col + 1
-				bc0.node.global_position.x = bc0.col * 16 + 8
-				print("[oa] hero col %d, chief col %d, moving to %d" % [hc.col, bc0.col, hc.col - 3])
-				b._do_move(hc.col - 3)
-				return
 			var bc: Dictionary = b._boss_c()
-			var dir := 1 if bc.get("col", hc.col + 1) > hc.col else -1
-			var target: int = hc.col
-			for i in range(1, b.h_move + 1):
-				var nc: int = hc.col + dir * i
-				if bc.has("col") and (nc - bc.col) * dir >= 0:
-					break
-				if not b._occupied(nc, hc):
-					target = nc
+			if _arg("oatest") and not has_meta("oa_done") and not bc.is_empty():
+				# Opportunity-attack test: put the chief next to the hero, then walk away.
+				set_meta("oa_done", true)
+				var away: Vector2i = hc.col
+				for cell in b._move_opts:
+					if not b._occupied(cell, hc) and b._d(cell, bc.col) > b._d(away, bc.col):
+						away = cell
+				print("[oa] hero %s, chief %s, moving to %s" % [hc.col, bc.col, away])
+				b._do_move(away)
+				return
+			var target: Vector2i = hc.col
+			if not bc.is_empty():
+				for cell in b._move_opts:
+					if not b._occupied(cell, hc) and b._d(cell, bc.col) < b._d(target, bc.col):
+						target = cell
 			if target == hc.col:
 				b._choose(["End turn", "end", true])
 				return

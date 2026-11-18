@@ -289,11 +289,18 @@ func _physics_process(delta: float) -> void:
 		input = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 		if Input.is_action_just_pressed("interact"):
 			game.try_interact()
+		# Rolling and hopping work everywhere, the taproom included.
+		if Input.is_action_just_pressed("dodge"):
+			_try_dodge(input)
+		# Space (or the gamepad's A): a quick hop. Spikes and arrows pass beneath you.
+		var space := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_joy_button_pressed(0, JOY_BUTTON_A)
+		if space and not _space_held and _hop_t <= 0.0 and (state == State.NORMAL or state == State.ATTACK):
+			_hop_t = HOP_TIME
+			game.sfx.play("jump", -10.0)
+		_space_held = space
 		if not game.peaceful():
-			if Input.is_action_just_pressed("attack"):
+			if Input.is_action_just_pressed("attack") and not (game.clicked() and game.hud.mouse_over_log()):
 				_attack_queued = true
-			if Input.is_action_just_pressed("dodge"):
-				_try_dodge(input)
 			if Input.is_action_just_pressed("rage"):
 				kit.press("L")
 			if Input.is_action_just_pressed("potion"):
@@ -304,12 +311,6 @@ func _physics_process(delta: float) -> void:
 				kit.press("U")
 			if Input.is_action_just_pressed("form"):
 				kit.press("Y")
-			# Space (or the gamepad's A): a quick hop. Spikes and arrows pass beneath you.
-			var space := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_joy_button_pressed(0, JOY_BUTTON_A)
-			if space and not _space_held and _hop_t <= 0.0 and (state == State.NORMAL or state == State.ATTACK):
-				_hop_t = HOP_TIME
-				game.sfx.play("jump", -10.0)
-			_space_held = space
 	_update_aim(input, delta)
 	if _potion_t > 0.0:
 		_potion_t -= delta
@@ -832,7 +833,9 @@ func _try_echo() -> void:
 			game.toast("Bonus action recharging (%.0fs)" % ceilf(bonus_cd))
 			return
 		bonus_cd = BONUS_ACTION_COOLDOWN
-		echo = Node2D.new()
+		echo = Echo.new()
+		echo.game = game
+		echo.ac = 14 + int(stats.get("proficiency", 2))
 		var ghost := AnimatedSprite2D.new()
 		ghost.sprite_frames = sprite.sprite_frames
 		ghost.offset = sprite.offset

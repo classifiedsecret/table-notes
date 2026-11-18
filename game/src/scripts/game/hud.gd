@@ -18,6 +18,11 @@ var stats_label: Label
 var rule_label: Label
 var log_panel: PanelContainer
 var log_label: Label
+var log_title: Label
+var log_open := false
+const LOG_Y := 255.0          # bottom edge of the screen, minus the collapsed bar
+const LOG_SHUT_H := 13.0
+const LOG_OPEN_H := 86.0
 var banner_label: Label
 var toast_label: Label
 var prompt_label: Label
@@ -55,7 +60,7 @@ var dlg_name: Label
 var dlg_text: Label
 var dlg_yes: Label
 var dlg_no: Label
-const HINTS_INN := [["WASD", "MOVE"], ["E", "TALK / DOORS"], ["M", "MUSIC ON/OFF"], ["WHEEL", "MUSIC VOL"],
+const HINTS_INN := [["WASD", "MOVE"], ["SPACE", "HOP"], ["SHIFT/K", "DODGE ROLL"], ["E", "TALK / DOORS"], ["M", "MUSIC ON/OFF"], ["WHEEL", "MUSIC VOL"],
 	["ESC", "PAUSE"], ["", "CELLAR: TRAPDOOR BY THE BAR"]]
 
 var _log: Array[String] = []
@@ -89,8 +94,10 @@ func build(g: Node) -> void:
 	bonus_label = _label(hero, Vector2(6, 45), "", 8, Color(0.7, 0.9, 0.7))
 	purse_label = _label(hero, Vector2(6, 54), "", 8, Color(0.95, 0.85, 0.55))
 
-	room_label = _label(root, Vector2(104, 256), "", 8, Color(1, 0.9, 0.65))
-	room_label.size = Vector2(372, 10)
+	# Where you are: top middle, between the hero panel and the roll stats.
+	room_label = _label(root, Vector2(166, 4), "", 8, Color(1, 0.9, 0.65))
+	room_label.size = Vector2(116, 20)
+	room_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	room_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	var sp := _panel(Vector2(286, 4), Vector2(190, 22))
@@ -98,13 +105,16 @@ func build(g: Node) -> void:
 	stats_label = _label(sp, Vector2(5, 2), "", 8, Color(0.9, 0.9, 0.85))
 	rule_label = _label(sp, Vector2(5, 11), "", 8, Color(0.7, 0.75, 0.85))
 
-	log_panel = _panel(Vector2(286, 29), Vector2(190, 74))
-	_label(log_panel, Vector2(5, 2), "ROLL LOG  (TAB TO HIDE)", 8, Color(1, 0.9, 0.65))
+	# The roll log sits in the bottom-right corner. Collapsed (the default) it shows one line;
+	# Tab or a click opens it upward.
+	log_panel = _panel(Vector2(286, LOG_Y), Vector2(190, LOG_SHUT_H))
+	log_title = _label(log_panel, Vector2(5, 2), "", 8, Color(1, 0.9, 0.65))
 	log_label = _label(log_panel, Vector2(5, 12), "", 8, Color(0.88, 0.88, 0.84))
-	log_label.size = Vector2(181, 60)
+	log_label.size = Vector2(181, 70)
 	log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	log_label.clip_text = true
 	log_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_set_log_open(false)
 
 	banner_label = _label(root, Vector2(0, 70), "", 24, Color.WHITE, true)
 	banner_label.size = Vector2(480, 24)
@@ -385,12 +395,34 @@ func add_log(line: String) -> void:
 	while _log.size() > 8:
 		_log.pop_front()
 	log_label.text = "\n".join(_log)
+	if not log_open:
+		log_title.text = "LOG: " + line.to_upper()
 
 
 func toggle_log() -> void:
 	if _inn_mode:
 		return
-	log_panel.visible = not log_panel.visible
+	_set_log_open(not log_open)
+
+
+func _set_log_open(on: bool) -> void:
+	log_open = on
+	var h := LOG_OPEN_H if on else LOG_SHUT_H
+	log_panel.custom_minimum_size = Vector2(190, h)
+	log_panel.size = Vector2(190, h)
+	log_panel.position = Vector2(286, LOG_Y + LOG_SHUT_H - h)
+	log_label.visible = on
+	log_title.clip_text = true
+	log_title.size = Vector2(181, 10)
+	if on:
+		log_title.text = "ROLL LOG  (TAB OR CLICK TO CLOSE)"
+	else:
+		log_title.text = ("LOG: " + _log[-1].to_upper()) if not _log.is_empty() else "ROLL LOG  (TAB OR CLICK TO OPEN)"
+
+
+## The mouse is over the roll log (a click there opens or closes it, and doesn't swing).
+func mouse_over_log() -> bool:
+	return log_panel.visible and log_panel.get_global_rect().has_point(get_viewport().get_mouse_position())
 
 
 func banner(text: String, color: Color) -> void:
@@ -489,6 +521,8 @@ func death_saves(visible_now: bool, ds: Rules.DeathSaves, last: Dictionary = {})
 
 func _process(delta: float) -> void:
 	_fade_hints()
+	if game and game.clicked() and mouse_over_log():
+		_set_log_open(not log_open)
 	if _banner_t > 0.0:
 		_banner_t -= delta
 		banner_label.modulate.a = clampf(_banner_t / 0.4, 0.0, 1.0)

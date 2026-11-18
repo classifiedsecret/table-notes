@@ -35,6 +35,8 @@ func _physics_process(delta: float) -> void:
 		return
 	var targets: Array = [game.player]
 	targets.append_array(game.companions)
+	if is_instance_valid(game.player.echo):
+		targets.append(game.player.echo)
 	for p in targets:
 		if is_instance_valid(p) and not p.is_down() and not p.airborne() and p.hurt_rect().has_point(global_position):
 			if not p.is_invulnerable():

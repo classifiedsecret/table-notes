@@ -255,6 +255,8 @@ func _strike_targets() -> Array:
 	for c in game.companions:
 		if is_instance_valid(c) and not c.is_down():
 			out.append(c)
+	if is_instance_valid(game.player.echo):
+		out.append(game.player.echo)
 	return out
 
 

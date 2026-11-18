@@ -1,19 +1,18 @@
 extends Node2D
-## Turn-based boss encounter on a side-view grid of 5-foot squares (one tile = one square).
+## Turn-based boss encounter on the top-down grid of 5-foot squares (one tile = one square).
 ## Initiative, action / bonus action / movement, telegraphed boss intents, death saves.
 
 enum Mode { IDLE, MENU, MOVE, TARGET, BUSY, ECHO }
 
 const T := 16
 const REACH_HERO := 1
+const NO_CELL := Vector2i(-99, -99)
 
 var game: Node
 var active := false
 var mode := Mode.IDLE
 var floor_y := 208.0
-var min_col := 1
-var max_col := 30
-var combatants: Array = []    # each: {node, name, side, col, init, dex}
+var combatants: Array = []    # each: {node, name, side, col (its square, Vector2i), init, dex}
 var turn_index := 0
 var round_no := 1
 var boss: Enemy
@@ -29,12 +28,12 @@ var h_dodging := false
 var h_prone := false
 var reckless_on := false
 var rage_rounds := 0
-var echo_col := -1
+var echo_col := NO_CELL
 var echo_node: Node2D
 const ECHO_RANGE := 6       # 30 feet: how far the echo may move per turn, and how far it may end from you
 var echo_move := 0          # squares the echo can still move this turn (free, no action)
 var conc := ""            # "entangle" or "moonbeam" while Suilean concentrates
-var beam_col := -1
+var beam_col := NO_CELL
 var sw_rounds := 0        # Spiritual Weapon rounds left
 var sw_node: Node2D
 var pending := ""
@@ -43,7 +42,9 @@ var h_disengaged := false   # Disengage: no opportunity attacks this turn       
 
 var menu_items: Array = []    # [label, id, enabled]
 var menu_pick := 0
-var cursor_col := 0
+var cursor_col := Vector2i.ZERO
+var _move_opts := {}      # square -> previous square, for the hero's move
+var _echo_opts := {}
 var target_list: Array = []
 var target_pick := 0
 
@@ -63,23 +64,14 @@ func start(g: Node) -> void:
 	visible = true
 	z_index = 3
 	var room: World = game.room
-	# For now the fight plays out along one line of the hall: the row the hero starts on.
-	floor_y = room.player_spawn.y
-	var row := floori((floor_y - 1.0) / World.T)
-	var sc := floori(room.player_spawn.x / World.T)
-	min_col = sc
-	max_col = sc
-	while room.floorish(room.cell(Vector2i(min_col - 1, row))):
-		min_col -= 1
-	while room.floorish(room.cell(Vector2i(max_col + 1, row))):
-		max_col += 1
+	z_index = 45   # the move and target markers show above the warren's darkness
 	round_no = 1
 	boss_fury_used = false
-	echo_col = -1
+	echo_col = NO_CELL
 	reckless_on = false
 	rage_rounds = 0
 	conc = ""
-	beam_col = -1
+	beam_col = NO_CELL
 	sw_rounds = 0
 	pending = ""
 	h_prone = false
@@ -98,7 +90,6 @@ func start(g: Node) -> void:
 	_add(p, p.short_name(), "hero", 1 if p.hero.key != "ceridwen" and p.hero.key != "suilean" else 2)
 	for comp in game.companions:
 		if is_instance_valid(comp) and not comp.down:
-			comp.global_position.x = p.global_position.x - p.facing * T * (1 + comp.index)
 			comp.velocity = Vector2.ZERO
 			_add(comp, comp.short_name(), "ally", 1)
 			comp.reset_physics_interpolation()
@@ -114,14 +105,15 @@ func start(g: Node) -> void:
 		e.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 		e.set_physics_process(false)
 		e.velocity = Vector2.ZERO
-		e.facing = -1
-		e.visual.scale.x = -1
+		e.look = (p.global_position - e.global_position).normalized()
+		e.facing = 1 if e.look.x >= 0.0 else -1
+		e.visual.scale.x = e.facing
 		e.sprite.play("idle")
 		var dex := 2
 		_add(e, e.data.display, "foe", dex)
 	if boss:
 		boss.sprite.offset = Vector2(0, -18)
-		boss.weapon_pivot.position = Vector2(8, -14)
+		boss.weapon_pivot.position = Vector2(0, -14)
 		(boss.weapon_pivot.get_child(0) as Sprite2D).texture = Art.region("weapon_big_hammer")
 
 	# Roll initiative.
@@ -141,15 +133,94 @@ func start(g: Node) -> void:
 
 
 func _add(node: Node2D, nm: String, side: String, dex: int) -> void:
-	var col := clampi(floori(node.global_position.x / T), min_col, max_col)
-	while _occupied(col, null):
-		col += 1 if side == "foe" else -1
-	var c := {"node": node, "name": nm, "side": side, "col": col, "init": 0, "dex": dex, "restrained": false, "frightened": false, "reaction": true}
+	var cell := _free_cell_near(game.room.to_cell(node.global_position + Vector2(0, -3)))
+	var c := {"node": node, "name": nm, "side": side, "col": cell, "init": 0, "dex": dex, "restrained": false, "frightened": false, "reaction": true}
 	combatants.append(c)
-	node.global_position = Vector2(col * T + 8, floor_y)
+	node.global_position = _pos(cell)
 
 
-func _occupied(col: int, except: Variant) -> bool:
+## Squares are 5 feet; diagonals count as 5 feet too (the 2024 rules).
+static func _d(a: Vector2i, b: Vector2i) -> int:
+	return maxi(absi(a.x - b.x), absi(a.y - b.y))
+
+
+## Where someone stands in a square (feet near the bottom middle).
+func _pos(cell: Vector2i) -> Vector2:
+	return Vector2(cell.x * T + 8.0, cell.y * T + 13.0)
+
+
+func _walkable(cell: Vector2i) -> bool:
+	var r: World = game.room
+	return r.astar.is_in_boundsv(cell) and not r.astar.is_point_solid(cell)
+
+
+func _free_cell_near(cell: Vector2i) -> Vector2i:
+	if _walkable(cell) and not _occupied(cell, null):
+		return cell
+	for rad in range(1, 6):
+		for dy in range(-rad, rad + 1):
+			for dx in range(-rad, rad + 1):
+				var cc := cell + Vector2i(dx, dy)
+				if _d(cc, cell) == rad and _walkable(cc) and not _occupied(cc, null):
+					return cc
+	return cell
+
+
+
+
+
+
+## Every square reachable within `steps` squares of movement (walls and furniture block;
+## people can be passed through). Returns {cell: previous cell} for walking the path back.
+func _reach_map(from: Vector2i, steps: int) -> Dictionary:
+	var prev := {from: from}
+	var dist := {from: 0}
+	var todo: Array[Vector2i] = [from]
+	while not todo.is_empty():
+		var c: Vector2i = todo.pop_front()
+		if dist[c] >= steps:
+			continue
+		for dy in [-1, 0, 1]:
+			for dx in [-1, 0, 1]:
+				if dx == 0 and dy == 0:
+					continue
+				var n := c + Vector2i(dx, dy)
+				if dist.has(n) or not _walkable(n):
+					continue
+				# No cutting a corner past a wall.
+				if dx != 0 and dy != 0 and (not _walkable(c + Vector2i(dx, 0)) or not _walkable(c + Vector2i(0, dy))):
+					continue
+				dist[n] = dist[c] + 1
+				prev[n] = c
+				todo.append(n)
+	return prev
+
+
+func _path(prev: Dictionary, to: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var c := to
+	while prev.has(c) and prev[c] != c:
+		out.push_front(c)
+		c = prev[c]
+	return out
+
+
+func _mouse_cell() -> Vector2i:
+	return game.room.to_cell(get_global_mouse_position() + Vector2(0, 4))
+
+
+## WASD / arrows nudge a square cursor (diagonals with two keys).
+func _key_step() -> Vector2i:
+	var d := Vector2i.ZERO
+	if Input.is_action_just_pressed("move_left"): d.x -= 1
+	if Input.is_action_just_pressed("move_right"): d.x += 1
+	if Input.is_action_just_pressed("move_up"): d.y -= 1
+	if Input.is_action_just_pressed("move_down"): d.y += 1
+	return d
+
+
+
+func _occupied(col: Vector2i, except: Variant) -> bool:
 	for c in combatants:
 		if c != except and c.col == col and _alive(c):
 			return true
@@ -359,8 +430,8 @@ func _open_menu() -> void:
 				menu_items.append(["Reckless Attack: " + ("ON" if reckless_on else "OFF"), "reckless", true])
 			menu_items.append(["Rage (bonus action, %d left)" % p.rage_uses, "rage", h_bonus > 0 and p.rage_uses > 0 and rage_rounds == 0])
 			if p.hero.has_echo():
-				menu_items.append(["Echo (bonus action)" if echo_col < 0 else "New echo (bonus action)", "echo", h_bonus > 0])
-				if echo_col >= 0:
+				menu_items.append(["Echo (bonus action)" if echo_col == NO_CELL else "New echo (bonus action)", "echo", h_bonus > 0])
+				if echo_col != NO_CELL:
 					menu_items.append(["Move echo (%d ft, free)" % (echo_move * 5), "echomove", echo_move > 0])
 					menu_items.append(["Swap with echo (15 ft of move)", "echoswap", h_move >= 3 and not _occupied(echo_col, _hero())])
 	menu_items.append(["Dash / Dodge (action)", "dashdodge", can_act])
@@ -431,40 +502,39 @@ func _process(_delta: float) -> void:
 				_choose(menu_items[menu_pick])
 		Mode.MOVE:
 			var hc := _hero()
-			var mc := floori(get_global_mouse_position().x / T)
-			var in_range: bool = absi(mc - hc.col) <= h_move and mc >= min_col and mc <= max_col
-			if in_range and mc != cursor_col and game.mouse_moved():
+			var mc := _mouse_cell()
+			var ok_m: bool = _move_opts.has(mc) and not _occupied(mc, hc)
+			if ok_m and mc != cursor_col and game.mouse_moved():
 				cursor_col = mc
 				queue_redraw()
-			if game.clicked() and in_range:
+			var step := _key_step()
+			if game.clicked() and ok_m:
 				cursor_col = mc
 				_do_move(mc)
 			elif game.right_clicked():
 				_open_menu()
-			elif Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right"):
-				var d := -1 if Input.is_action_just_pressed("move_left") else 1
-				var nc: int = cursor_col + d
-				if absi(nc - hc.col) <= h_move and nc >= min_col and nc <= max_col:
-					cursor_col = nc
+			elif step != Vector2i.ZERO:
+				if _move_opts.has(cursor_col + step):
+					cursor_col += step
 				queue_redraw()
 			elif _confirm():
 				_do_move(cursor_col)
 			elif Input.is_action_just_pressed("back") or Input.is_action_just_pressed("dodge"):
 				_open_menu()
 		Mode.ECHO:
-			var emc := floori(get_global_mouse_position().x / T)
-			var e_ok: bool = absi(emc - echo_col) <= echo_move and emc >= min_col and emc <= max_col
+			var emc := _mouse_cell()
+			var e_ok: bool = _echo_opts.has(emc)
 			if e_ok and emc != cursor_col and game.mouse_moved():
 				cursor_col = emc
 				queue_redraw()
+			var estep := _key_step()
 			if game.clicked() and e_ok:
 				_move_echo(emc)
 			elif game.right_clicked() or Input.is_action_just_pressed("back"):
 				_open_menu()
-			elif Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right"):
-				var ed := -1 if Input.is_action_just_pressed("move_left") else 1
-				if absi(cursor_col + ed - echo_col) <= echo_move and cursor_col + ed >= min_col and cursor_col + ed <= max_col:
-					cursor_col += ed
+			elif estep != Vector2i.ZERO:
+				if _echo_opts.has(cursor_col + estep):
+					cursor_col += estep
 				queue_redraw()
 			elif _confirm():
 				_move_echo(cursor_col)
@@ -473,8 +543,8 @@ func _process(_delta: float) -> void:
 			var thov := -1
 			for i in target_list.size():
 				var t: Dictionary = target_list[i]
-				var h := 40.0 if t.node == boss else 22.0
-				if Rect2(t.col * T - 3, floor_y - h, T + 6, h + 4).has_point(tm):
+				var h := 34.0 if t.node == boss else 18.0
+				if Rect2(t.node.global_position + Vector2(-9, -h), Vector2(18, h + 4)).has_point(tm):
 					thov = i
 			if thov >= 0 and thov != target_pick and game.mouse_moved():
 				target_pick = thov
@@ -484,7 +554,7 @@ func _process(_delta: float) -> void:
 				_target_chosen(target_list[thov])
 			elif game.right_clicked():
 				_open_menu()
-			elif Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right"):
+			elif _key_step() != Vector2i.ZERO:
 				target_pick = (target_pick + 1) % target_list.size()
 				queue_redraw()
 			elif _confirm():
@@ -501,8 +571,9 @@ func _confirm() -> bool:
 func _camera() -> void:
 	var hc := _hero()
 	var bc := _boss_c()
-	var x: float = hc.col * T if bc.is_empty() else (hc.col + bc.col) * T / 2.0
-	game.camera.global_position = Vector2(x, floor_y - 30.0)
+	var at: Vector2 = _pos(hc.col) if bc.is_empty() else (_pos(hc.col) + _pos(bc.col)) / 2.0
+	game.camera.global_position = at + Vector2(0, -10)
+
 
 
 func _ask_target(action: String, reach: int, hint: String) -> void:
@@ -513,7 +584,7 @@ func _ask_target(action: String, reach: int, hint: String) -> void:
 	pending = action
 	target_pick = 0
 	mode = Mode.TARGET
-	_info("CLICK A FOE, OR LEFT/RIGHT + ENTER: %s    RIGHT-CLICK / ESC: BACK" % hint)
+	_info("CLICK A FOE, OR WASD + ENTER: %s    RIGHT-CLICK / ESC: BACK" % hint)
 	queue_redraw()
 
 
@@ -528,8 +599,9 @@ func _choose(item: Array) -> void:
 			_ask_target("attack", _reach_cols(_weapon()), "STRIKE")
 		"move":
 			cursor_col = _hero().col
+			_move_opts = _reach_map(_hero().col, h_move)
 			mode = Mode.MOVE
-			_info("CLICK A SQUARE, OR LEFT/RIGHT + ENTER: MOVE    RIGHT-CLICK / ESC: BACK")
+			_info("CLICK A SQUARE, OR WASD + ENTER: MOVE    RIGHT-CLICK / ESC: BACK")
 			queue_redraw()
 		"dashdodge":
 			# Dash if there is ground to cover, otherwise Dodge.
@@ -624,7 +696,7 @@ func _choose(item: Array) -> void:
 			h_action = 0
 			k._wild_shape(item[1])
 			conc = ""
-			beam_col = -1
+			beam_col = NO_CELL
 			_clear_restraints()
 			h_move = mini(h_move, int(p.form_data.speed_ft) / 5)
 			_open_menu()
@@ -634,8 +706,9 @@ func _choose(item: Array) -> void:
 			_open_menu()
 		"echomove":
 			cursor_col = echo_col
+			_echo_opts = _reach_map(echo_col, echo_move)
 			mode = Mode.ECHO
-			_info("CLICK A SQUARE, OR LEFT/RIGHT + ENTER: MOVE THE ECHO    RIGHT-CLICK / ESC: BACK")
+			_info("CLICK A SQUARE, OR WASD + ENTER: MOVE THE ECHO    RIGHT-CLICK / ESC: BACK")
 			queue_redraw()
 		"echoswap":
 			await _echo_swap()
@@ -666,10 +739,16 @@ func _targets_in_reach(reach := REACH_HERO) -> Array:
 	var hc := _hero()
 	var out := []
 	for c in combatants:
-		if c.side == "foe" and _alive(c) and absi(c.col - hc.col) <= reach:
+		if c.side == "foe" and _alive(c) and _d(c.col, hc.col) <= reach and (reach <= 1 or _sees(hc.col, c.col)):
 			out.append(c)
-	out.sort_custom(func(x, y): return absi(x.col - hc.col) < absi(y.col - hc.col))
+	out.sort_custom(func(x, y): return _d(x.col, hc.col) < _d(y.col, hc.col))
 	return out
+
+
+## A clear line between two squares (spells and arrows need one).
+func _sees(a: Vector2i, b: Vector2i) -> bool:
+	return game.room.line_clear(_pos(a) + Vector2(0, -6), _pos(b) + Vector2(0, -6))
+
 
 
 func _foe_adjacent() -> bool:
@@ -685,7 +764,10 @@ func _foe_reach(c: Dictionary) -> int:
 ## Moving: you may pass through anyone's square but must stop on a free one. Stepping out
 ## of a foe's reach provokes an opportunity attack (its reaction, once per round), unless
 ## you took the Disengage action.
-func _do_move(col: int) -> void:
+## Moving: you may pass through anyone's square but must stop on a free one. Stepping out
+## of a foe's reach provokes an opportunity attack (its reaction, once per round), unless
+## you took the Disengage action.
+func _do_move(col: Vector2i) -> void:
 	var hc := _hero()
 	if col == hc.col:
 		_open_menu()
@@ -693,22 +775,20 @@ func _do_move(col: int) -> void:
 	if _occupied(col, hc):
 		game.toast("You can pass through, but not stop on, an occupied square.")
 		return
-	var step := 1 if col > hc.col else -1
-	var dist := absi(col - hc.col)
-	h_move -= dist
+	if not _move_opts.has(col):
+		return
+	var steps := _path(_move_opts, col)
+	h_move -= steps.size()
 	mode = Mode.BUSY
 	var p: Player = game.player
-	p.facing = step
-	p.visual.scale.x = step
 	p.sprite.play("run")
-	var x: int = hc.col
-	while x != col:
-		var nx := x + step
+	var x: Vector2i = hc.col
+	for nx in steps:
 		if not h_disengaged:
 			for c in combatants:
 				if c.side == "foe" and _alive(c) and c.reaction and not c.restrained:
 					var r := _foe_reach(c)
-					if r > 0 and absi(c.col - x) <= r and absi(c.col - nx) > r:
+					if r > 0 and _d(c.col, x) <= r and _d(c.col, nx) > r:
 						p.sprite.play("idle")
 						await _opportunity_attack(c, hc)
 						if p.is_down() or not active:
@@ -716,14 +796,18 @@ func _do_move(col: int) -> void:
 							_next_turn_after_down()
 							return
 						p.sprite.play("run")
+		if nx.x != x.x:
+			p.facing = 1 if nx.x > x.x else -1
+			p.visual.scale.x = p.facing
 		var tw := create_tween()
-		tw.tween_property(p, "global_position:x", nx * T + 8.0, 0.09)
+		tw.tween_property(p, "global_position", _pos(nx), 0.09)
 		await tw.finished
 		x = nx
 	p.sprite.play("idle")
 	hc.col = col
 	_face_nearest(p, hc)
 	_open_menu()
+
 
 
 func _next_turn_after_down() -> void:
@@ -738,10 +822,11 @@ func _opportunity_attack(c: Dictionary, target: Dictionary) -> void:
 	game.log_line("%s takes an opportunity attack as %s leaves its reach!" % [c.name, target.name])
 	FloatText.fling(game, e.global_position + Vector2(0, -30), Vector2(0, -1), "OPPORTUNITY ATTACK", "", Color(1, 0.6, 0.4), 0, 1.0)
 	_face_nearest(e, c)
+	var a0 := e.look.angle()
 	var tw := create_tween()
-	tw.tween_property(e.weapon_pivot, "rotation", -2.0, 0.18)
-	tw.tween_property(e.weapon_pivot, "rotation", 1.9, 0.08)
-	tw.tween_property(e.weapon_pivot, "rotation", 0.5, 0.2)
+	tw.tween_property(e.weapon_pivot, "rotation", a0 - 1.6, 0.18)
+	tw.tween_property(e.weapon_pivot, "rotation", a0 + 1.3, 0.08)
+	tw.tween_property(e.weapon_pivot, "rotation", a0, 0.2)
 	await get_tree().create_timer(0.26).timeout
 	game.sfx.play("swing", -6.0)
 	await _resolve_foe_attack(e, e.data.weapon, false, c, target)
@@ -749,20 +834,25 @@ func _opportunity_attack(c: Dictionary, target: Dictionary) -> void:
 
 func _face_nearest(node: Node2D, me: Dictionary) -> void:
 	var best := 999
-	var dir := 1
+	var at: Vector2i = me.col
 	for c in combatants:
-		if (c.side == "foe") != (me.side == "foe") and _alive(c) and absi(c.col - me.col) < best:
-			best = absi(c.col - me.col)
-			dir = 1 if c.col >= me.col else -1
+		if (c.side == "foe") != (me.side == "foe") and _alive(c) and _d(c.col, me.col) < best:
+			best = _d(c.col, me.col)
+			at = c.col
+	var dirv := Vector2(at - me.col).normalized() if at != me.col else Vector2.RIGHT
+	var dir := 1 if dirv.x >= 0.0 else -1
 	if node is Player:
 		(node as Player).facing = dir
+		(node as Player).aim = dirv
 		(node as Player).visual.scale.x = dir
 	elif node is Enemy:
 		(node as Enemy).facing = dir
+		(node as Enemy).look = dirv
 		(node as Enemy).visual.scale.x = dir
 	elif node is Companion:
 		(node as Companion).facing = dir
 		(node as Companion).visual.scale.x = dir
+
 
 
 func _do_attack(t: Dictionary) -> void:
@@ -774,7 +864,8 @@ func _do_attack(t: Dictionary) -> void:
 		h_action = 0
 		h_attacks = 2 if (p.hero.has_extra_attack() and p.kit.form == "") or p.kit.form == "bear" else 1
 	h_attacks -= 1
-	p.facing = 1 if t.col > hc.col else -1
+	p.aim = (t.node.global_position - p.global_position).normalized()
+	p.facing = 1 if p.aim.x >= 0.0 else -1
 	p.visual.scale.x = p.facing
 	var kind := str(wpn.get("kind", "melee"))
 	if kind == "bolt":
@@ -794,20 +885,23 @@ func _do_attack(t: Dictionary) -> void:
 		await get_tree().create_timer(0.15).timeout
 	else:
 		if p.kit.form == "":
+			var a0 := p.aim.angle()
 			var tw := create_tween()
-			tw.tween_property(p.weapon_pivot, "rotation", -2.3, 0.12)
-			tw.tween_property(p.weapon_pivot, "rotation", 1.95, 0.08)
-			tw.tween_property(p.weapon_pivot, "rotation", -0.55, 0.25)
+			tw.tween_property(p.weapon_pivot, "rotation", a0 - 1.5, 0.12)
+			tw.tween_property(p.weapon_pivot, "rotation", a0 + 1.4, 0.08)
+			tw.tween_property(p.weapon_pivot, "rotation", a0, 0.25)
+			p.slash.call("play", 1.0)
 		game.sfx.play("swing", -4.0)
 		await get_tree().create_timer(0.2).timeout
 	var atk := await _hero_roll(t, wpn, wpn.name)
 	# Thorn Whip pulls the foe up to 10 feet closer.
 	if kind == "whip" and atk.get("hit", false) and _alive(t) and t.node != boss:
-		var dir := 1 if hc.col > t.col else -1
-		var nc: int = t.col
+		var nc: Vector2i = t.col
 		for i in 2:
-			if absi(hc.col - (nc + dir)) >= 1 and not _occupied(nc + dir, t):
-				nc += dir
+			var step := Vector2i(signi(hc.col.x - nc.x), signi(hc.col.y - nc.y))
+			var nn := nc + step
+			if _d(hc.col, nn) >= 1 and _walkable(nn) and not _occupied(nn, t):
+				nc = nn
 		if nc != t.col:
 			await _foe_slide(t, nc)
 	await get_tree().create_timer(0.45).timeout
@@ -830,7 +924,7 @@ func _hero_roll(t: Dictionary, wpn: Dictionary, label: String) -> Dictionary:
 	if reckless_on and not ranged:
 		adv += 1
 		reasons.append("reckless")
-	if echo_col >= 0 and absi(echo_col - t.col) <= 1 and not ranged:
+	if echo_col != NO_CELL and _d(echo_col, t.col) <= 1 and not ranged:
 		adv += 1
 		reasons.append("flanked by your echo")
 	if t.restrained:
@@ -956,7 +1050,7 @@ func _make_spirit_node() -> void:
 	sw_node.modulate = Color(0.6, 0.85, 1.0, 0.85)
 	sw_node.z_index = 6
 	var hc := _hero()
-	sw_node.global_position = Vector2(hc.col * T + 8 - 14, floor_y - 30)
+	sw_node.global_position = _pos(hc.col) + Vector2(-14, -28)
 	game.add_child(sw_node)
 
 
@@ -998,11 +1092,11 @@ func _entangle(t: Dictionary) -> void:
 	h_action = 0
 	k._spend_slot(1)
 	conc = "entangle"
-	beam_col = -1
+	beam_col = NO_CELL
 	p.cast_pose()
 	game.log_line("Action: Entangle around %s (Strength save DC %d or restrained; concentration)." % [t.name, k.s.spell_dc])
 	for c in combatants:
-		if c.side == "foe" and _alive(c) and absi(c.col - t.col) <= 2:
+		if c.side == "foe" and _alive(c) and _d(c.col, t.col) <= 2:
 			SpellFx.burst(game, c.node.global_position + Vector2(0, -4), HeroKit.SPELL_COLORS.nature, 12.0, 0.5)
 			if not k.enemy_save(c.node, "str", "the vines").success:
 				c.restrained = true
@@ -1043,30 +1137,35 @@ func _hero_hit(amount: int) -> void:
 	if not sv.success:
 		game.toast("Concentration broken!")
 		conc = ""
-		beam_col = -1
+		beam_col = NO_CELL
 		_clear_restraints()
 
 
 ## The echo moves where you command it, free, up to 30 feet a turn. It can pass anyone but
 ## must stop on an empty square.
-func _move_echo(col: int) -> void:
+## The echo moves where you command it, free, up to 30 feet a turn. It can pass anyone but
+## must stop on an empty square.
+func _move_echo(col: Vector2i) -> void:
 	if col == echo_col:
 		_open_menu()
 		return
 	if _occupied(col, null):
 		game.toast("The echo can pass through, but not stop on, an occupied square.")
 		return
-	echo_move -= absi(col - echo_col)
+	if not _echo_opts.has(col):
+		return
+	echo_move -= _path(_echo_opts, col).size()
 	echo_col = col
 	mode = Mode.BUSY
 	if is_instance_valid(echo_node):
 		var tw := create_tween()
-		tw.tween_property(echo_node, "global_position:x", col * T + 8.0, 0.2)
+		tw.tween_property(echo_node, "global_position", _pos(col), 0.2)
 		await tw.finished
 	game.log_line("Boar-vhal sends his echo across the field (free movement).")
-	if absi(echo_col - _hero().col) > ECHO_RANGE:
+	if _d(echo_col, _hero().col) > ECHO_RANGE:
 		game.toast("The echo is more than 30 ft away: it fades at the end of your turn.")
 	_open_menu()
+
 
 
 ## Swap places with the echo for 15 feet of movement.
@@ -1074,14 +1173,14 @@ func _echo_swap() -> void:
 	var hc := _hero()
 	var p: Player = game.player
 	h_move -= 3
-	var mine: int = hc.col
+	var mine: Vector2i = hc.col
 	hc.col = echo_col
 	echo_col = mine
 	mode = Mode.BUSY
-	p.global_position.x = hc.col * T + 8.0
+	p.global_position = _pos(hc.col)
 	p.reset_physics_interpolation()
 	if is_instance_valid(echo_node):
-		echo_node.global_position.x = echo_col * T + 8.0
+		echo_node.global_position = _pos(echo_col)
 	game.sfx.play("dodge", -6.0)
 	game.log_line("Boar-vhal swaps places with his echo (15 ft of movement).")
 	await get_tree().create_timer(0.25).timeout
@@ -1091,8 +1190,8 @@ func _echo_swap() -> void:
 
 ## End of the hero's turn: an echo more than 30 feet away is destroyed.
 func _echo_range_check() -> void:
-	if echo_col >= 0 and absi(echo_col - _hero().col) > ECHO_RANGE:
-		echo_col = -1
+	if echo_col != NO_CELL and _d(echo_col, _hero().col) > ECHO_RANGE:
+		echo_col = NO_CELL
 		if is_instance_valid(echo_node):
 			echo_node.queue_free()
 		game.log_line("The echo is more than 30 ft from Boar-vhal and fades away.")
@@ -1102,17 +1201,21 @@ func _echo_range_check() -> void:
 func _place_echo() -> void:
 	var hc := _hero()
 	var bc := _boss_c()
-	var want := -1
+	var want := NO_CELL
+	var behind := false
 	if not bc.is_empty():
-		var beyond: int = bc.col + (1 if bc.col > hc.col else -1)
-		if beyond >= min_col and beyond <= max_col and not _occupied(beyond, null) and absi(beyond - hc.col) <= 6:
+		# Behind the chief, on the far side from Boar-vhal, to flank him.
+		var away := Vector2i(signi(bc.col.x - hc.col.x), signi(bc.col.y - hc.col.y))
+		var beyond: Vector2i = bc.col + away
+		if _walkable(beyond) and not _occupied(beyond, null) and _d(beyond, hc.col) <= 6:
 			want = beyond
-	if want < 0:
-		for d in [1, -1]:
-			if not _occupied(hc.col + d, null):
+			behind = true
+	if want == NO_CELL:
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(1, -1), Vector2i(-1, -1)]:
+			if _walkable(hc.col + d) and not _occupied(hc.col + d, null):
 				want = hc.col + d
 				break
-	if want < 0:
+	if want == NO_CELL:
 		game.toast("No room for an echo.")
 		h_bonus = 1
 		return
@@ -1127,9 +1230,10 @@ func _place_echo() -> void:
 	ghost.play("idle")
 	ghost.modulate = Color(0.55, 0.75, 1.0, 0.55)
 	echo_node.add_child(ghost)
-	echo_node.global_position = Vector2(echo_col * T + 8, floor_y)
-	game.add_child(echo_node)
-	game.log_line("Bonus action: Echo appears %s the chief. Foes next to it are flanked." % ("behind" if want == bc.get("col", -99) + (1 if bc.get("col", 0) > hc.col else -1) else "beside"))
+	game.room.ysort.add_child(echo_node)
+	echo_node.global_position = _pos(echo_col)
+	game.log_line("Bonus action: Echo appears %s the chief. Foes next to it are flanked." % ("behind" if behind else "beside"))
+
 
 
 # ---------------- foes ----------------
@@ -1151,14 +1255,18 @@ func _show_intent() -> void:
 
 
 ## Goblins and the chief go for the nearest of the hero and the allies.
+## Goblins and the chief go for the nearest of the hero, the allies and Boar-vhal's echo.
 func _foe_target(c: Dictionary) -> Dictionary:
 	var best := _hero()
-	var bd := 999 if game.player.is_down() else absi(best.col - c.col)
+	var bd := 999 if game.player.is_down() else _d(best.col, c.col)
 	for o in combatants:
-		if o.side == "ally" and _alive(o) and absi(o.col - c.col) < bd:
-			bd = absi(o.col - c.col)
+		if o.side == "ally" and _alive(o) and _d(o.col, c.col) < bd:
+			bd = _d(o.col, c.col)
 			best = o
+	if echo_col != NO_CELL and _d(echo_col, c.col) < bd:
+		best = {"node": echo_node, "name": "Boar-vhal's echo", "side": "echo", "col": echo_col}
 	return best
+
 
 
 func _foe_turn(c: Dictionary) -> void:
@@ -1167,7 +1275,7 @@ func _foe_turn(c: Dictionary) -> void:
 	var p: Player = game.player
 	var k: HeroKit = p.kit
 	# Moonbeam burns whoever starts a turn in the light.
-	if conc == "moonbeam" and absi(c.col - beam_col) <= 0:
+	if conc == "moonbeam" and _d(c.col, beam_col) <= 0:
 		var sv := k.enemy_save(e, "con", "half the light")
 		var d := Rules.damage(game.dice, 2, 10, 0)
 		var total: int = d.total if not sv.success else floori(d.total / 2.0)
@@ -1188,12 +1296,12 @@ func _foe_turn(c: Dictionary) -> void:
 			c.restrained = false
 		await _end_foe_turn(c)
 		return
-	var dist := absi(hc.col - c.col)
+	var dist := _d(hc.col, c.col)
 	if e == boss:
 		var reach: int = boss.data.reach
 		if dist > reach and not c.frightened:
 			await _foe_move_toward(c, hc, reach)
-			dist = absi(hc.col - c.col)
+			dist = _d(hc.col, c.col)
 		if dist <= reach:
 			match boss_intent if hc.side == "hero" or boss_intent != "shove" else "smash":
 				"shove":
@@ -1211,13 +1319,11 @@ func _foe_turn(c: Dictionary) -> void:
 	else:
 		# Goblin archer: step away if cornered, then shoot.
 		if dist <= 1 and not c.restrained:
-			var away := 1 if c.col >= hc.col else -1
-			var target: int = c.col
-			for i in 6:
-				var nc: int = target + away
-				if nc < min_col or nc > max_col or _occupied(nc, c):
-					break
-				target = nc
+			var opts := _reach_map(c.col, 6)
+			var target: Vector2i = c.col
+			for cell in opts:
+				if not _occupied(cell, c) and _d(cell, hc.col) > _d(target, hc.col) and _sees(cell, hc.col):
+					target = cell
 			if target != c.col:
 				game.log_line("%s disengages (Nimble Escape)." % c.name)
 				await _foe_slide(c, target)
@@ -1255,7 +1361,7 @@ func _ally_turn(c: Dictionary) -> void:
 			p._rise("Erwar's Healing Word brings %s back to %d HP." % [p.short_name(), p.hp])
 		SpellFx.rise(game, p.global_position + Vector2(0, -6), Color(1.0, 0.95, 0.6))
 		game.log_line("Erwar casts Healing Word on %s: +%d HP." % [p.short_name(), d.total])
-	elif ally.key == "lyburnum" and ally.lay_pool > 0 and p.hp <= p.max_hp / 3 and absi(hc.col - c.col) <= 1:
+	elif ally.key == "lyburnum" and ally.lay_pool > 0 and p.hp <= p.max_hp / 3 and _d(hc.col, c.col) <= 1:
 		var amt := mini(ally.lay_pool, p.max_hp - p.hp)
 		ally.lay_pool -= amt
 		p.heal(amt)
@@ -1272,31 +1378,31 @@ func _ally_turn(c: Dictionary) -> void:
 			foes.append(o)
 	if foes.is_empty():
 		return
-	foes.sort_custom(func(a, b): return absi(a.col - c.col) < absi(b.col - c.col))
+	foes.sort_custom(func(a, b): return _d(a.col, c.col) < _d(b.col, c.col))
 	var t: Dictionary = foes[0]
-	if absi(t.col - c.col) > reach:
-		var step := 1 if t.col > c.col else -1
-		var dest: int = c.col
-		var moves := int(ally.stats.speed_ft) / 5
-		var x: int = c.col
-		for i in moves:
-			x += step
-			if x < min_col or x > max_col:
-				break
-			if not _occupied(x, c):
-				dest = x
-			if absi(t.col - x) <= reach and not _occupied(x, c):
-				dest = x
-				break
+	if _d(t.col, c.col) > reach or (reach > 1 and not _sees(c.col, t.col)):
+		var opts := _reach_map(c.col, int(ally.stats.speed_ft) / 5)
+		var dest: Vector2i = c.col
+		var best := 9999
+		for cell in opts:
+			if _occupied(cell, c):
+				continue
+			var score := _d(cell, t.col) * 10 + _path(opts, cell).size()
+			if _d(cell, t.col) <= reach and (reach <= 1 or _sees(cell, t.col)):
+				score = _path(opts, cell).size()
+			if score < best:
+				best = score
+				dest = cell
 		if dest != c.col:
 			ally.sprite.play("run")
-			var tw := create_tween()
-			tw.tween_property(ally, "global_position:x", dest * T + 8.0, 0.09 * absi(dest - c.col))
-			await tw.finished
+			for nx in _path(opts, dest):
+				var tw := create_tween()
+				tw.tween_property(ally, "global_position", _pos(nx), 0.09)
+				await tw.finished
 			ally.sprite.play("idle")
 			c.col = dest
 	_face_nearest(ally, c)
-	if absi(t.col - c.col) > reach:
+	if _d(t.col, c.col) > reach:
 		return
 	var swings := 2 if ally.stats.extra_attack else 1
 	for i in swings:
@@ -1337,41 +1443,48 @@ func _end_foe_turn(c: Dictionary) -> void:
 
 
 func _foe_move_toward(c: Dictionary, hc: Dictionary, reach: int) -> void:
-	var step := 1 if hc.col > c.col else -1
-	var target: int = c.col
-	for i in 6:
-		if absi(hc.col - target) <= reach:
-			break
-		var nc: int = target + step
-		if _occupied(nc, c) or nc < min_col or nc > max_col:
-			break
-		target = nc
+	var opts := _reach_map(c.col, 6)
+	var target: Vector2i = c.col
+	var best := 9999
+	for cell in opts:
+		if _occupied(cell, c):
+			continue
+		var score := maxi(0, _d(cell, hc.col) - reach) * 10 + _path(opts, cell).size()
+		if score < best:
+			best = score
+			target = cell
 	if target != c.col:
-		await _foe_slide(c, target)
+		await _foe_slide(c, target, opts)
 
 
-func _foe_slide(c: Dictionary, col: int) -> void:
+
+func _foe_slide(c: Dictionary, col: Vector2i, opts: Dictionary = {}) -> void:
 	var e: Enemy = c.node
-	var d := absi(col - c.col)
+	var steps: Array[Vector2i] = _path(opts, col) if not opts.is_empty() else [col]
 	e.sprite.play("run")
-	e.facing = 1 if col > c.col else -1
-	e.visual.scale.x = e.facing
-	var tw := create_tween()
-	tw.tween_property(e, "global_position:x", col * T + 8.0, 0.1 * d)
-	await tw.finished
+	for nx in steps:
+		if nx.x != c.col.x:
+			e.facing = 1 if nx.x > c.col.x else -1
+			e.visual.scale.x = e.facing
+		var tw := create_tween()
+		tw.tween_property(e, "global_position", _pos(nx), 0.1)
+		await tw.finished
+		c.col = nx
 	c.col = col
 	e.sprite.play("idle")
 	_face_nearest(e, c)
+
 
 
 func _foe_attack(c: Dictionary, wpn: Dictionary, tgt: Dictionary = {}) -> void:
 	var e: Enemy = c.node
 	var p: Player = game.player
 	_face_nearest(e, c)
+	var a0 := e.look.angle()
 	var tw := create_tween()
-	tw.tween_property(e.weapon_pivot, "rotation", -2.0, 0.25)
-	tw.tween_property(e.weapon_pivot, "rotation", 1.9, 0.08)
-	tw.tween_property(e.weapon_pivot, "rotation", 0.5, 0.25)
+	tw.tween_property(e.weapon_pivot, "rotation", a0 - 1.6, 0.25)
+	tw.tween_property(e.weapon_pivot, "rotation", a0 + 1.3, 0.08)
+	tw.tween_property(e.weapon_pivot, "rotation", a0, 0.25)
 	await get_tree().create_timer(0.33).timeout
 	game.sfx.play("swing", -6.0)
 	await _resolve_foe_attack(e, wpn, false, c, tgt)
@@ -1383,7 +1496,7 @@ func _foe_shoot(c: Dictionary, tgt: Dictionary = {}) -> void:
 	_face_nearest(e, c)
 	var arrow := Node2D.new()
 	arrow.set_script(preload("res://scripts/game/arrow_fx.gd"))
-	arrow.global_position = e.global_position + Vector2(e.facing * 6, -8)
+	arrow.global_position = e.global_position + Vector2(0, -8)
 	game.add_child(arrow)
 	var tw := create_tween()
 	tw.tween_property(arrow, "global_position", p.global_position + Vector2(0, -12), 0.3)
@@ -1391,7 +1504,7 @@ func _foe_shoot(c: Dictionary, tgt: Dictionary = {}) -> void:
 	arrow.queue_free()
 	var adjacent := false
 	for o in combatants:
-		if o.side != "foe" and _alive(o) and absi(o.col - c.col) <= 1:
+		if o.side != "foe" and _alive(o) and _d(o.col, c.col) <= 1:
 			adjacent = true
 	await _resolve_foe_attack(e, e.data.weapon, adjacent, c, tgt)
 
@@ -1399,6 +1512,9 @@ func _foe_shoot(c: Dictionary, tgt: Dictionary = {}) -> void:
 func _resolve_foe_attack(e: Enemy, wpn: Dictionary, disadvantage: bool, c: Dictionary = {}, tgt: Dictionary = {}) -> void:
 	if not tgt.is_empty() and tgt.side == "ally":
 		await _foe_hits_ally(e, wpn, disadvantage, c, tgt)
+		return
+	if not tgt.is_empty() and tgt.side == "echo":
+		await _foe_hits_echo(e, wpn, disadvantage, c)
 		return
 	var p: Player = game.player
 	var adv := 0
@@ -1440,6 +1556,24 @@ func _resolve_foe_attack(e: Enemy, wpn: Dictionary, disadvantage: bool, c: Dicti
 	await get_tree().create_timer(0.4).timeout
 
 
+## Boar-vhal's echo: AC 14 + proficiency bonus, 1 hit point. Any damage destroys it.
+func _foe_hits_echo(e: Enemy, wpn: Dictionary, disadvantage: bool, c: Dictionary) -> void:
+	var ac := 14 + int(game.player.stats.get("proficiency", 2))
+	var dis := (1 if disadvantage else 0) + (1 if c.get("frightened", false) else 0) + (1 if c.get("restrained", false) else 0)
+	var atk := Rules.attack(game.dice, wpn.attack, ac, Dice.combine(0, dis))
+	game.log_line("%s: %s vs the echo, d20 %d %+d = %d vs AC %d, %s." % [c.name, wpn.name, atk.kept, atk.bonus, atk.total, ac, "it shatters" if atk.hit else "miss"])
+	if atk.hit:
+		if is_instance_valid(echo_node):
+			SpellFx.burst(game, echo_node.global_position + Vector2(0, -12), Color(0.55, 0.75, 1.0), 14.0, 0.4)
+			FloatText.fling(game, echo_node.global_position + Vector2(0, -24), Vector2(0, -1), "ECHO DESTROYED", "", Color(0.6, 0.8, 1.0), 0, 1.0)
+			echo_node.queue_free()
+		echo_col = NO_CELL
+		game.sfx.play("deflect", -4.0)
+	else:
+		FloatText.fling(game, echo_node.global_position + Vector2(0, -20), Vector2(0, -0.8), "MISS", "", Color(0.75, 0.75, 0.8), 0, 0.9)
+	await get_tree().create_timer(0.4).timeout
+
+
 func _boss_shove(c: Dictionary, hc: Dictionary) -> void:
 	var p: Player = game.player
 	var dc: int = boss.data.shove_dc
@@ -1451,15 +1585,15 @@ func _boss_shove(c: Dictionary, hc: Dictionary) -> void:
 	if sv.success:
 		FloatText.fling(game, p.global_position + Vector2(0, -24), Vector2(0, -1), "RESISTED", "", Color(0.7, 0.85, 1.0), 0, 1.0)
 		return
-	var away := 1 if hc.col > c.col else -1
-	var target: int = hc.col
+	var away := Vector2i(signi(hc.col.x - c.col.x), signi(hc.col.y - c.col.y))
+	var target: Vector2i = hc.col
 	for i in 2:
-		var nc: int = target + away
-		if nc < min_col or nc > max_col or _occupied(nc, hc):
+		var nc: Vector2i = target + away
+		if not _walkable(nc) or _occupied(nc, hc):
 			break
 		target = nc
 	var tw := create_tween()
-	tw.tween_property(p, "global_position:x", target * T + 8.0, 0.18)
+	tw.tween_property(p, "global_position", _pos(target), 0.18)
 	await tw.finished
 	hc.col = target
 	h_prone = true
@@ -1565,30 +1699,28 @@ func _draw() -> void:
 	if hc.is_empty():
 		return
 	if mode == Mode.MOVE:
-		for col in range(hc.col - h_move, hc.col + h_move + 1):
-			if col < min_col or col > max_col:
-				continue
-			var free := not _occupied(col, hc)
-			draw_rect(Rect2(col * T + 1, floor_y - 2, T - 2, 3), Color(0.4, 0.8, 1.0, 0.55) if free else Color(1, 0.3, 0.3, 0.4))
-		draw_rect(Rect2(cursor_col * T, floor_y - 30, T, 30), Color(0.4, 0.8, 1.0, 0.9), false, 1.0)
+		for cell in _move_opts:
+			var free: bool = not _occupied(cell, hc) or cell == hc.col
+			draw_rect(Rect2(cell.x * T + 1, cell.y * T + 1, T - 2, T - 2), Color(0.4, 0.8, 1.0, 0.22) if free else Color(1, 0.3, 0.3, 0.2))
+		draw_rect(Rect2(cursor_col.x * T, cursor_col.y * T, T, T), Color(0.4, 0.8, 1.0, 0.95), false, 1.0)
 	elif mode == Mode.ECHO:
-		for col in range(echo_col - echo_move, echo_col + echo_move + 1):
-			if col < min_col or col > max_col:
-				continue
-			var ok := not _occupied(col, null) or col == echo_col
-			draw_rect(Rect2(col * T + 1, floor_y - 2, T - 2, 3), Color(0.55, 0.75, 1.0, 0.55) if ok else Color(1, 0.3, 0.3, 0.4))
-		draw_rect(Rect2(cursor_col * T, floor_y - 30, T, 30), Color(0.55, 0.75, 1.0, 0.9), false, 1.0)
+		for cell in _echo_opts:
+			var ok: bool = not _occupied(cell, null) or cell == echo_col
+			draw_rect(Rect2(cell.x * T + 1, cell.y * T + 1, T - 2, T - 2), Color(0.55, 0.75, 1.0, 0.2) if ok else Color(1, 0.3, 0.3, 0.2))
+		draw_rect(Rect2(cursor_col.x * T, cursor_col.y * T, T, T), Color(0.55, 0.75, 1.0, 0.95), false, 1.0)
 		# 30 ft from Boar-vhal: where the echo must be at the end of the turn.
-		draw_rect(Rect2((hc.col - ECHO_RANGE) * T, floor_y + 4, (ECHO_RANGE * 2 + 1) * T, 1), Color(0.55, 0.75, 1.0, 0.35))
+		draw_rect(Rect2((hc.col.x - ECHO_RANGE) * T, (hc.col.y - ECHO_RANGE) * T, (ECHO_RANGE * 2 + 1) * T, (ECHO_RANGE * 2 + 1) * T), Color(0.55, 0.75, 1.0, 0.4), false, 1.0)
 	elif mode == Mode.TARGET and not target_list.is_empty():
 		var t: Dictionary = target_list[target_pick]
-		var h := 40.0 if t.node == boss else 20.0
-		draw_rect(Rect2(t.col * T - 2, floor_y - h, T + 4, h), Color(1, 0.4, 0.3, 0.95), false, 1.0)
+		var h := 34.0 if t.node == boss else 18.0
+		draw_rect(Rect2(t.node.global_position + Vector2(-9, -h), Vector2(18, h + 3)), Color(1, 0.4, 0.3, 0.95), false, 1.0)
 	if mode != Mode.IDLE:
-		draw_rect(Rect2(hc.col * T + 2, floor_y + 1, T - 4, 2), Color(1, 0.9, 0.4, 0.9))
-	if conc == "moonbeam" and beam_col >= 0:
-		draw_rect(Rect2(beam_col * T, floor_y - 120, T, 120), Color(0.8, 0.9, 1.0, 0.18))
+		draw_rect(Rect2(hc.col.x * T + 1, hc.col.y * T + 1, T - 2, T - 2), Color(1, 0.9, 0.4, 0.8), false, 1.0)
+	if conc == "moonbeam" and beam_col != NO_CELL:
+		draw_rect(Rect2(beam_col.x * T, beam_col.y * T - 100, T, 100 + T), Color(0.8, 0.9, 1.0, 0.18))
 	for c in combatants:
 		if c.side == "foe" and _alive(c) and c.restrained:
+			var at := _pos(c.col)
 			for i in 4:
-				draw_line(Vector2(c.col * T + 3 + i * 3, floor_y), Vector2(c.col * T + 4 + i * 3, floor_y - 8), Color(0.35, 0.65, 0.25), 1.5)
+				draw_line(at + Vector2(-5 + i * 3, 1), at + Vector2(-4 + i * 3, -7), Color(0.35, 0.65, 0.25), 1.5)
+
