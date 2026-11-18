@@ -88,9 +88,19 @@ r.deco([(6, 'b'), (12, 'b'), (18, 'b'), (24, 'b'), (9, 'h'), (27, 'h')]); rooms[
 
 # The Gryphon's Roost Inn: ground-floor taproom, upper floor (rooms to let and the party's rooms) from col 1 to 48,
 # reached by a 45-degree staircase rising from x=56 tiles (floor) to x=49 tiles (upper floor). Cellar door at the far right.
-r = Room(64)
+r = Room(64 + 6 + 5 * 30)
 for x in range(1, 49):
     r.put(x, 6, '#')
+# Solid wood from col 63 onward, except five private rooms (10 x 6 tiles each, one every 30 tiles) that the
+# party's doors in the upstairs hallway lead into. They sit 30 tiles apart so the camera only ever sees one.
+for x in range(63, r.w):
+    for y in range(0, FLOOR):
+        r.put(x, y, '#')
+for i in range(5):
+    c0 = 70 + i * 30
+    for x in range(c0, c0 + 10):
+        for y in range(7, FLOOR):
+            r.put(x, y, '.')
 r.put(2, FLOOR - 1, 'S'); r.put(61, FLOOR - 1, 'X')
 rooms['inn_gryphons_roost'] = r
 

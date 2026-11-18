@@ -290,6 +290,12 @@ func _on_hero_loaded(args: Array) -> void:
 	player.hp_changed.emit()
 	inn.set_playing(hero.key)
 	hud.set_hero_hints(hero.key)
+	if first and phase == Phase.TAVERN:
+		# Every hero starts the day in their own room.
+		player.global_position = inn.room_spawn(hero.key)
+		player.facing = -1
+		_set_camera_limits()
+		_snap_view()
 	if not first:
 		if phase == Phase.CARD:
 			_refresh_tavern()
@@ -640,6 +646,22 @@ func _set_camera_limits() -> void:
 	camera.limit_top = 0
 	camera.limit_right = int(room.size_px().x)
 	camera.limit_bottom = int(room.size_px().y)
+	if inn and room == inn.room and player:
+		# In the inn the camera shows either the inn or the private room you are in.
+		var v := Inn.view_limits(player.global_position)
+		camera.limit_left = int(v.position.x)
+		camera.limit_right = int(v.end.x)
+		camera.limit_bottom = int(v.end.y)
+
+
+## Through a door in the inn: hallway to private room, or back out.
+func _use_inn_door(d: Dictionary) -> void:
+	_close_talk()
+	sfx.play("chop", -10.0)
+	player.global_position = d.to
+	player.velocity = Vector2.ZERO
+	_set_camera_limits()
+	_snap_view()
 
 
 ## Back in the Gryphon's Roost: at the front door on first arrival, at the cellar door after a delve.
@@ -657,7 +679,8 @@ func _enter_inn(at_cellar := false) -> void:
 	hud.hide_doors()
 	hud.set_inn_mode(true)
 	hud.set_room("THE GRYPHON'S ROOST INN - WATERDEEP")
-	player.global_position = Vector2(Inn.CELLAR_X - 40.0, Inn.FLOOR_Y) if at_cellar else room.player_spawn
+	player.global_position = Vector2(Inn.CELLAR_X - 40.0, Inn.FLOOR_Y) if at_cellar else inn.room_spawn(hero.key)
+	_set_camera_limits()
 	player.facing = -1 if at_cellar else 1
 	player.velocity = Vector2.ZERO
 	_snap_view()
@@ -709,6 +732,10 @@ func try_interact() -> void:
 			return
 		if inn.at_exit(player.global_position):
 			_ask_exit()
+			return
+		var door := inn.door_at(player.global_position)
+		if not door.is_empty():
+			_use_inn_door(door)
 			return
 		var n := inn.nearest(player.global_position)
 		if n:
@@ -876,7 +903,7 @@ func _process(delta: float) -> void:
 			if inn.dm:
 				inn.dm.set_marker(_loaded and not hero.quest_given)
 			_barred_t = maxf(0.0, _barred_t - delta)
-			if _loaded and not hero.quest_given and player.global_position.x > Inn.CELLAR_X - 30.0 and absf(player.global_position.y - Inn.FLOOR_Y) < 4.0:
+			if _loaded and not hero.quest_given and player.global_position.x > Inn.CELLAR_X - 30.0 and player.global_position.x < 1024.0 and absf(player.global_position.y - Inn.FLOOR_Y) < 4.0:
 				# The way down stays shut until the stranger has had his word.
 				player.global_position.x = Inn.CELLAR_X - 30.0
 				player.velocity.x = minf(player.velocity.x, 0.0)
@@ -1070,6 +1097,9 @@ func _current_prompt() -> String:
 			return ""
 		if inn.at_exit(player.global_position):
 			return "E: EXIT TO SESSION SCRIBE"
+		var door := inn.door_at(player.global_position)
+		if not door.is_empty():
+			return "E: " + str(door.label)
 		var n := inn.nearest(player.global_position)
 		return ("E: TALK TO %s" % n.display_name.to_upper()) if n else ""
 	if phase != Phase.RUN:
@@ -1368,6 +1398,17 @@ func _bot(delta: float) -> void:
 				Input.action_press("confirm")
 			return
 		Phase.TAVERN:
+			if Inn.chamber_at(player.global_position) >= 0:
+				var dr := inn.door_at(player.global_position)
+				if not dr.is_empty():
+					if int(_bot_t * 4) % 2 == 0:
+						Input.action_press("interact")
+				else:
+					Input.action_press("move_left")
+				return
+			if player.global_position.y < 100.0 or (player.global_position.y < 204.0 and player.global_position.x > 770.0):
+				Input.action_press("move_right")   # upstairs: head for the stairs down
+				return
 			if not hero.quest_given and inn.dm and not OS.get_cmdline_user_args().has("--rush"):
 				var dx := inn.dm.global_position.x - player.global_position.x
 				if absf(dx) > 14.0:

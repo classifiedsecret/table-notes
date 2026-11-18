@@ -46,6 +46,7 @@ var _hint_acts: Label
 var _inn_mode := false
 var _hero_key := "boarvhal"
 var _game: Node
+var hero_panel: Control
 var tavern_title: Label
 var tavern_sub: Label
 var stats_panel: Control
@@ -54,7 +55,7 @@ var dlg_name: Label
 var dlg_text: Label
 var dlg_yes: Label
 var dlg_no: Label
-const HINTS_INN := [["A/D", "MOVE"], ["SPACE", "JUMP"], ["E", "TALK"], ["W", "CLIMB STAIRS"], ["S+SPACE", "DROP DOWN"],
+const HINTS_INN := [["A/D", "MOVE"], ["SPACE", "JUMP"], ["E", "TALK / DOORS"], ["W", "CLIMB STAIRS"], ["S+SPACE", "DROP DOWN"],
 	["M", "MUSIC ON/OFF"], ["WHEEL", "MUSIC VOL"], ["ESC", "PAUSE"], ["", "CELLAR: FAR RIGHT"]]
 
 var _log: Array[String] = []
@@ -75,6 +76,7 @@ func build(g: Node) -> void:
 	add_child(root)
 
 	var hero := _panel(Vector2(4, 4), Vector2(158, 64))
+	hero_panel = hero
 	name_label = _label(hero, Vector2(6, 3), "", 8, Color(1, 0.9, 0.65))
 	title_label = _label(hero, Vector2(6, 12), "", 8, Color(0.75, 0.8, 0.9))
 	_rect(hero, Vector2(6, 23), Vector2(92, 7), Color(0.15, 0.05, 0.06))
@@ -311,6 +313,9 @@ func _fade_hints() -> void:
 	var sp: Vector2 = _game.player.get_global_transform_with_canvas().origin
 	var behind := Rect2(hints.position - Vector2(6, 0), hints.size + Vector2(12, 30)).has_point(sp)
 	hints.modulate.a = lerpf(hints.modulate.a, 0.22 if behind else 1.0, 0.25)
+	# The hero's panel fades too (Boar-vhal's room sits right under it).
+	var hb := Rect2(hero_panel.position - Vector2(6, 0), hero_panel.size + Vector2(12, 34)).has_point(sp)
+	hero_panel.modulate.a = lerpf(hero_panel.modulate.a, 0.25 if hb else 1.0, 0.25)
 
 
 func set_hero_hints(key: String) -> void:

@@ -7,6 +7,62 @@ extends Node2D
 const FLOOR_Y := 208.0
 const UP_Y := 96.0
 const CELLAR_X := 984.0
+
+## The party's private rooms: [hallway door x upstairs, chamber index, wallpaper tint].
+## Each chamber is a walled room off to the right of the map (10 x 6 tiles), reached by its door.
+const ROOMS := {
+	"boarvhal": [88.0, 0, Color(0.55, 0.3, 0.2)],
+	"erwar": [232.0, 1, Color(0.95, 0.8, 0.45)],
+	"lyburnum": [376.0, 2, Color(0.2, 0.45, 0.28)],
+	"suilean": [520.0, 3, Color(0.3, 0.55, 0.45)],
+	"ceridwen": [664.0, 4, Color(0.35, 0.25, 0.6)],
+}
+const CHAMBER_COL := 70
+const CHAMBER_STEP := 30
+const CHAMBER_W := 160.0
+const CHAMBER_TOP := 112.0
+
+
+static func chamber_x0(i: int) -> float:
+	return float((CHAMBER_COL + i * CHAMBER_STEP) * 16)
+
+
+## The chamber a point is in (-1 when in the inn itself).
+static func chamber_at(p: Vector2) -> int:
+	for i in 5:
+		var x0 := chamber_x0(i)
+		if p.x >= x0 - 8.0 and p.x <= x0 + CHAMBER_W + 8.0:
+			return i
+	return -1
+
+
+## Camera limits: the whole inn, or just the chamber you are in (centred).
+static func view_limits(p: Vector2) -> Rect2:
+	var i := chamber_at(p)
+	if i < 0:
+		return Rect2(0, 0, 1024, 272)
+	var mid := chamber_x0(i) + CHAMBER_W / 2.0
+	return Rect2(mid - 240.0, 0, 480, 272)
+
+
+## A door at this spot: {"to": where it leads, "label": prompt}. Empty when there is none.
+func door_at(p: Vector2) -> Dictionary:
+	for k in ROOMS:
+		var r: Array = ROOMS[k]
+		var nm: String = Kits.info(k).short
+		var hall := Vector2(float(r[0]), UP_Y)
+		var inside := Vector2(chamber_x0(int(r[1])) + 14.0, FLOOR_Y)
+		if absf(p.x - hall.x) < 10.0 and absf(p.y - hall.y) < 4.0:
+			return {"to": inside + Vector2(12, 0), "label": "ENTER %s'S ROOM" % nm.to_upper()}
+		if absf(p.x - inside.x) < 10.0 and absf(p.y - inside.y) < 4.0:
+			return {"to": hall + Vector2(0, 0), "label": "LEAVE %s'S ROOM" % nm.to_upper()}
+	return {}
+
+
+## Where a hero wakes up: inside their own room.
+func room_spawn(hero_key: String) -> Vector2:
+	var r: Array = ROOMS.get(hero_key, ROOMS["boarvhal"])
+	return Vector2(chamber_x0(int(r[1])) + 64.0, FLOOR_Y)
 const EXIT_X := 40.0
 const LAYER_STAIRS := 8
 const STAIR_FOOT := Vector2(896, 208)
@@ -51,11 +107,11 @@ const CAST := [
 		"The roots under this inn are whispering. Something down there is digging.",
 		"The fire is nice. The couch is nicer. Wake me when it's my turn.",
 		"Bring me a mushroom from the warren. A weird one."]},
-	{"key": "npc_galinnadin", "name": "Galinnadin", "match": "galinnadin", "x": 448.0, "y": 96.0, "sit": false, "face": -1, "lines": [
+	{"key": "npc_galinnadin", "name": "Galinnadin", "match": "galinnadin", "x": 866.0, "y": 208.0, "sit": false, "face": -1, "lines": [
 		"I'm not here. You didn't see me.",
 		"I'll be back with the party soon. Someone has to pick the locks you smash.",
 		"Nice axe. Shame if someone... polished it for you."]},
-	{"key": "npc_orfi", "name": "Orfi", "match": "orfi", "x": 560.0, "y": 90.0, "sit": true, "face": -1, "lines": [
+	{"key": "npc_orfi", "name": "Orfi", "match": "orfi", "x": 126.0, "y": 191.0, "sit": true, "face": 1, "lines": [
 		"Breathe in. Breathe out. Punch goblin.",
 		"Stillness first, Boar-vhal. Then fury.",
 		"I'm meditating. You are standing in my light."]},
@@ -126,7 +182,8 @@ const CHATTER := [
 func build(g: Node) -> void:
 	game = g
 	room = Room.new()
-	room.back_color = Color(0.44, 0.34, 0.30)
+	room.back_color = Color(0.82, 0.78, 0.74)
+	room.wood_tiles = preload("res://assets/sprites/inn_tiles.png")
 	add_child(room)
 	room.build(FileAccess.get_file_as_string("res://rooms/inn_gryphons_roost.txt"))
 	_furnish()
@@ -145,11 +202,14 @@ func _spr(name: String, pos: Vector2, z := -3, from_bottom := true, flip := fals
 	return s
 
 
-func _label(text: String, pos: Vector2, color: Color, size := 8, z := -2) -> Label:
+func _label(text: String, pos: Vector2, color: Color, size := 8, z := -2, width := 0.0) -> Label:
 	var l := Label.new()
 	l.label_settings = Art.label_settings(size, color, 2)
 	l.text = text
 	l.position = pos
+	if width > 0.0:
+		l.size = Vector2(width, 10)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.z_index = z
 	add_child(l)
 	return l
@@ -214,24 +274,73 @@ func _furnish() -> void:
 	for x in [200.0, 360.0, 480.0, 690.0]:
 		_spr("lantern", Vector2(x, 112), -2, false)
 		_glow(Vector2(x, 128))
-	# Upper floor: rooms to let and the party's private rooms.
-	for i in 4:
-		var dx := 56.0 + i * 72.0
+	# Upper floor: a hallway with a named door for each of the party.
+	for k in ROOMS:
+		var r: Array = ROOMS[k]
+		var dx: float = r[0]
 		_spr("doors_leaf_closed", Vector2(dx, UP_Y), -6)
-		_label("ROOM %d" % (i + 1), Vector2(dx - 15, 46), Color(0.8, 0.75, 0.6))
-	_spr("window", Vector2(340, 56), -6)
-	for i in 2:
-		var dx := 400.0 + i * 64.0
-		_spr("doors_leaf_closed", Vector2(dx, UP_Y), -6)
-	_label("THE DMV - PRIVATE", Vector2(392, 44), Color(1, 0.85, 0.45))
-	_spr("rug", Vector2(560, UP_Y + 1), -3)
-	_spr("bed", Vector2(640, UP_Y), -4)
-	_spr("window", Vector2(700, 56), -6)
-	for x in range(736, 784, 16):
-		_spr("railing", Vector2(x + 8, UP_Y), 2)
-	for x in [150.0, 330.0, 520.0]:
+		_label(Kits.info(k).short.to_upper(), Vector2(dx - 50, 44), Color(1, 0.88, 0.6), 8, -2, 100.0)
+	for x in [160.0, 448.0, 736.0]:
+		_spr("window", Vector2(x, 56), -6)
+	for x in [160.0, 304.0, 448.0, 592.0]:
 		_spr("lantern", Vector2(x, 16), -2, false)
 		_glow(Vector2(x, 32))
+	_spr("rug", Vector2(232, UP_Y + 1), -3)
+	_spr("rug", Vector2(520, UP_Y + 1), -3)
+	# The rooms themselves, each decorated for who lives there.
+	for k in ROOMS:
+		var r: Array = ROOMS[k]
+		var x0 := chamber_x0(int(r[1]))
+		var tint := ColorRect.new()
+		tint.color = Color(r[2].r, r[2].g, r[2].b, 0.22)
+		tint.position = Vector2(x0, CHAMBER_TOP)
+		tint.size = Vector2(CHAMBER_W, FLOOR_Y - CHAMBER_TOP)
+		tint.z_index = -19
+		add_child(tint)
+		_label(Kits.info(k).short.to_upper() + "'S ROOM", Vector2(x0 + 10, CHAMBER_TOP + 3), Color(1, 0.88, 0.6), 8, -2, 140.0)
+		_spr("lantern", Vector2(x0 + 96, CHAMBER_TOP), -2, false)
+		_glow(Vector2(x0 + 96, CHAMBER_TOP + 16))
+		_spr("doors_leaf_closed", Vector2(x0 + 14, FLOOR_Y), -6)
+		for x in range(0, int(CHAMBER_W), 16):
+			_spr("plank", Vector2(x0 + x + 8, FLOOR_Y + 4), -4)
+	var c := func(i: int, name: String, x: float, y: float, z: int) -> void:
+		_spr(name, Vector2(chamber_x0(i) + x, y), z)
+	var F := FLOOR_Y
+	# Boar-vhal (goliath barbarian): a bed long enough for a goliath, a bear pelt, his axe, a hunting trophy and a keg.
+	c.call(0, "boar_head", 58, 150, -6)
+	c.call(0, "mountain_painting", 100, 152, -6)
+	c.call(0, "axe_rack", 140, 164, -6)
+	c.call(0, "big_bed", 60, F, -4)
+	c.call(0, "pelt", 112, F + 1, -3)
+	c.call(0, "barrel", 148, F, -4)
+	# Erwar (aasimar cleric): an altar to the sun under a stained-glass window, a plain cot, his chain and shield.
+	c.call(1, "sun_window", 96, 160, -6)
+	c.call(1, "altar", 96, F, -4)
+	c.call(1, "cot", 52, F, -4)
+	c.call(1, "chain_stand", 144, F, -4)
+	# Lyburnum (half-orc paladin): his order's green banner, plate on a stand, sword and shield, a battered dummy, a cot.
+	c.call(2, "banner_green", 68, 162, -6)
+	c.call(2, "sword_rack", 44, F, -4)
+	c.call(2, "plate_stand", 70, F, -4)
+	c.call(2, "dummy", 100, F, -4)
+	c.call(2, "cot", 136, F, -4)
+	# Suilean (elf druid): a moonlit round window, vines and drying herbs, a bed of moss and leaves, plants and mushrooms.
+	c.call(3, "hanging_vines", 46, CHAMBER_TOP + 26, -6)
+	c.call(3, "moon_window", 96, 156, -6)
+	c.call(3, "herb_rack", 140, CHAMBER_TOP + 18, -6)
+	c.call(3, "plant_tall", 36, F, -4)
+	c.call(3, "leaf_bed", 84, F, -4)
+	c.call(3, "mushrooms", 124, F, -4)
+	c.call(3, "plant_pot", 148, F, -4)
+	# Ceridwen (half-elf wizard): a crammed bookcase, a desk with her spellbook, a star chart, her bed and a crystal ball.
+	c.call(4, "bookcase", 44, F, -4)
+	c.call(4, "star_chart", 80, 154, -6)
+	c.call(4, "desk", 80, F, -4)
+	c.call(4, "bed", 118, F, -4)
+	c.call(4, "stool", 148, F, -4)
+	c.call(4, "crystal_ball", 148, F - 10, -4)
+	for x in range(736, 784, 16):
+		_spr("railing", Vector2(x + 8, UP_Y), 2)
 
 
 func _glow(pos: Vector2) -> void:
@@ -391,7 +500,7 @@ func at_exit(p: Vector2) -> bool:
 
 
 func at_cellar(p: Vector2) -> bool:
-	return p.x > CELLAR_X - 14.0 and absf(p.y - FLOOR_Y) < 4.0
+	return p.x < 1024.0 and p.x > CELLAR_X - 14.0 and absf(p.y - FLOOR_Y) < 4.0
 
 
 func _process(delta: float) -> void:

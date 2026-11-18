@@ -26,6 +26,9 @@ var back_color := Color(0.36, 0.33, 0.42)
 const WALL := Vector2i(2, 1)      # wall_mid at (32, 16)
 const LIP := Vector2i(2, 0)       # wall_top_mid at (32, 0)
 
+## Optional wood interior (the inn): a 48x16 strip of back planks, solid beam and top trim.
+var wood_tiles: Texture2D = null
+
 
 func build(text: String) -> void:
 	rows = text.strip_edges(false, true).split("\n", false)
@@ -63,15 +66,22 @@ func build(text: String) -> void:
 		for x in w:
 			var ch := rows[y][x]
 			var c := Vector2i(x, y)
+			var src_id := 1 if wood_tiles else 0
 			if ch != "#":
-				back.set_cell(c, 0, WALL)
+				back.set_cell(c, src_id, Vector2i(0, 0) if wood_tiles else WALL)
 			match ch:
 				"#":
-					solid.set_cell(c, 0, WALL)
+					solid.set_cell(c, src_id, Vector2i(1, 0) if wood_tiles else WALL)
 					if not is_solid_cell(x, y - 1) and y > 0:
 						var lip := Sprite2D.new()
-						lip.texture = Art.region("wall_top_mid")
-						lip.position = Vector2(x * T + 8, y * T - 4)
+						if wood_tiles:
+							var at := AtlasTexture.new()
+							at.atlas = wood_tiles
+							at.region = Rect2(32, 0, 16, 8)
+							lip.texture = at
+						else:
+							lip.texture = Art.region("wall_top_mid")
+						lip.position = Vector2(x * T + 8, y * T + (4 if wood_tiles else -4))
 						lips.add_child(lip)
 				"=":
 					solid.set_cell(c, 0, LIP, 1)
@@ -158,6 +168,16 @@ func _make_tileset() -> TileSet:
 	pd.add_collision_polygon(1)
 	pd.set_collision_polygon_points(1, 0, PackedVector2Array([Vector2(-8, -8), Vector2(8, -8), Vector2(8, -3), Vector2(-8, -3)]))
 	pd.set_collision_polygon_one_way(1, 0, true)
+	if wood_tiles:
+		var ws := TileSetAtlasSource.new()
+		ws.texture = wood_tiles
+		ws.texture_region_size = Vector2i(T, T)
+		ts.add_source(ws, 1)
+		ws.create_tile(Vector2i(0, 0))
+		ws.create_tile(Vector2i(1, 0))
+		var wd := ws.get_tile_data(Vector2i(1, 0), 0)
+		wd.add_collision_polygon(0)
+		wd.set_collision_polygon_points(0, 0, PackedVector2Array([Vector2(-8, -8), Vector2(8, -8), Vector2(8, 8), Vector2(-8, 8)]))
 	return ts
 
 
