@@ -35,15 +35,15 @@ var _drink_t := 2.0
 
 ## Party members and the DM. Lines are short and in character; easy to edit.
 const CAST := [
-	{"key": "npc_ceridwen", "name": "Ceridwen", "match": "ceridwen", "x": 300.0, "y": 208.0, "sit": true, "face": 1, "lines": [
+	{"key": "npc_ceridwen", "name": "Ceridwen", "match": "ceridwen", "x": 300.0, "y": 202.0, "sit": true, "face": 1, "lines": [
 		"I foresaw you coming down here. I also foresaw you forgetting your potions.",
 		"The portents say the cellar goblins are restless tonight. The portents are rarely wrong. I am never wrong.",
 		"Don't touch my spellbook. It bites. Metaphorically. Mostly."]},
-	{"key": "npc_erwar", "name": "Erwar", "match": "erwar", "x": 340.0, "y": 208.0, "sit": true, "face": -1, "lines": [
+	{"key": "npc_erwar", "name": "Erwar", "match": "erwar", "x": 340.0, "y": 202.0, "sit": true, "face": -1, "lines": [
 		"War favours the prepared. Have you prayed, Boar-vhal? Have you at least stretched?",
 		"If you fall down there, I'll be up here. Drink a potion first, then call for me.",
 		"Strike first. Strike hard. Then tell me about it over an ale."]},
-	{"key": "npc_lyburnum", "name": "Lyburnum", "match": "lyburnum", "x": 626.0, "y": 208.0, "sit": true, "face": 1, "lines": [
+	{"key": "npc_lyburnum", "name": "Lyburnum", "match": "lyburnum", "x": 626.0, "y": 198.0, "sit": true, "face": 1, "lines": [
 		"Conquer the cellar. Then conquer another ale.",
 		"Fear is a weapon. Make the goblins hold it by the blade.",
 		"Kieran waters the ale. I have chosen to let him live."]},
@@ -55,18 +55,18 @@ const CAST := [
 		"I'm not here. You didn't see me.",
 		"I'll be back with the party soon. Someone has to pick the locks you smash.",
 		"Nice axe. Shame if someone... polished it for you."]},
-	{"key": "npc_orfi", "name": "Orfi", "match": "orfi", "x": 560.0, "y": 96.0, "sit": true, "face": -1, "lines": [
+	{"key": "npc_orfi", "name": "Orfi", "match": "orfi", "x": 560.0, "y": 90.0, "sit": true, "face": -1, "lines": [
 		"Breathe in. Breathe out. Punch goblin.",
 		"Stillness first, Boar-vhal. Then fury.",
 		"I'm meditating. You are standing in my light."]},
-	{"key": "npc_boarvhal", "name": "Boar-vhal", "match": "boar", "x": 698.0, "y": 208.0, "sit": true, "face": -1, "lines": [
+	{"key": "npc_boarvhal", "name": "Boar-vhal", "match": "boar", "x": 698.0, "y": 198.0, "sit": true, "face": -1, "lines": [
 		"KEG! Kieran, this one's empty too.",
 		"Goliaths don't get drunk. We get... enthusiastic.",
 		"I'm not drinking. I'm hydrating for the cellar.",
 		"You go on down. I'll guard the ale.",
 		"Tell the goblins I'm busy. Busy drinking.",
 	]},
-	{"key": "npc_dm", "name": "Hooded Stranger", "match": "dungeon master", "x": 230.0, "y": 208.0, "sit": true, "face": 1, "lines": [
+	{"key": "npc_dm", "name": "Hooded Stranger", "match": "dungeon master", "x": 230.0, "y": 202.0, "sit": true, "face": 1, "lines": [
 		"Roll for initiative.",
 		"Are you sure you want to do that?",
 		"The cellar door creaks open. What do you do?",
@@ -92,13 +92,13 @@ const PATRONS := [
 	{"key": "npc_bard", "name": "Bard", "x": 160.0, "y": 196.0, "sit": false, "face": 1, "lines": [
 		"This next one's called 'The Goliath and the Goblin'. It's short.",
 		"Tips go in the hat. Goblin ears do not go in the hat."]},
-	{"key": "npc_patron_a", "name": "Patron", "x": 396.0, "y": 208.0, "sit": true, "face": 1, "lines": [
+	{"key": "npc_patron_a", "name": "Patron", "x": 396.0, "y": 202.0, "sit": true, "face": 1, "lines": [
 		"Heard there's goblins under this place.",
 		"Owners are heroes, they say. You one of them?"]},
-	{"key": "npc_patron_b", "name": "Patron", "x": 428.0, "y": 208.0, "sit": true, "face": -1, "lines": [
+	{"key": "npc_patron_b", "name": "Patron", "x": 428.0, "y": 202.0, "sit": true, "face": -1, "lines": [
 		"I heard the owners eat goblins.",
 		"Don't spill my drink and we'll get along fine."]},
-	{"key": "npc_patron_c", "name": "Patron", "x": 728.0, "y": 208.0, "sit": true, "face": -1, "lines": [
+	{"key": "npc_patron_c", "name": "Patron", "x": 728.0, "y": 198.0, "sit": true, "face": -1, "lines": [
 		"It's not a costume.",
 		"Best stew in Waterdeep. Don't tell the cook I said so."]},
 ]
@@ -285,7 +285,7 @@ func _add(d: Dictionary) -> InnNPC:
 	n.z_index = 2
 	if d.key == "npc_kieran":
 		n.z_index = 2
-	elif d.get("sit", false) and d.y > FLOOR_Y - 2.0 and d.x > 600.0 and d.x < 740.0:
+	elif d.get("sit", false) and d.y > FLOOR_Y - 20.0 and d.x > 600.0 and d.x < 740.0:
 		n.z_index = 5
 	elif d.get("sit", false):
 		n.z_index = 2
