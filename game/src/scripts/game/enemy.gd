@@ -16,6 +16,7 @@ var _path := PackedVector2Array()
 var _repath := 0.0
 var _alert := false
 var _knock := Vector2.ZERO
+var _walk := Vector2.ZERO
 var state := State.CHASE
 var speed := 80.0
 var _t := 0.0
@@ -236,8 +237,10 @@ func _physics_process(delta: float) -> void:
 				want += (off.normalized() if off.length() > 0.1 else Vector2.RIGHT.rotated(get_instance_id())) * (14.0 - off.length()) / 14.0
 	if restrained_t > 0.0 and state != State.DEAD:
 		want = Vector2.ZERO
-	velocity = velocity.move_toward(want * spd, 700.0 * delta) + _knock
-	_knock = _knock.move_toward(Vector2.ZERO, 900.0 * delta)
+	# Walking speed and a hit's shove are kept apart, so a shove happens once and fades.
+	_walk = _walk.move_toward(want * spd, 700.0 * delta)
+	velocity = _walk + _knock
+	_knock = _knock.move_toward(Vector2.ZERO, 700.0 * delta)
 	move_and_slide()
 	if absf(look.x) > 0.1:
 		facing = 1 if look.x > 0.0 else -1
@@ -307,7 +310,7 @@ func take_hit(amount: int, crit: bool, from_dir: Variant, glancing: bool) -> voi
 		warn.visible = false
 		(sprite.material as ShaderMaterial).set_shader_parameter("flash_color", Color.WHITE)
 		_go(State.STAGGER)
-		_knock = dir * (150.0 if crit else 90.0)
+		_knock = dir * (150.0 if crit else 105.0)   # shoved back about 8 px (16 px on a crit)
 
 
 func _die(dir: Vector2) -> void:
