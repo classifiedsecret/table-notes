@@ -27,6 +27,7 @@ var _flash := 0.0
 var down := false
 var _last_mouse := Vector2.ZERO
 var _mouse_idle := 99.0
+var _space_held := false
 
 
 func _ready() -> void:
@@ -107,7 +108,11 @@ func _physics_process(delta: float) -> void:
 			visual.rotation = 0.0
 	else:
 		velocity = velocity.move_toward(input * SPEED, 900.0 * delta)
-		if (Input.is_action_just_pressed("dodge") or Input.is_action_just_pressed("jump")) and input != Vector2.ZERO:
+		# Roll on K, Space or the gamepad's dodge button (not W: that's walking up here).
+		var space := Input.is_physical_key_pressed(KEY_SPACE)
+		var space_tap := space and not _space_held
+		_space_held = space
+		if (Input.is_action_just_pressed("dodge") or space_tap) and input != Vector2.ZERO:
 			_roll_t = ROLL_TIME
 			_roll_dir = input.normalized()
 			_iframes = ROLL_TIME + 0.05
