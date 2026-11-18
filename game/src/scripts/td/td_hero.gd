@@ -127,7 +127,7 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_just_pressed("attack") and _attack_t <= 0.0:
 			_attack()
 		if Input.is_action_just_pressed("interact"):
-			game.try_open_chest()
+			game.interact()
 		# Space (or the gamepad's A): a quick hop. While airborne, spike traps and arrows pass beneath you.
 		var space := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_joy_button_pressed(0, JOY_BUTTON_A)
 		if space and not _space_held and _hop_t <= 0.0:

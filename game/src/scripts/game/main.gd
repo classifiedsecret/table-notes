@@ -448,7 +448,7 @@ func _tavern_options() -> Array:
 		["Difficulty: %s (%s)%s" % [Creatures.TIERS[hero.tier].name, Creatures.TIERS[hero.tier].levels, "  - press to change" if hero.tier_unlocked > 1 else "  - clear it to unlock Tier II"], "tier"],
 		["Buy a Potion of Healing (%d gp)" % POTION_PRICE, "potion"],
 		["Back to the taproom", "back"],
-		["Try the top-down test room (prototype)", "topdown"],
+		["Try the top-down inn and test dungeon (prototype)", "topdown"],
 		["Return to Session Scribe", "leave"],
 	]
 
