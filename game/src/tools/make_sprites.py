@@ -55,7 +55,7 @@ bb = strip(frames('ogre', [('idle', 4), ('run', 4)]), {
     '#3d734f': '#8a5a34', '#8f4029': '#5b3a22', '#314152': '#4a2a24', '#62232f': '#7a2b22'}, 'bugbear_chief.png')
 # Gryphon's Roost cast (recolours of 0x72 characters).
 INN = {
-    'npc_ceridwen': ('wizzard_f', {'#5698cc': '#8a5cc4', '#5956bd': '#5d3a99', '#fdf7ed': '#d2452c', '#d3bfa9': '#962d1f'}),
+    'npc_ceridwen': ('wizzard_f', {'#5698cc': '#8a5cc4', '#5956bd': '#5d3a99', '#fdf7ed': '#d2452c', '#d3bfa9': '#962d1f', '#b58057': '#f6e4d8', '#8a503e': '#d6b8aa'}),
     'npc_erwar': ('knight_m', {'#72d6ce': '#e8c35a', '#417089': '#a8782c', '#da4e38': '#fdf7ed', '#ee8e2e': '#d8d3e8'}),
     'npc_lyburnum': ('knight_m', {'#72d6ce': '#55555f', '#417089': '#2e2e38', '#da4e38': '#4ba747', '#ee8e2e': '#3d734f'}),
     'npc_suilean': ('elf_f', None),
