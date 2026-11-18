@@ -40,7 +40,7 @@ static func taproom() -> Dictionary:
 		"links": [
 			{"cells": [Vector2i(32, 1), Vector2i(33, 1), Vector2i(32, 0), Vector2i(33, 0)], "to": "upstairs", "spawn": "stairs", "walk": true},
 			{"cells": [Vector2i(31, 13), Vector2i(32, 13), Vector2i(31, 14), Vector2i(32, 14)], "to": "dungeon1", "spawn": "start", "walk": true},
-			{"cells": [Vector2i(4, 15), Vector2i(5, 15), Vector2i(4, 16), Vector2i(5, 16)], "to": "exit", "label": "EXIT TO THE GAME"},
+			{"cells": [Vector2i(4, 15), Vector2i(5, 15), Vector2i(4, 16), Vector2i(5, 16)], "to": "exit", "label": "EXIT TO SESSION SCRIBE"},
 		],
 		"props": [
 			["fireplace", 4.5, 3.0, {"solid": [44, 10]}],

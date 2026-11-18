@@ -270,7 +270,7 @@ func _floor_tile(c: Vector2i, wood: bool) -> void:
 		s.texture = TDArt.tex("floor_%d" % n)
 	else:
 		var n := 1 + ((c.x * 7 + c.y * 13) % 11)
-		s.texture = Art.region("floor_%d" % (n if n <= 8 else 1))
+		s.texture = TDArt.solo("floor_%d" % (n if n <= 8 else 1))
 	s.position = cell_center(c)
 	floor_layer.add_child(s)
 
@@ -482,9 +482,12 @@ func _follow(l: Dictionary) -> void:
 	if l.to == "exit":
 		if not _exit_armed:
 			_exit_armed = true
-			toast("PRESS E AGAIN TO LEAVE THE TOP-DOWN TEST")
+			toast("PRESS E AGAIN TO RETURN TO SESSION SCRIBE")
 			return
-		_leave()
+		if OS.has_feature("web"):
+			JavaScriptBridge.eval("window.location.href = 'https://session-scribe.com/'")
+		else:
+			get_tree().quit()
 		return
 	if l.to == "dungeon1" and not hero.quest_given:
 		toast("THE TRAPDOOR IS BARRED. TALK TO THE HOODED STRANGER FIRST.")
@@ -553,7 +556,7 @@ func _wall_tile(c: Vector2i) -> void:
 
 func _spr(parent: Node, name: String, off: Vector2) -> Sprite2D:
 	var s := Sprite2D.new()
-	s.texture = Art.region(name)
+	s.texture = TDArt.solo(name) if name.begins_with("wall_") else Art.region(name)
 	s.position = off
 	parent.add_child(s)
 	return s
