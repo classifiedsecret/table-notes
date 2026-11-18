@@ -284,6 +284,8 @@ func _on_hero_loaded(args: Array) -> void:
 			if t > 18 and t % 3 == 0 and t < 60: print("[jump] t=%d y=%.1f vy=%.0f floor=%s state=%s" % [t, start_y - player.global_position.y, player.velocity.y, player.is_on_floor(), Player.State.keys()[player.state]]))
 		add_child(tm)
 		return
+	if _arg("note"):
+		get_tree().create_timer(1.0).timeout.connect(func(): hud.level_note(Kits.level_features(hero.key, 2)))
 	if _arg("doors"):
 		_start_run()
 		for e in enemies:

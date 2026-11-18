@@ -82,6 +82,9 @@ func _physics_process(delta: float) -> void:
 			_trail.push_front(global_position)
 			if _trail.size() > 6:
 				_trail.pop_back()
+			if is_instance_valid(target) and not (target as Enemy).is_dead():
+				var want: Vector2 = (target.global_position + Vector2(0, -10) - global_position).normalized() * vel.length()
+				vel = vel.lerp(want, minf(1.0, delta * 6.0))
 			global_position += vel * delta
 			var room: Room = game.room
 			if room.is_solid_cell(floori(global_position.x / Room.T), floori(global_position.y / Room.T)):

@@ -113,9 +113,9 @@ func build(g: Node) -> void:
 	prompt_label.size = Vector2(480, 10)
 	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-	note_panel = _panel(Vector2(90, 186), Vector2(300, 34), 0.92)
-	note_label = _label(note_panel, Vector2(6, 3), "", 8, Color(1, 0.9, 0.6))
-	note_label.size = Vector2(288, 30)
+	note_panel = _panel(Vector2(120, 186), Vector2(352, 44), 0.92)
+	note_label = _label(note_panel, Vector2(6, 4), "", 8, Color(1, 0.9, 0.6))
+	note_label.size = Vector2(340, 38)
 	note_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note_panel.visible = false
 
@@ -205,6 +205,8 @@ func build(g: Node) -> void:
 	for l in [_hint_keys, _hint_acts]:
 		l.label_settings.line_spacing = -1.0
 	_show_hints(Kits.hints("boarvhal"))
+	# Drawn first, so every other panel (level-ups, dialogue, toasts) sits on top of it.
+	hints.get_parent().move_child(hints, 0)
 
 
 func _panel(pos: Vector2, size: Vector2, alpha := 0.78) -> PanelContainer:
@@ -353,6 +355,12 @@ func prompt(text: String) -> void:
 func level_note(text: String) -> void:
 	note_label.text = text.to_upper()
 	note_panel.visible = text != ""
+	# Grow the box to fit the wrapped text, keeping its bottom edge in place.
+	var ls := note_label.label_settings
+	var h: float = ls.font.get_multiline_string_size(note_label.text, HORIZONTAL_ALIGNMENT_LEFT, 340.0, ls.font_size).y
+	note_label.size = Vector2(340, h)
+	note_panel.size = Vector2(352, h + 8)
+	note_panel.position = Vector2(120, 232 - (h + 8))
 	_note_t = 9.0
 
 

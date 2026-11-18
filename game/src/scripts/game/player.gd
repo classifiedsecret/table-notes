@@ -149,6 +149,18 @@ func set_form(f: Dictionary) -> void:
 	hp_changed.emit()
 
 
+## Spells auto-aim: the nearest living foe within `range_px` (any direction), or null.
+func nearest_enemy(range_px: float) -> Enemy:
+	var best: Enemy = null
+	var bd := range_px
+	for e: Enemy in game.living_enemies():
+		var d := e.global_position.distance_to(global_position)
+		if d < bd:
+			bd = d
+			best = e
+	return best
+
+
 func current_weapon() -> Dictionary:
 	return form_data.weapon if not form_data.is_empty() else stats.weapon
 
@@ -441,13 +453,35 @@ func _process_attack() -> void:
 ## Fire Bolt (a missile) or Thorn Whip (a 30-foot lash that pulls).
 func _fire_primary(kind: String) -> void:
 	var wpn := current_weapon()
-	var hand := global_position + Vector2(facing * 9.0, -16.0)
 	if kind == "bolt":
+		# Fire Bolt locks onto the nearest foe in sight and curves after it.
+		var tgt := nearest_enemy(260.0)
+		if tgt:
+			facing = 1 if tgt.global_position.x >= global_position.x else -1
+			visual.scale.x = facing
+		var hand := global_position + Vector2(facing * 9.0, -16.0)
+		var aim := Vector2(facing, 0.0)
+		if tgt:
+			aim = (tgt.global_position + Vector2(0, -10) - hand).normalized()
 		game.sfx.play("swing", -8.0, 0.3)
-		SpellFx.bolt(game, hand, Vector2(facing * 300.0, 0.0), HeroKit.SPELL_COLORS.fire, func(e): roll_attack(e, wpn))
+		var b := SpellFx.bolt(game, hand, aim * 300.0, HeroKit.SPELL_COLORS.fire, func(e): roll_attack(e, wpn))
+		b.target = tgt
 		return
-	# Thorn whip: the first foe along the lash.
+	# Thorn whip lashes at the nearest foe within 30 feet, on either side.
 	var reach: float = wpn.get("reach", 72.0)
+	var near := nearest_enemy(reach + 8.0)
+	if near:
+		facing = 1 if near.global_position.x >= global_position.x else -1
+		visual.scale.x = facing
+		var h2 := global_position + Vector2(facing * 9.0, -16.0)
+		SpellFx.line(game, h2, near.global_position + Vector2(0, -10), HeroKit.SPELL_COLORS.nature, 0.22, true)
+		game.sfx.play("swing", -6.0, 0.3)
+		_hit_this_swing.append(near)
+		var hit := roll_attack(near, wpn)
+		if hit.get("hit", false) and not near.is_dead():
+			near.velocity = Vector2(signf(global_position.x - near.global_position.x) * 230.0, -60.0)
+		return
+	var hand := global_position + Vector2(facing * 9.0, -16.0)
 	var lash := Rect2(global_position + Vector2(0 if facing > 0 else -reach, -24), Vector2(reach, 20))
 	var best: Enemy = null
 	var bd := 9999.0
