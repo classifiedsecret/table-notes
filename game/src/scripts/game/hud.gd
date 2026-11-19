@@ -20,6 +20,8 @@ var log_panel: PanelContainer
 var log_label: Label
 var log_title: Label
 var log_open := false
+const TOAST_X := 124.0       # clear of the key hints panel
+const TOAST_W := 196.0       # ends before the roll log (which starts at x 324 when scaled)
 const UI_SCALE := 0.8         # corner readouts drawn at 80% so they cover less of the room
 const LOG_Y := 255.0          # bottom edge of the screen, minus the collapsed bar
 const LOG_SHUT_H := 14.0
@@ -124,12 +126,17 @@ func build(g: Node) -> void:
 	banner_label = _label(root, Vector2(0, 70), "", 24, Color.WHITE, true)
 	banner_label.size = Vector2(480, 24)
 	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	toast_label = _label(root, Vector2(104, 236), "", 8, Color(1, 0.95, 0.8))
-	toast_label.size = Vector2(372, 10)
+	# Toasts and prompts sit right of the key hints (bottom-left) and left of the roll log, and
+	# wrap onto a second line rather than spill over either.
+	toast_label = _label(root, Vector2(TOAST_X, 234), "", 8, Color(1, 0.95, 0.8))
 	toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	prompt_label = _label(root, Vector2(0, 224), "", 8, Color(0.6, 1.0, 0.7))
-	prompt_label.size = Vector2(480, 10)
+	toast_label.custom_minimum_size = Vector2(TOAST_W, 10)
+	toast_label.size = Vector2(TOAST_W, 10)
+	prompt_label = _label(root, Vector2(TOAST_X, 206), "", 8, Color(0.6, 1.0, 0.7))
+	prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	prompt_label.custom_minimum_size = Vector2(TOAST_W, 10)
+	prompt_label.size = Vector2(TOAST_W, 10)
 	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	note_panel = _panel(Vector2(120, 186), Vector2(352, 44), 0.92)
@@ -387,6 +394,9 @@ func set_room(text: String) -> void:
 
 func prompt(text: String) -> void:
 	prompt_label.text = text
+	var w := 350.0 if _inn_mode else TOAST_W
+	prompt_label.custom_minimum_size = Vector2(w, 10)
+	prompt_label.size = Vector2(w, 10)
 
 
 func level_note(text: String) -> void:
@@ -446,6 +456,12 @@ func banner(text: String, color: Color) -> void:
 
 func toast(text: String) -> void:
 	toast_label.text = text.to_upper()
+	# In the inn the roll log is hidden, so a toast may use the whole width right of the hints.
+	var w := 350.0 if _inn_mode else TOAST_W
+	toast_label.custom_minimum_size = Vector2(w, 10)
+	toast_label.size = Vector2(w, 10)
+	# Two lines grow upward, so the toast never reaches the bottom edge.
+	toast_label.position.y = 244.0 - toast_label.get_minimum_size().y
 	_toast_t = 2.6
 
 
