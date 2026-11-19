@@ -312,6 +312,8 @@ func _physics_process(delta: float) -> void:
 			if Input.is_action_just_pressed("form"):
 				kit.press("Y")
 	_update_aim(input, delta)
+	# No weapons out in the inn.
+	weapon_pivot.visible = not (game.inn and game.inn.is_inside_tree()) and state != State.DOWN and state != State.DEAD
 	if _potion_t > 0.0:
 		_potion_t -= delta
 		input *= 0.3
