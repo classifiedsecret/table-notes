@@ -2,8 +2,8 @@ class_name Hero
 extends RefCounted
 ## A persistent hero: saved between runs. Stats come from the hero kit and level (see Kits).
 
-const XP_THRESHOLDS := [0, 300, 900, 2700, 6500]   # XP needed for levels 1..5
-const MAX_LEVEL := 5
+const XP_THRESHOLDS := [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000]   # XP for levels 1..10
+const MAX_LEVEL := 10
 
 var id := "guest_boarvhal"
 var owner := ""
@@ -22,6 +22,9 @@ var nat20s := 0
 var biggest_hit := 0
 var tier_unlocked := 1
 var quest_given := false   # the Hooded Stranger has given the cellar quest
+var sewer_quest := false   # ... and, at 5th level, the Waterdeep Sewers quest (the grate opens)
+var sewer_tier := 4        # difficulty in the sewers (Tier IV-VI)
+var sewer_tier_unlocked := 4
 var tier := 1
 
 
@@ -104,7 +107,8 @@ func level_features(lv: int) -> String:
 func to_dict() -> Dictionary:
 	return {"id": id, "owner": owner, "name": name, "level": level, "xp": xp, "gold": gold, "potions": potions,
 		"runs": runs, "clears": clears, "deaths": deaths, "kills": kills, "best_depth": best_depth,
-		"nat20s": nat20s, "biggest_hit": biggest_hit, "tier_unlocked": tier_unlocked, "tier": tier, "quest_given": quest_given, "class": key, "updated": Time.get_unix_time_from_system()}
+		"nat20s": nat20s, "biggest_hit": biggest_hit, "tier_unlocked": tier_unlocked, "tier": tier, "quest_given": quest_given, "sewer_quest": sewer_quest,
+		"sewer_tier": sewer_tier, "sewer_tier_unlocked": sewer_tier_unlocked, "class": key, "updated": Time.get_unix_time_from_system()}
 
 
 func load_dict(d: Dictionary) -> void:
@@ -113,5 +117,8 @@ func load_dict(d: Dictionary) -> void:
 			set(k, int(d[k]))
 	level = clampi(level, 1, MAX_LEVEL)
 	quest_given = bool(d.get("quest_given", false))
+	sewer_quest = bool(d.get("sewer_quest", false))
+	sewer_tier = clampi(int(d.get("sewer_tier", 4)), 4, 6)
+	sewer_tier_unlocked = clampi(int(d.get("sewer_tier_unlocked", 4)), 4, 6)
 	tier_unlocked = clampi(tier_unlocked, 1, 3)
 	tier = clampi(tier, 1, tier_unlocked)

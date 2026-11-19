@@ -27,11 +27,13 @@ var h_move := 6
 var h_attacks := 0
 var h_dodging := false
 var h_prone := false
+var h_held := false     # Hold Person: lose the next turn
 var reckless_on := false
 var rage_rounds := 0
 var echo_col := NO_CELL
 var echo_node: Node2D
-const ECHO_RANGE := 6       # 30 feet: how far the echo may move per turn, and how far it may end from you
+const ECHO_RANGE := 6       # 30 feet: how far the echo may move per turn
+var echo_leash := 6         # how far it may end from you (60 ft from 10th level)
 var echo_move := 0          # squares the echo can still move this turn (free, no action)
 var conc := ""            # "entangle" or "moonbeam" while Suilean concentrates
 var beam_col := NO_CELL
@@ -67,6 +69,7 @@ func start(g: Node) -> void:
 	var room: World = game.room
 	z_index = 45   # the move and target markers show above the warren's darkness
 	round_no = 1
+	echo_leash = 12 if game.hero.level >= 10 else 6
 	boss_fury_used = false
 	echo_col = NO_CELL
 	reckless_on = false
@@ -76,6 +79,7 @@ func start(g: Node) -> void:
 	sw_rounds = 0
 	pending = ""
 	h_prone = false
+	h_held = false
 	h_dodging = false
 	_build_ui()
 
@@ -100,8 +104,8 @@ func start(g: Node) -> void:
 		p.kit.end_zone(p.kit.spirit)
 		_make_spirit_node()
 	for s in room.spawns:
-		if s[0] == "B":
-			boss = game.spawn_monster("boss", s[1])
+		if s[0] == "B" or s[0] == "F":
+			boss = game.spawn_monster(s[0], s[1])
 	for e: Enemy in game.living_enemies():
 		e.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 		e.set_physics_process(false)
@@ -112,7 +116,7 @@ func start(g: Node) -> void:
 		e.sprite.play("idle")
 		var dex := 2
 		_add(e, e.data.display, "foe", dex)
-	if boss:
+	if boss and boss.data.name == "Bugbear Chief":
 		boss.sprite.offset = Vector2(0, -18)
 		boss.weapon_pivot.position = Vector2(0, -14)
 		(boss.weapon_pivot.get_child(0) as Sprite2D).texture = Art.region("weapon_big_hammer")
@@ -121,6 +125,8 @@ func start(g: Node) -> void:
 	var lines: Array[String] = []
 	for c in combatants:
 		var r: int = game.dice.die(20)
+		if c.side == "hero" and game.player.stats.get("feral", false):
+			r = maxi(r, game.dice.die(20))   # Feral Instinct: advantage on initiative
 		c.init = r + c.dex
 		lines.append("%s %d (%d%+d)" % [c.name, c.init, r, c.dex])
 	combatants.sort_custom(func(a, b): return a.init > b.init or (a.init == b.init and a.side == "hero"))
@@ -323,7 +329,8 @@ func _finish(victory: bool) -> void:
 			var tw := e.create_tween()
 			tw.tween_property(e, "modulate:a", 0.0, 0.6)
 			tw.tween_callback(e.queue_free)
-		game.log_line("The Bugbear Chief falls in round %d. The goblins scatter into the dark. (%s at %d HP)" % [round_no, game.player.short_name(), game.player.hp])
+		var line: String = boss.data.get("defeat_line", "The boss falls in round %d.") if boss else "The fight is won in round %d."
+		game.log_line((line % round_no) + " (%s at %d HP)" % [game.player.short_name(), game.player.hp])
 		game.banner("VICTORY", Color(1, 0.85, 0.3))
 		game.on_battle_end(true)
 
@@ -359,6 +366,14 @@ func _hero_turn_start() -> void:
 			_next_turn()
 			return
 		h_prone = true
+	if h_held:
+		h_held = false
+		game.log_line("%s is held fast by the spell and loses the turn, then breaks free." % p.short_name())
+		_info("HELD! You can't move or act this turn.")
+		mode = Mode.BUSY
+		await get_tree().create_timer(1.2).timeout
+		_next_turn()
+		return
 	if h_prone:
 		h_prone = false
 		h_move = maxi(0, h_move - h_move / 2)
@@ -396,13 +411,17 @@ func _open_menu() -> void:
 	match key:
 		"ceridwen":
 			menu_items.append(["Magic Missile (%d slots)" % (k.slots[0] + k.slots[1]), "missile", can_act and k.slots[0] + k.slots[1] > 0])
-			if k.s.abilities.has("R"):
+			if k.s.abilities.get("R", "") == "fireball":
+				menu_items.append(["Fireball (%d 3rd+ slots)" % k.slots[1], "fireball", can_act and k.slots[1] > 0])
+			elif k.s.abilities.has("R"):
 				menu_items.append(["Scorching Ray (%d 2nd)" % k.slots[1], "ray", can_act and k.slots[1] > 0])
 			if not k.foresight.is_empty():
 				menu_items.append(["Foresight: " + ("ready %d" % k.foresight[k.foresight_armed] if k.foresight_armed >= 0 else "%s" % " / ".join(k.foresight.map(func(v): return str(v)))), "foresight", true])
 		"erwar":
 			menu_items.append(["Healing Word (bonus)", "heal", h_bonus > 0 and k.slots[0] + k.slots[1] > 0 and p.hp < p.max_hp])
-			if k.s.abilities.has("R"):
+			if k.s.abilities.get("R", "") == "spirit_guardians":
+				menu_items.append(["Spirit Guardians: ACTIVE" if conc == "guardians" else "Spirit Guardians (3rd+ slot)", "guardians", can_act and conc != "guardians" and k.slots[1] > 0])
+			elif k.s.abilities.has("R"):
 				if sw_rounds > 0:
 					menu_items.append(["Spectral mace attack (bonus)", "spirit", h_bonus > 0 and _targets_in_reach(5).size() > 0])
 				else:
@@ -648,6 +667,16 @@ func _choose(item: Array) -> void:
 			await _magic_missile()
 		"ray":
 			_ask_target("ray", 24, "SCORCHING RAY")
+		"fireball":
+			_ask_target("fireball", 30, "AIM THE FIREBALL")
+		"guardians":
+			h_action = 0
+			k._spend_slot(2)
+			conc = "guardians"
+			p.cast_pose()
+			game.banner("SPIRIT GUARDIANS", Color(1.0, 0.92, 0.6))
+			game.log_line("Action: Spirit Guardians. Foes that start their turn within 15 ft take 3d8 radiant (Wisdom save DC %d for half)." % int(k.s.spell_dc))
+			_open_menu()
 		"foresight":
 			k._cycle_foresight()
 			_open_menu()
@@ -726,6 +755,7 @@ func _target_chosen(t: Dictionary) -> void:
 	match pending:
 		"attack": await _do_attack(t)
 		"ray": await _scorching_ray(t)
+		"fireball": await _fireball(t)
 		"spirit":
 			h_bonus = 0
 			mode = Mode.BUSY
@@ -986,7 +1016,7 @@ func _hurt_foe(t: Dictionary, amount: int) -> void:
 	elif e == boss and not boss_fury_used and e.hp <= e.max_hp / 2:
 		boss_fury_used = true
 		boss_intent = "fury"
-		game.log_line("The Bugbear Chief roars, bloodied and furious.")
+		game.log_line(str(boss.data.get("fury_line", "The boss is bloodied and furious.")))
 		game.banner("THE CHIEF IS ENRAGED", Color(1, 0.5, 0.35))
 		_show_intent()
 
@@ -1039,6 +1069,32 @@ func _scorching_ray(t: Dictionary) -> void:
 		SpellFx.line(game, p.global_position + Vector2(p.facing * 8, -14), t.node.global_position + Vector2(0, -10), HeroKit.SPELL_COLORS.fire, 0.22)
 		await _hero_roll(t, wpn, "Scorching Ray")
 		await get_tree().create_timer(0.3).timeout
+	if active:
+		_open_menu()
+
+
+## Fireball: everyone within 20 ft (4 squares) of the target makes a Dexterity save.
+func _fireball(t: Dictionary) -> void:
+	var p: Player = game.player
+	mode = Mode.BUSY
+	h_action = 0
+	p.kit._spend_slot(2)
+	p.cast_pose()
+	var dice := 8 + (1 if game.hero.level >= 9 else 0)
+	var center: Vector2i = t.col
+	SpellFx.line(game, p.global_position + Vector2(0, -12), t.node.global_position + Vector2(0, -10), HeroKit.SPELL_COLORS.fire, 0.2)
+	await get_tree().create_timer(0.2).timeout
+	SpellFx.burst(game, _pos(center) + Vector2(0, -8), HeroKit.SPELL_COLORS.fire, 64.0, 0.5)
+	game.sfx.play("thud", -2.0)
+	var dmg := Rules.damage(game.dice, dice, 6, 0)
+	game.log_line("Action: Fireball, %dd6 %s = %d fire in a 20-ft radius (Dexterity save DC %d for half)." % [dice, str(dmg.faces), dmg.total, int(p.kit.s.spell_dc)])
+	for c in combatants.duplicate():
+		if c.side == "foe" and _alive(c) and _d(c.col, center) <= 4:
+			var sv: Dictionary = p.kit.enemy_save(c.node, "dex", "half the blast")
+			var total: int = dmg.total if not sv.success else floori(dmg.total / 2.0)
+			_foe_damage_text(c, total, HeroKit.SPELL_COLORS.fire)
+			await _hurt_foe(c, total)
+	await get_tree().create_timer(0.4).timeout
 	if active:
 		_open_menu()
 
@@ -1163,7 +1219,7 @@ func _move_echo(col: Vector2i) -> void:
 		tw.tween_property(echo_node, "global_position", _pos(col), 0.2)
 		await tw.finished
 	game.log_line("Boar-vhal sends his echo across the field (free movement).")
-	if _d(echo_col, _hero().col) > ECHO_RANGE:
+	if _d(echo_col, _hero().col) > echo_leash:
 		game.toast("The echo is more than 30 ft away: it fades at the end of your turn.")
 	_open_menu()
 
@@ -1191,7 +1247,7 @@ func _echo_swap() -> void:
 
 ## End of the hero's turn: an echo more than 30 feet away is destroyed.
 func _echo_range_check() -> void:
-	if echo_col != NO_CELL and _d(echo_col, _hero().col) > ECHO_RANGE:
+	if echo_col != NO_CELL and _d(echo_col, _hero().col) > echo_leash:
 		echo_col = NO_CELL
 		if is_instance_valid(echo_node):
 			echo_node.queue_free()
@@ -1242,17 +1298,15 @@ func _place_echo() -> void:
 func _pick_intent() -> void:
 	if boss_intent == "fury":
 		return
-	boss_intent = "shove" if round_no % 3 == 2 else "smash"
+	boss_intent = "special" if round_no % 3 == 2 else "smash"
 	_show_intent()
 
 
 func _show_intent() -> void:
 	if not intent_label:
 		return
-	var txt := {"smash": "CHIEF'S NEXT MOVE: MORNINGSTAR SMASH (REACH 10 FT)",
-		"shove": "CHIEF'S NEXT MOVE: SHOVE (STR SAVE OR PUSHED 10 FT AND PRONE)",
-		"fury": "CHIEF'S NEXT MOVE: FURY (TWO MORNINGSTAR SWINGS)"}
-	intent_label.text = txt.get(boss_intent, "")
+	var txt: Dictionary = boss.data.get("intents", {}) if boss else {}
+	intent_label.text = str(txt.get(boss_intent, ""))
 
 
 ## Goblins and the chief go for the nearest of the hero and the allies.
@@ -1286,13 +1340,24 @@ func _foe_turn(c: Dictionary) -> void:
 		await get_tree().create_timer(0.4).timeout
 		if not _alive(c):
 			return
+	# Spirit Guardians: radiant spirits strike any foe that starts its turn within 15 ft of Erwar.
+	if conc == "guardians" and _d(c.col, _hero().col) <= 3 and not p.is_down():
+		var gsv := k.enemy_save(e, "wis", "half")
+		var gd := Rules.damage(game.dice, 3 + (1 if game.hero.level >= 10 else 0), 8, 0)
+		var gtotal: int = gd.total if not gsv.success else floori(gd.total / 2.0)
+		_foe_damage_text(c, gtotal, HeroKit.SPELL_COLORS.radiant)
+		game.log_line("Spirit Guardians: %d radiant to %s." % [gtotal, c.name])
+		await _hurt_foe(c, gtotal)
+		await get_tree().create_timer(0.4).timeout
+		if not _alive(c):
+			return
 	if p.is_down() and hc.side == "hero":
 		game.log_line("%s jeers at the fallen %s." % [c.name, p.short_name()])
 		return
 	# Restrained: the chief spends his action tearing free; goblins stay put.
 	if c.restrained and e == boss:
 		var chk := Rules.save(game.dice, e.save_bonus("str"), int(k.s.spell_dc))
-		game.log_line("Bugbear Chief strains against the vines: STR %d vs DC %d, %s." % [chk.total, chk.dc, "breaks free" if chk.success else "still held"])
+		game.log_line("%s strains against the vines: STR %d vs DC %d, %s." % [e.data.name, chk.total, chk.dc, "breaks free" if chk.success else "still held"])
 		if chk.success:
 			c.restrained = false
 		await _end_foe_turn(c)
@@ -1304,9 +1369,12 @@ func _foe_turn(c: Dictionary) -> void:
 			await _foe_move_toward(c, hc, reach)
 			dist = _d(hc.col, c.col)
 		if dist <= reach:
-			match boss_intent if hc.side == "hero" or boss_intent != "shove" else "smash":
-				"shove":
-					await _boss_shove(c, hc)
+			match boss_intent if hc.side == "hero" or boss_intent != "special" else "smash":
+				"special":
+					if str(boss.data.get("special", "shove")) == "hold":
+						await _boss_hold(c, hc)
+					else:
+						await _boss_shove(c, hc)
 				"fury":
 					await _foe_attack(c, e.data.weapon, hc)
 					if _alive(hc) and not (hc.side == "hero" and p.is_down()):
@@ -1316,6 +1384,14 @@ func _foe_turn(c: Dictionary) -> void:
 				_:
 					await _foe_attack(c, e.data.weapon, hc)
 		_pick_intent()
+		await _end_foe_turn(c)
+	elif not e.data.get("ranged", false):
+		# Melee foes (cultists, rats): close in and strike.
+		if dist > 1 and not c.frightened and not c.restrained:
+			await _foe_move_toward(c, hc, 1)
+			dist = _d(hc.col, c.col)
+		if dist <= 1 and not c.frightened:
+			await _foe_attack(c, e.data.weapon, hc)
 		await _end_foe_turn(c)
 	else:
 		# Goblin archer: step away if cornered, then shoot.
@@ -1570,6 +1646,7 @@ func _foe_hits_echo(e: Enemy, wpn: Dictionary, disadvantage: bool, c: Dictionary
 			echo_node.queue_free()
 		echo_col = NO_CELL
 		game.sfx.play("deflect", -4.0)
+		game.player.reclaim_potential()
 	else:
 		FloatText.fling(game, echo_node.global_position + Vector2(0, -20), Vector2(0, -0.8), "MISS", "", Color(0.75, 0.75, 0.8), 0, 0.9)
 	await get_tree().create_timer(0.4).timeout
@@ -1581,7 +1658,7 @@ func _boss_shove(c: Dictionary, hc: Dictionary) -> void:
 	var mode_s := Dice.Mode.ADVANTAGE if rage_rounds > 0 else Dice.Mode.NORMAL
 	var sv := Rules.save(game.dice, p.hero.str_save(), dc, mode_s)
 	game.sfx.play("thud", -2.0)
-	game.log_line("Bugbear Chief shoves: Strength save d20 %s %+d = %d vs DC %d, %s." % [
+	game.log_line("%s shoves: Strength save d20 %s %+d = %d vs DC %d, %s." % [boss.data.name,
 		("%d|%d" % [sv.rolls[0], sv.rolls[1]]) if sv.rolls.size() > 1 else str(sv.kept), sv.bonus, sv.total, dc, "resisted" if sv.success else "failed"])
 	if sv.success:
 		FloatText.fling(game, p.global_position + Vector2(0, -24), Vector2(0, -1), "RESISTED", "", Color(0.7, 0.85, 1.0), 0, 1.0)
@@ -1601,6 +1678,21 @@ func _boss_shove(c: Dictionary, hc: Dictionary) -> void:
 	p.sprite.play("hit")
 	FloatText.fling(game, p.global_position + Vector2(0, -24), Vector2(0, -1), "PRONE", "", Color(1.0, 0.6, 0.4), 0, 1.0)
 	game.log_line("%s is knocked prone (melee attacks have advantage until %s stands)." % [p.short_name(), p.hero.pronoun("he")])
+
+
+## Hold Person: a Wisdom save or the hero is paralyzed and loses their next turn.
+func _boss_hold(c: Dictionary, hc: Dictionary) -> void:
+	var p: Player = game.player
+	var dc: int = int(boss.data.get("hold_dc", 12))
+	var sv := Rules.save(game.dice, int(p.stats.get("wis_save", 0)), dc)
+	SpellFx.burst(game, p.global_position + Vector2(0, -12), Color(0.7, 0.4, 0.9), 14.0, 0.5)
+	game.sfx.play("dodge", -4.0)
+	game.log_line("%s casts Hold Person: Wisdom save d20 %d %+d = %d vs DC %d, %s." % [boss.data.name, sv.kept, sv.bonus, sv.total, dc, "resisted" if sv.success else "held fast"])
+	if sv.success:
+		FloatText.fling(game, p.global_position + Vector2(0, -24), Vector2(0, -1), "RESISTED", "", Color(0.7, 0.85, 1.0), 0, 1.0)
+		return
+	h_held = true
+	FloatText.fling(game, p.global_position + Vector2(0, -24), Vector2(0, -1), "HELD", "", Color(0.8, 0.5, 1.0), 0, 1.0)
 
 
 # ---------------- presentation ----------------
@@ -1716,7 +1808,7 @@ func _draw() -> void:
 			draw_rect(Rect2(cell.x * T + 1, cell.y * T + 1, T - 2, T - 2), Color(0.55, 0.75, 1.0, 0.2) if ok else Color(1, 0.3, 0.3, 0.2))
 		draw_rect(Rect2(cursor_col.x * T, cursor_col.y * T, T, T), Color(0.55, 0.75, 1.0, 0.95), false, 1.0)
 		# 30 ft from Boar-vhal: where the echo must be at the end of the turn.
-		draw_rect(Rect2((hc.col.x - ECHO_RANGE) * T, (hc.col.y - ECHO_RANGE) * T, (ECHO_RANGE * 2 + 1) * T, (ECHO_RANGE * 2 + 1) * T), Color(0.55, 0.75, 1.0, 0.4), false, 1.0)
+		draw_rect(Rect2((hc.col.x - echo_leash) * T, (hc.col.y - echo_leash) * T, (echo_leash * 2 + 1) * T, (echo_leash * 2 + 1) * T), Color(0.55, 0.75, 1.0, 0.4), false, 1.0)
 	elif mode == Mode.TARGET and not target_list.is_empty():
 		var t: Dictionary = target_list[target_pick]
 		var h := 34.0 if t.node == boss else 18.0

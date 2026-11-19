@@ -15,6 +15,75 @@ const QUEST_LINES := [
 ]
 
 
+## The second quest, offered at 5th level: the Cult of the Dragon in the Waterdeep Sewers.
+const SEWER_LINES := [
+	"Well, well. Look who's grown into their boots. Sit.",
+	"The goblins were only a symptom. Someone paid that bugbear in coin stamped with a five-headed dragon.",
+	"The coin leads to the Cult of the Dragon. They've been moving through the sewers beneath Waterdeep.",
+	"The rusted grate in Kieran's cellar opens onto the old drains. Rats the size of hounds down there, and worse.",
+	"Find their hideout. The City Watch pays well, if the cult doesn't pay you first. Roll well.",
+]
+
+## Once the sewer quest is taken, the inn talks about the cult instead of the goblins.
+const CULT_LINES := {
+	"npc_ceridwen": ["Five heads, five colours. The cult's sigil is in every omen I read tonight.",
+		"Dragon cultists under Waterdeep. I foresaw it. I also foresaw the smell.",
+		"If you find any of their scrolls, bring them to me. Unread."],
+	"npc_erwar": ["Cultists praying to Tiamat beneath our streets. War has found us at home.",
+		"The sewers will test your stomach before your sword. Pray, then hold your nose.",
+		"Strike first at their priests. A cult without its voice is just a crowd."],
+	"npc_lyburnum": ["A cult in the sewers. Good. Something worth conquering.",
+		"Let them call on dragons. I'll answer for the city.",
+		"Kieran still waters the ale. The cult is the bigger problem. Barely."],
+	"npc_suilean": ["The rats are fleeing the drains. Something down there frightens even them.",
+		"The water under the city tastes of smoke and old blood. That's the cult.",
+		"Bring me a sewer mushroom. Use gloves."],
+	"npc_galinnadin": ["I hear the cult pays in gold. I hear a lot of things.",
+		"I know a fence who knows a cultist. I'll pretend I don't.",
+		"The drains under the Dock Ward are full of footprints. Robed ones."],
+	"npc_orfi": ["Breathe in. Breathe out. Do not breathe in the sewer.",
+		"Calm mind, clean fists. The cult has neither.",
+		"Stillness first. Then a very long bath."],
+	"npc_boarvhal": ["Cultists? In the sewers? Under MY tavern?",
+		"I'll punch the dragon out of them.",
+		"Kieran, one more keg. For courage. Sewer courage."],
+	"npc_dm": ["The cult is patient. Are you?",
+		"Somewhere below, someone is chanting. Roll for initiative.",
+		"*wears an evil grin and chuckles to himself*",
+		"...I told them it was a bad idea...",
+		"...the paladin used the bow..."],
+	"npc_kieran": ["Robed folk asking after my cellar. I told them it's full. Of you lot.",
+		"First goblins, now cultists. I should charge rent to the underground.",
+		"Close that grate behind you. The smell gets into the stew."],
+	"npc_server": ["Somebody left a coin with a dragon on it as a tip. I'm not touching it.",
+		"Sewer boots by the door, please!"],
+	"npc_dishwasher": ["If you bring back cult goblets, I'm not washing those either.",
+		"Something's chanting in the drains. Under my sink."],
+	"npc_bard": ["New song: 'The Cultist and the Grate'. It rhymes 'Tiamat' with 'not that'.",
+		"Tips in the hat. Dragon coins in the river."],
+	"npc_patron_a": ["Heard there's dragon cultists in the sewers.", "My cousin went down a drain and came back in a robe."],
+	"npc_patron_b": ["Heard they worship a five-headed dragon.", "Five heads. Imagine the hats."],
+	"npc_patron_c": ["The City Watch won't go down there. Says something about the rats.", "I'll stay up here, thanks."],
+}
+
+const CHATTER_CULT := [
+	[["npc_ceridwen", "Five heads on that sigil."], ["npc_erwar", "Five chances to strike one off."]],
+	[["npc_patron_a", "Heard there's cultists in the sewers."], ["npc_patron_b", "Heard the rats are on their side."]],
+	[["npc_lyburnum", "Another."], ["npc_kieran", "You're not going down the drain drunk."]],
+	[["npc_kieran", "Who left this dragon coin?"], ["npc_patron_c", "Not me. Obviously not me."]],
+	[["npc_boarvhal", "*drains the keg* CULTISTS!"], ["npc_kieran", "That's not how kegs work, Boar-vhal."]],
+	[["npc_suilean", "The drains smell of smoke."], ["npc_orfi", "Then breathe through your mouth."]],
+	[["npc_bard", "*strums a sinister tune*"]],
+	[["npc_server", "Mind the sewer muck!"]],
+	[["npc_dm", "*rolls a die behind a little screen*"]],
+	[["npc_dm", "*wears an evil grin and chuckles to himself*"]],
+	[["npc_dm", "...I told them it was a bad idea..."]],
+	[["npc_dm", "...the paladin used the bow..."]],
+	[["npc_galinnadin", "*counts coins with dragons on them*"]],
+	[["npc_dishwasher", "WHO TRACKED SEWER INTO MY KITCHEN?"]],
+]
+
+
 ## Party members and the DM. Lines are short and in character; easy to edit.
 const CAST := [
 	{"key": "npc_ceridwen", "name": "Ceridwen", "match": "ceridwen", "x": 300.0, "y": 202.0, "sit": true, "face": 1, "lines": [
@@ -162,7 +231,10 @@ func npcs_from_map() -> void:
 			lift = 0.0
 			face = 1
 		var patrol: Variant = d[5] if d.size() > 5 else null
-		var n := room.add_npc(key, info.name, pos, info.lines, sit, face, lift, patrol == null)
+		var talk: Array = info.lines
+		if game.hero and game.hero.sewer_quest and CULT_LINES.has(key):
+			talk = CULT_LINES[key]
+		var n := room.add_npc(key, info.name, pos, talk, sit, face, lift, patrol == null)
 		if patrol != null:
 			n.patrol = Vector2(patrol[0], patrol[1]) * World.T
 			n.speed = 30.0
@@ -360,7 +432,7 @@ func _process(delta: float) -> void:
 	if _chat_t <= 0.0 and _chat_queue.is_empty():
 		_chat_t = randf_range(5.0, 9.0)
 		var options := []
-		for ex in CHATTER:
+		for ex in (CHATTER_CULT if game.hero and game.hero.sewer_quest else CHATTER):
 			var first := _by_key(ex[0][0])
 			if first and first.visible and first.global_position.distance_to(game.player.global_position) < 200.0:
 				options.append(ex)

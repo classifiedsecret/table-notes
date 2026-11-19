@@ -842,6 +842,149 @@ def cobweb():             # 16 x 14 a web in a corner of the wall
     return im
 
 
+
+
+# ---------------- the Waterdeep Sewers ----------------
+SW1, SW2, SW3 = (78, 84, 80, 255), (90, 96, 90, 255), (64, 70, 66, 255)
+MOSS1, MOSS2 = (70, 104, 60, 255), (96, 132, 74, 255)
+WATER1, WATER2, WATER3 = (30, 52, 50, 255), (52, 90, 80, 255), (150, 190, 160, 255)
+
+
+def sewer_tile(seed):
+    im = canvas(16, 16); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 15], fill=(54, 58, 56, 255))
+    tones = (SW1, SW2, SW3, SW1)
+    d.rectangle([1, 1, 7, 7], fill=tones[seed]); d.rectangle([9, 1, 14, 7], fill=tones[(seed + 1) % 4])
+    d.rectangle([1, 9, 14, 14], fill=tones[(seed + 2) % 4])
+    if seed in (1, 3):
+        d.point((3 + seed, 11), fill=MOSS1); d.point((4 + seed, 11), fill=MOSS2); d.point((11, 4), fill=MOSS1)
+    if seed == 2:
+        d.ellipse([8, 9, 13, 12], fill=(60, 76, 66, 255))     # a puddle
+    return im
+
+
+for k in range(4):
+    items['sewer_%d' % (k + 1)] = (lambda k=k: sewer_tile(k))
+
+
+def water_tile(seed):
+    im = canvas(16, 16); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 15], fill=WATER1)
+    for (x, y) in ((2 + seed * 3, 3), (9 - seed, 8), (4 + seed, 12)):
+        d.line([x, y, x + 3, y], fill=WATER2)
+    d.point(((7 + seed * 5) % 16, (5 + seed * 7) % 16), fill=WATER3)
+    return im
+
+
+items['water_1'] = lambda: water_tile(0)
+items['water_2'] = lambda: water_tile(1)
+
+
+@item
+def water_edge():         # 16 x 4 a lip of stone along the top of a channel
+    im = canvas(16, 4); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 2], fill=SW3); d.line([0, 3, 15, 3], fill=(30, 40, 34, 255))
+    d.point((4, 1), fill=MOSS1); d.point((11, 1), fill=MOSS2)
+    return im
+
+
+@item
+def plank_bridge():       # 16 x 16 planks across a channel
+    im = canvas(16, 16); d = ImageDraw.Draw(im)
+    for y in (0, 5, 10):
+        box(d, 0, y + 1, 15, y + 4, W1)
+        d.line([1, y + 2, 14, y + 2], fill=W2)
+    return im
+
+
+@item
+def outflow():            # 18 x 16 a pipe in the wall, trickling
+    im = canvas(18, 16); d = ImageDraw.Draw(im)
+    d.ellipse([1, 0, 16, 12], fill=(40, 40, 44, 255), outline=O)
+    d.ellipse([4, 2, 13, 10], fill=(14, 16, 16, 255))
+    d.rectangle([7, 9, 10, 15], fill=WATER2); d.point((8, 15), fill=WATER3)
+    return im
+
+
+@item
+def moss():               # 18 x 10 a flat moss patch
+    im = canvas(18, 10); d = ImageDraw.Draw(im)
+    d.ellipse([0, 2, 11, 9], fill=MOSS1); d.ellipse([6, 0, 17, 8], fill=MOSS1); d.ellipse([4, 3, 12, 7], fill=MOSS2)
+    return im
+
+
+@item
+def rat_nest():           # 22 x 12 a heap of rags, straw and bones where rats breed
+    im = canvas(22, 12); d = ImageDraw.Draw(im)
+    d.ellipse([0, 3, 21, 11], fill=(104, 88, 60, 255), outline=O)
+    for (x0, y0, x1, y1) in ((3, 5, 9, 7), (11, 4, 18, 6), (6, 8, 14, 9)):
+        d.line([x0, y0, x1, y1], fill=(176, 150, 96, 255))
+    d.line([13, 7, 19, 9], fill=(226, 216, 196, 255))
+    return im
+
+
+@item
+def cult_banner():        # 16 x 30 red and black, a five-headed dragon sigil
+    im = canvas(16, 30); d = ImageDraw.Draw(im)
+    box(d, 1, 0, 14, 25, (26, 18, 24, 255))
+    d.polygon([(1, 25), (8, 29), (14, 25)], fill=(26, 18, 24, 255), outline=O)
+    for i, c in enumerate(((200, 40, 40, 255), (60, 120, 220, 255), (60, 180, 80, 255), (240, 240, 240, 255), (30, 30, 30, 255))):
+        x = 3 + i * 2
+        d.line([x, 6, 8, 14], fill=c)
+        d.point((x, 5), fill=c)
+    d.ellipse([5, 13, 11, 19], fill=(150, 30, 34, 255), outline=O)
+    d.line([1, 0, 14, 0], fill=GOLD)
+    return im
+
+
+@item
+def candles():            # 14 x 10 a cluster of black candles
+    im = canvas(14, 10); d = ImageDraw.Draw(im)
+    for (x, h) in ((2, 6), (6, 8), (10, 5)):
+        d.rectangle([x, 9 - h, x + 2, 9], fill=(40, 30, 40, 255), outline=O)
+        d.point((x + 1, 9 - h - 1), fill=(255, 190, 80, 255))
+    return im
+
+
+@item
+def dragon_altar():       # 34 x 24 the cult's altar, a dragon skull on dark stone
+    im = canvas(34, 24); d = ImageDraw.Draw(im)
+    box(d, 2, 10, 31, 23, (44, 38, 48, 255))
+    d.rectangle([3, 11, 30, 13], fill=(70, 60, 76, 255))
+    bone = (226, 216, 196, 255)
+    d.polygon([(10, 10), (17, 1), (24, 10)], fill=bone, outline=O)
+    d.polygon([(6, 4), (12, 7), (11, 9)], fill=bone, outline=O); d.polygon([(28, 4), (22, 7), (23, 9)], fill=bone, outline=O)
+    d.point((15, 6), fill=(200, 40, 40, 255)); d.point((19, 6), fill=(200, 40, 40, 255))
+    d.rectangle([4, 15, 29, 16], fill=(150, 30, 34, 255))
+    return im
+
+
+
+
+@item
+def sewer_arch():         # 28 x 30 a dark brick archway: the way on through the sewers
+    im = canvas(28, 30); d = ImageDraw.Draw(im)
+    d.rectangle([0, 6, 27, 29], fill=S3)
+    d.ellipse([0, 0, 27, 20], fill=S3)
+    for (x, y) in ((1, 10), (24, 10), (1, 18), (24, 18), (1, 25), (24, 25), (6, 2), (18, 2), (12, 0)):
+        d.rectangle([x, y, x + 3, y + 3], fill=S2, outline=MORTAR)
+    d.ellipse([4, 4, 23, 22], fill=(12, 14, 14, 255))
+    d.rectangle([4, 13, 23, 29], fill=(12, 14, 14, 255))
+    d.rectangle([4, 26, 23, 29], fill=WATER1)
+    return im
+
+
+@item
+def sewer_arch_barred():  # the same with an iron portcullis until the room is cleared
+    im = items['sewer_arch'](); d = ImageDraw.Draw(im)
+    iron = (96, 98, 106, 255)
+    for x in range(6, 23, 4):
+        d.line([x, 5, x, 28], fill=iron)
+    for y in (12, 20):
+        d.line([4, y, 23, y], fill=iron)
+    return im
+
+
 # ---------------- pack ----------------
 built = {k: (fn() if callable(fn) else fn) for k, fn in items.items()}
 order = sorted(built, key=lambda k: -built[k].size[1])

@@ -1,10 +1,11 @@
 class_name SpellZone
 extends Node2D
 ## A lasting spell in a room: Entangle (vines on the ground), Moonbeam (a column of light)
-## or Spiritual Weapon (a spectral mace that fights beside the hero).
+## Spiritual Weapon (a spectral mace that fights beside the hero) or Spirit Guardians
+## (radiant spirits circling the hero, 15 ft).
 ## Every TICK seconds (about one 5e round compressed) it acts on the enemies it touches.
 
-enum Kind { ENTANGLE, MOONBEAM, SPIRIT }
+enum Kind { ENTANGLE, MOONBEAM, SPIRIT, GUARDIANS }
 
 const TICK := 2.0
 
@@ -76,8 +77,12 @@ func _physics_process(delta: float) -> void:
 									e.restrain(life - _t)
 								else:
 									_saved.append(e)
+						elif kind == Kind.GUARDIANS:
+							kit.guardians_hit(e)
 						else:
 							kit.moonbeam_hit(e)
+	if kind == Kind.GUARDIANS:
+		global_position = game.player.global_position
 	queue_redraw()
 
 
@@ -142,6 +147,13 @@ func _draw() -> void:
 			draw_rect(Rect2(-half_w * 0.4, -120, half_w * 0.8, 120), Color(0.9, 0.95, 1.0, pulse * fade))
 		Kind.SPIRIT:
 			draw_circle(Vector2.ZERO, 9.0, Color(0.5, 0.75, 1.0, 0.14 * fade))
+		Kind.GUARDIANS:
+			_ellipse(half_w, Color(1.0, 0.9, 0.55, 0.12 * fade))
+			for i in 6:
+				var a := _t * 1.6 + TAU * i / 6.0
+				var at := Vector2(cos(a) * half_w * 0.8, sin(a) * half_w * 0.6)
+				draw_circle(at + Vector2(0, -6), 2.5, Color(1.0, 0.95, 0.7, 0.85 * fade))
+				draw_line(at + Vector2(0, -6), at + Vector2(-cos(a + 1.2) * 4.0, -6.0 - sin(a + 1.2) * 3.0), Color(1, 0.9, 0.6, 0.5 * fade), 1.0)
 
 
 func _ellipse(r: float, col: Color) -> void:

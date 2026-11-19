@@ -150,6 +150,24 @@ func airborne() -> bool:
 	return _hop_t > 0.0
 
 
+## How far the echo may stray before it fades: 30 ft, 60 ft from 10th level.
+func echo_range_px() -> float:
+	return ECHO_RANGE_PX * (2.0 if hero and hero.level >= 10 else 1.0)
+
+
+## Reclaim Potential (6th level): when the echo is destroyed, recover 2d6 + Con hit points,
+## three times per long rest.
+var reclaim_left := 3
+
+func reclaim_potential() -> void:
+	if not stats.get("reclaim", false) or reclaim_left <= 0 or is_down():
+		return
+	reclaim_left -= 1
+	var d := Rules.damage(game.dice, 2, 6, 3)
+	heal(int(d.total))
+	game.log_line("Reclaim Potential: Boar-vhal shakes off the lost echo and recovers %d HP (%d left)." % [d.total, reclaim_left])
+
+
 ## The hero's sprite sheet and weapon (or the Wild Shape beast's).
 func _apply_look() -> void:
 	var key: String = hero.key if hero else "boarvhal"
@@ -159,11 +177,13 @@ func _apply_look() -> void:
 		sprite.sprite_frames = Art.strip_frames(load("res://assets/sprites/%s.png" % form_data.sprite), fr[0], fr[1], {
 			"idle": [0, 4, 5, true], "run": [4, 4, 12, true], "hit": [8, 1, 1, false]})
 		sprite.offset = Vector2(0, -fr[1] / 2.0)
+		sprite.self_modulate = form_data.get("tint", Color.WHITE)
 		weapon_pivot.visible = false
 	else:
 		sprite.sprite_frames = Art.strip_frames(load("res://assets/sprites/%s.png" % info.sprite), 16, 28, {
 			"idle": [0, 4, 6, true], "run": [4, 4, 11, true], "hit": [8, 1, 1, false]})
 		sprite.offset = Vector2(0, -14)
+		sprite.self_modulate = Color.WHITE
 		weapon_sprite.texture = Art.region(info.weapon_sprite)
 		weapon_pivot.visible = not is_down()
 	sprite.play("idle")
@@ -313,7 +333,7 @@ func _physics_process(delta: float) -> void:
 				kit.press("Y")
 	_update_aim(input, delta)
 	# No weapons out in the inn.
-	weapon_pivot.visible = not (game.inn and game.inn.is_inside_tree()) and state != State.DOWN and state != State.DEAD
+	weapon_pivot.visible = not (game.inn and game.inn.is_inside_tree()) and state != State.DOWN and state != State.DEAD and form_data.is_empty()
 	if _potion_t > 0.0:
 		_potion_t -= delta
 		input *= 0.3
@@ -526,6 +546,18 @@ func roll_attack(e: Enemy, wpn: Dictionary) -> Dictionary:
 			dmg.faces.append(extra)
 			dmg.total += extra
 			dmg.raw += extra
+		if atk.crit and int(stats.get("brutal", 0)) > 0 and form_data.is_empty() and not wpn.get("spell", false):
+			# Brutal Critical: one more weapon die on a critical hit.
+			var bx: int = game.dice.die(wpn.sides)
+			dmg.faces.append(bx)
+			dmg.total += bx
+			dmg.raw += bx
+			reasons.append("Brutal Critical +%d" % bx)
+		if stats.get("divine_strike", false) and form_data.is_empty() and wpn.get("kind", "") == "melee":
+			# Divine Strike: +1d8 radiant on a weapon hit (2d8 on a crit).
+			var ds := Rules.damage(game.dice, 1, 8, 0, atk.crit)
+			dmg.total += int(ds.total)
+			reasons.append("Divine Strike +%d" % ds.total)
 		if wpn.get("kind", "") == "melee" and not wpn.get("spell", false):
 			var sm := kit.smite_damage(atk.crit)
 			if not sm.is_empty():
@@ -810,7 +842,7 @@ func _update_echo(delta: float) -> void:
 			echo_target = Vector2.INF
 		else:
 			echo.global_position += dv.normalized() * step
-	var far := echo.global_position.distance_to(global_position) > ECHO_RANGE_PX
+	var far := echo.global_position.distance_to(global_position) > echo_range_px()
 	echo.modulate.a = (0.45 + 0.4 * absf(sin(Time.get_ticks_msec() / 90.0))) if far else 1.0
 	# End of a "turn" (a round every 2 seconds): more than 30 feet away and it fades.
 	_echo_round -= delta

@@ -182,11 +182,11 @@ static func cellar() -> Dictionary:
 		["shelf", 22.0, 11.9, {"solid": [44, 6]}],
 	]
 	return {"title": "THE GRYPHON'S ROOST - CELLAR", "theme": "cellar", "dark": true, "grid": g, "cave_x": 4,
-		"spawns": {"ladder": Vector2(24.5, 4.4), "breach": Vector2(6.5, 7.6)},
+		"spawns": {"ladder": Vector2(24.5, 4.4), "breach": Vector2(6.5, 7.6), "grate": Vector2(13.0, 4.2)},
 		"links": [
 			{"cells": [Vector2i(24, 2), Vector2i(25, 2)], "to": "taproom", "spawn": "cellar", "walk": true},
 			{"cells": [Vector2i(0, 6), Vector2i(0, 7), Vector2i(1, 6), Vector2i(1, 7), Vector2i(2, 6), Vector2i(2, 7)], "to": "warren", "walk": true},
-			{"cells": [Vector2i(12, 2), Vector2i(13, 2)], "to": "sewer", "label": "EXAMINE THE SEWER GRATE"},
+			{"cells": [Vector2i(12, 2), Vector2i(13, 2)], "to": "sewer", "label": "THE SEWER GRATE"},
 		],
 		"props": props, "npcs": []}
 
@@ -203,7 +203,8 @@ static func get_map(name: String) -> Dictionary:
 	return taproom()
 
 
-## A cave room of the Goblin Warren as a map.
+## A cave room of the Goblin Warren, or a stretch of the Waterdeep Sewers, as a map.
 static func cave(name: String) -> Dictionary:
-	return {"title": "THE GOBLIN WARREN", "theme": "cave", "dark": true, "grid": TDRooms.grid(name),
-		"spawns": {}, "links": [], "props": [], "npcs": []}
+	var sewer := name.begins_with("sewer")
+	return {"title": "THE WATERDEEP SEWERS" if sewer else "THE GOBLIN WARREN", "theme": "sewer" if sewer else "cave",
+		"dark": true, "grid": TDRooms.grid(name), "spawns": {}, "links": [], "props": [], "npcs": []}

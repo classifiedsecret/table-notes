@@ -56,6 +56,7 @@ func refresh() -> void:
 
 ## Start of a delve: everything back.
 func long_rest() -> void:
+	p.reclaim_left = 3
 	slots = (s.slots as Array).duplicate()
 	lay_pool = int(s.lay_pool)
 	channel = int(s.channel)
@@ -126,6 +127,8 @@ func press(slot: String) -> void:
 				game.toast("No echo to command. Press I to make one.")
 		"magic_missile": _magic_missile()
 		"scorching_ray": _scorching_ray()
+		"fireball": _fireball()
+		"spirit_guardians": _spirit_guardians()
 		"foresight": _cycle_foresight()
 		"healing_word": _healing_word()
 		"spiritual_weapon": _spiritual_weapon()
@@ -248,6 +251,65 @@ func _scorching_ray() -> void:
 			if is_instance_valid(e) and not e.is_dead():
 				SpellFx.line(game, _hand(), e.global_position + Vector2(0, -8), SPELL_COLORS.fire, 0.22)
 				spell_attack(e, "Scorching Ray", 2, 6, 0, "fire"))
+
+
+## Fireball (3rd level): a bead of flame streaks to the nearest foe and bursts, 20-ft radius.
+## Every foe in the blast makes a Dexterity save: 8d6 fire, half on a success. Higher-slot
+## casting (from 9th level, when 4th- and 5th-level slots come in) adds a d6.
+func _fireball() -> void:
+	var targets := _enemies_in_view()
+	if targets.is_empty():
+		game.toast("No foe in sight for Fireball.")
+		return
+	var lvl := _spend_slot(2)
+	if lvl == 0:
+		_no_slot(2)
+		return
+	_cast_t = 0.6
+	var t: Enemy = targets[0]
+	_face(t)
+	p.cast_pose()
+	var at := t.global_position
+	var dice := 8 + (1 if int(game.hero.level) >= 9 else 0)
+	game.log_line("Fireball: %dd6 fire in a 20-ft radius (Dexterity save DC %d, half on a success)." % [dice, int(s.spell_dc)])
+	game.sfx.play("swing", -6.0, 0.4)
+	SpellFx.line(game, _hand(), at + Vector2(0, -8), SPELL_COLORS.fire, 0.18)
+	get_tree().create_timer(0.18).timeout.connect(func():
+		SpellFx.burst(game, at + Vector2(0, -8), SPELL_COLORS.fire, 64.0, 0.5)
+		game.sfx.play("thud", -2.0)
+		var dmg := Rules.damage(game.dice, dice, 6, 0)
+		for e: Enemy in game.living_enemies():
+			var d := e.global_position - at
+			if Vector2(d.x, d.y / 0.75).length() <= 64.0:
+				var sv := enemy_save(e, "dex", "half the blast")
+				var total: int = dmg.total if not sv.success else floori(dmg.total / 2.0)
+				_damage_enemy(e, total, SPELL_COLORS.fire, "Fireball: %dd6 %s = %d fire to %s%s." % [dice, str(dmg.faces), dmg.total, e.data.name, " (halved: %d)" % total if sv.success else ""]))
+
+
+## Spirit Guardians (3rd level, concentration, 10 minutes): spirits circle Erwar out to 15 ft.
+## A foe there takes 3d8 radiant each round (Wisdom save for half).
+func _spirit_guardians() -> void:
+	if is_instance_valid(concentration) and concentration.kind == SpellZone.Kind.GUARDIANS:
+		game.toast("The spirits already guard you.")
+		return
+	var lvl := _spend_slot(2)
+	if lvl == 0:
+		_no_slot(2)
+		return
+	end_zone(concentration)
+	_cast_t = 0.5
+	p.cast_pose()
+	concentration = SpellZone.make(game, self, SpellZone.Kind.GUARDIANS, p.global_position, 60.0)
+	concentration.half_w = 48.0
+	game.log_line("Spirit Guardians: radiant spirits circle Erwar (15 ft, 3d8 radiant, Wisdom save DC %d for half)." % int(s.spell_dc))
+	game.sfx.play("dodge", -6.0)
+
+
+func guardians_hit(e: Enemy) -> void:
+	var sv := enemy_save(e, "wis", "half")
+	var dmg := Rules.damage(game.dice, 3 + (1 if int(game.hero.level) >= 10 else 0), 8, 0)
+	var total: int = dmg.total if not sv.success else floori(dmg.total / 2.0)
+	_damage_enemy(e, total, SPELL_COLORS.radiant, "Spirit Guardians: %s = %d radiant to %s%s." % [str(dmg.faces), dmg.total, e.data.name, " (halved: %d)" % total if sv.success else ""])
 
 
 func _cycle_foresight() -> void:
@@ -514,7 +576,7 @@ func _wild_shape(which: String) -> void:
 		return
 	wild_uses -= 1
 	end_zone(concentration)
-	var f: Dictionary = Kits.FORMS[which]
+	var f: Dictionary = Kits.FORMS["brown_bear" if which == "bear" and s.get("brown_bear", false) else which]
 	form = which
 	form_max = int(f.hp)
 	form_hp = form_max
@@ -575,7 +637,7 @@ func status_line() -> String:
 			return t
 		"suilean":
 			if form != "":
-				return "%s %d/%d  SHAPES %d" % [str(Kits.FORMS[form].name).to_upper(), maxi(0, form_hp), form_max, wild_uses]
+				return "%s %d/%d  SHAPES %d" % [str(Kits.FORMS["brown_bear" if form == "bear" and s.get("brown_bear", false) else form].name).to_upper(), maxi(0, form_hp), form_max, wild_uses]
 			var t := sl
 			if int(s.wild_uses) > 0:
 				t += "  SHAPES %d" % wild_uses

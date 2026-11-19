@@ -66,4 +66,5 @@ const RECTS := {
 	"weapon_mace": Rect2(339, 39, 10, 24),
 	"weapon_knight_sword": Rect2(339, 98, 10, 29),
 	"weapon_green_magic_staff": Rect2(340, 129, 8, 30),
+	"weapon_red_gem_sword": Rect2(339, 10, 10, 21),
 }

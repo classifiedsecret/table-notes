@@ -346,10 +346,14 @@ func _fade_hints() -> void:
 	hero_panel.modulate.a = lerpf(hero_panel.modulate.a, 0.25 if hb else 1.0, 0.25)
 
 
+func _hero_level() -> int:
+	return game.hero.level if game and game.hero else 1
+
+
 func set_hero_hints(key: String) -> void:
 	_hero_key = key
 	if not _inn_mode:
-		_show_hints(Kits.hints(key))
+		_show_hints(Kits.hints(key, _hero_level()))
 
 
 ## In the inn the combat readouts are hidden and the key hints change.
@@ -357,7 +361,7 @@ func set_inn_mode(on: bool) -> void:
 	_inn_mode = on
 	stats_panel.visible = not on
 	log_panel.visible = not on
-	_show_hints(HINTS_INN if on else Kits.hints(_hero_key))
+	_show_hints(HINTS_INN if on else Kits.hints(_hero_key, _hero_level()))
 	if not on:
 		hide_dialogue()
 

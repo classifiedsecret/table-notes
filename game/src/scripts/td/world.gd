@@ -74,6 +74,9 @@ func build(g: Node, m: Dictionary) -> void:
 		for x in w:
 			var c := Vector2i(x, y)
 			var ch := cell(c)
+			if ch == "~" or ch == "=":
+				_water(c, ch == "=")
+				continue
 			if not floorish(ch):
 				astar.set_point_solid(c, true)
 				if ch == "#":
@@ -99,8 +102,14 @@ func cell(c: Vector2i) -> String:
 	return rows[c.y][c.x]
 
 
+## Open space (floor, or sewer water you can see across): walls show their faces to it.
 func floorish(ch: String) -> bool:
 	return ch != "#" and ch != " "
+
+
+## Where you can walk: open space that isn't sewer water (a plank bridge is fine).
+func walkable(ch: String) -> bool:
+	return floorish(ch) and ch != "~"
 
 
 func is_solid_cell(x: int, y: int) -> bool:
@@ -153,6 +162,8 @@ func _floor_tile(c: Vector2i) -> void:
 	var s := Sprite2D.new()
 	if _theme_at(c) == "cave":
 		s.texture = TDArt.tex("dirt_%d" % (1 + ((c.x * 7 + c.y * 13 + (c.x * c.y) % 5) % 4)))
+	elif theme == "sewer":
+		s.texture = TDArt.tex("sewer_%d" % (1 + ((c.x * 5 + c.y * 7 + (c.x * c.y) % 3) % 4)))
 	elif theme == "cellar":
 		s.texture = TDArt.tex("flag_%d" % (1 + ((c.x * 5 + c.y * 3 + (c.x * c.y) % 3) % 4)))
 	else:
@@ -165,7 +176,7 @@ func _floor_tile(c: Vector2i) -> void:
 ## west and east walls show their top with the inner lip, carried up to the top row so they meet
 ## the north cap in a clean T; the south wall shows its lip along the top; inner corners join.
 func _wall(c: Vector2i) -> void:
-	var pre: String = {"cave": "cave_", "cellar": "stone_"}.get(_theme_at(c), "wall_")
+	var pre: String = {"cave": "cave_", "cellar": "stone_", "sewer": "stone_"}.get(_theme_at(c), "wall_")
 	var f := func(dx: int, dy: int) -> bool: return floorish(cell(c + Vector2i(dx, dy)))
 	var base := Node2D.new()
 	base.position = Vector2(c.x * T + T / 2.0, c.y * T + T)
@@ -216,9 +227,43 @@ func _tspr(parent: Node, name: String, off: Vector2) -> Sprite2D:
 	return s
 
 
+## A channel of sewer water (impassable; arrows and spells cross it) or a plank bridge over it.
+func _water(c: Vector2i, bridge: bool) -> void:
+	var s := Sprite2D.new()
+	s.texture = TDArt.tex("water_%d" % (1 + (c.x + c.y) % 2))
+	s.position = cell_center(c)
+	floor_layer.add_child(s)
+	var up := cell(c + Vector2i(0, -1))
+	if up != "~" and up != "=":
+		var lip := Sprite2D.new()
+		lip.texture = TDArt.tex("water_edge")
+		lip.position = Vector2(c.x * T + T / 2.0, c.y * T + 2)
+		lip.z_index = 1
+		floor_layer.add_child(lip)
+	var down := cell(c + Vector2i(0, 1))
+	if down != "~" and down != "=":
+		var lip2 := Sprite2D.new()
+		lip2.texture = TDArt.tex("water_edge")
+		lip2.flip_v = true
+		lip2.position = Vector2(c.x * T + T / 2.0, c.y * T + T - 2)
+		lip2.z_index = 1
+		floor_layer.add_child(lip2)
+	if bridge:
+		var b := Sprite2D.new()
+		b.texture = TDArt.tex("plank_bridge")
+		b.position = cell_center(c)
+		b.z_index = 2
+		floor_layer.add_child(b)
+		return
+	astar.set_point_solid(c, true)
+	_collide(Rect2(c.x * T, c.y * T, T, T))
+
+
 ## What a dungeon map cell holds besides floor.
 func _cell_content(c: Vector2i, ch: String) -> void:
 	var foot := Vector2(c.x * T + T / 2.0, c.y * T + T - 3)
+	if theme == "sewer" and _sewer_content(c, ch, foot):
+		return
 	match ch:
 		"S": player_spawn = foot
 		"g": spawns.append(["minion", foot])
@@ -252,6 +297,36 @@ func _cell_content(c: Vector2i, ch: String) -> void:
 		"p": place("totem", foot + Vector2(0, 2), {"solid": [8, 5]})
 		"b": place("bedroll", cell_center(c), {"floor": true})
 		"H": place("throne", foot + Vector2(0, 2), {"solid": [26, 10]})
+
+
+## Sewer-only cells. Returns true if the cell was handled.
+func _sewer_content(c: Vector2i, ch: String, foot: Vector2) -> bool:
+	match ch:
+		"r": spawns.append(["rats", foot])
+		"R": spawns.append(["rat", foot])
+		"u": spawns.append(["cultist", foot])
+		"F": spawns.append(["F", foot])
+		"n": place("rat_nest", cell_center(c), {"floor": true})
+		"v": place("moss", cell_center(c), {"floor": true})
+		"x": place("crate", foot + Vector2(0, 2), {"solid": [14, 6]})
+		"K":
+			place("candles", foot + Vector2(0, 2), {})
+			add_light(foot + Vector2(0, -6), 50.0, 0)
+		"A": place("dragon_altar", foot + Vector2(0, 2), {"solid": [30, 10]})
+		"O": place("outflow", Vector2(c.x * T + T / 2.0, c.y * T - 2.0), {"wall": true})
+		"Q": place("cult_banner", Vector2(c.x * T + T / 2.0, c.y * T - 1.0), {"wall": true})
+		"X":
+			exit_pos = foot
+			var base := Node2D.new()
+			base.position = Vector2(c.x * T + T / 2.0, c.y * T + 0.5)
+			ysort.add_child(base)
+			exit_sprite = Sprite2D.new()
+			exit_sprite.texture = TDArt.tex("sewer_arch_barred")
+			exit_sprite.offset = Vector2(0, -15)
+			base.add_child(exit_sprite)
+		_:
+			return false
+	return true
 
 
 func _spike(c: Vector2i) -> void:
@@ -404,7 +479,7 @@ func near_link(p: Vector2) -> Dictionary:
 func open_exit() -> void:
 	exit_opened = true
 	if exit_sprite:
-		exit_sprite.texture = TDArt.tex("tunnel")
+		exit_sprite.texture = TDArt.tex("sewer_arch" if theme == "sewer" else "tunnel")
 		game.sfx.play("thud", -6.0)
 
 

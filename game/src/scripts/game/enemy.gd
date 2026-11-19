@@ -86,8 +86,9 @@ func _ready() -> void:
 	weapon_pivot.position = Vector2(0, -6)
 	add_child(weapon_pivot)
 	var w := Sprite2D.new()
-	w.texture = Art.region(data.weapon_sprite)
-	w.offset = Vector2(0, -w.texture.get_height() / 2.0 + 2.0)
+	w.texture = Art.region(data.weapon_sprite) if str(data.weapon_sprite) != "" else null   # rats bite
+	if w.texture:
+		w.offset = Vector2(0, -w.texture.get_height() / 2.0 + 2.0)
 	w.rotation = PI / 2.0
 	weapon_pivot.add_child(w)
 	warn = Label.new()

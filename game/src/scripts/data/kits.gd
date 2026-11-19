@@ -1,6 +1,6 @@
 class_name Kits
 extends RefCounted
-## The playable heroes (DMV party presets), levels 1-5.
+## The playable heroes (DMV party presets), levels 1-10.
 ## Heroes use 2014 rules (SRD 5.1, CC-BY-4.0). War Blessing, Foresight, Dread Aura and the
 ## bear/spider Wild Shape list stand in for non-SRD subclasses and are original to this game.
 ##
@@ -45,7 +45,7 @@ static func key_for_name(member_name: String) -> String:
 
 
 static func prof(level: int) -> int:
-	return 2 if level < 5 else 3
+	return 2 + (level - 1) / 4   # +2 at 1-4, +3 at 5-8, +4 at 9-10
 
 
 static func mod(score: int) -> int:
@@ -53,8 +53,14 @@ static func mod(score: int) -> int:
 
 
 ## Full-caster spell slots as [1st level, 2nd level and higher].
+## (2nd-level and higher slots are pooled: at 10th level that is three 2nd, three 3rd, three 4th, two 5th.)
 static func caster_slots(level: int) -> Array:
-	return [[2, 0], [3, 0], [4, 2], [4, 3], [4, 5]][clampi(level, 1, 5) - 1]
+	return [[2, 0], [3, 0], [4, 2], [4, 3], [4, 5], [4, 6], [4, 7], [4, 8], [4, 10], [4, 11]][clampi(level, 1, 10) - 1]
+
+
+## Ability score improvements at 4th and 8th level go into each hero's main ability (max 20).
+static func _main_score(base: int, level: int) -> int:
+	return mini(20, base + (2 if level >= 4 else 0) + (2 if level >= 8 else 0))
 
 
 ## Everything the real-time and turn-based layers need for one hero at one level.
@@ -71,7 +77,7 @@ static func stats(key: String, level: int) -> Dictionary:
 	}
 	match key:
 		"ceridwen":
-			var intel := mod(16 + (2 if level >= 4 else 0))
+			var intel := mod(_main_score(16, level))
 			s.hp = 8 + (level - 1) * 6
 			s.hit_die = 6
 			s.ac = 15                    # Mage Armor (13 + Dex), cast before the delve
@@ -91,8 +97,10 @@ static func stats(key: String, level: int) -> Dictionary:
 				s.abilities.U = "foresight"
 			if level >= 3:
 				s.abilities.R = "scorching_ray"
+			if level >= 6:
+				s.abilities.R = "fireball"   # Fireball takes Scorching Ray's key
 		"erwar":
-			var wis := mod(16 + (2 if level >= 4 else 0))
+			var wis := mod(_main_score(16, level))
 			s.hp = 10 + (level - 1) * 7
 			s.ac = 18                    # chain mail and shield
 			s.str_save = 2
@@ -102,7 +110,8 @@ static func stats(key: String, level: int) -> Dictionary:
 			s.spell_attack = wis + p
 			s.spell_dc = 8 + wis + p
 			s.slots = caster_slots(level)
-			s.channel = 1 if level >= 2 else 0
+			s.channel = (1 if level >= 2 else 0) + (1 if level >= 6 else 0)
+			s.divine_strike = level >= 8   # +1d8 radiant on mace hits
 			s.weapon = {"name": "Mace", "kind": "melee", "attack": 2 + p, "count": 1, "sides": 6, "bonus": 2,
 				"type": "bludgeoning", "reach": 22.0, "swing": 0.85}
 			s.abilities = {"L": "healing_word"}
@@ -111,18 +120,24 @@ static func stats(key: String, level: int) -> Dictionary:
 				s.abilities.U = "war_blessing"
 			if level >= 3:
 				s.abilities.R = "spiritual_weapon"
+			if level >= 6:
+				s.abilities.R = "spirit_guardians"   # Spirit Guardians takes Spiritual Weapon's key
 		"lyburnum":
-			var strm := mod(16 + (2 if level >= 4 else 0))
+			var strm := mod(_main_score(16, level))
+			var aura := 2 if level >= 6 else 0   # Aura of Protection: + Charisma to saves
 			s.hp = 12 + (level - 1) * 8
 			s.hit_die = 10
 			s.ac = 18 + (1 if level >= 2 else 0)   # chain mail, shield; Defense fighting style at 2
-			s.str_save = strm
+			s.str_save = strm + aura
+			s.dex_save = aura
+			s.con_save = 2 + aura
 			s.athletics = strm + p
-			s.wis_save = 0 + p
+			s.wis_save = 0 + p + aura
 			s.spell_mod = 2
 			s.spell_dc = 8 + 2 + p
 			s.lay_pool = 5 * level
-			s.slots = [[0, 0], [2, 0], [3, 0], [3, 0], [4, 2]][level - 1]
+			s.aura = aura
+			s.slots = [[0, 0], [2, 0], [3, 0], [3, 0], [4, 2], [4, 2], [4, 3], [4, 3], [4, 5], [4, 5]][level - 1]
 			s.channel = 1 if level >= 3 else 0
 			s.savage = true
 			s.relentless = true
@@ -136,7 +151,7 @@ static func stats(key: String, level: int) -> Dictionary:
 			if level >= 3:
 				s.abilities.U = "dread_aura"
 		"suilean":
-			var wis := mod(16 + (2 if level >= 4 else 0))
+			var wis := mod(_main_score(16, level))
 			s.hp = 10 + (level - 1) * 7
 			s.ac = 15                    # leather, wooden shield, Dex
 			s.speed_ft = 35              # wood elf
@@ -147,6 +162,7 @@ static func stats(key: String, level: int) -> Dictionary:
 			s.spell_dc = 8 + wis + p
 			s.slots = caster_slots(level)
 			s.wild_uses = 2 if level >= 2 else 0
+			s.brown_bear = level >= 6   # Circle Forms: the bear shape becomes a brown bear
 			s.weapon = {"name": "Thorn Whip", "kind": "whip", "attack": wis + p, "count": 2 if level >= 5 else 1,
 				"sides": 6, "bonus": 0, "type": "piercing", "spell": true, "reach": 72.0}
 			s.abilities = {"L": "entangle"}
@@ -157,7 +173,7 @@ static func stats(key: String, level: int) -> Dictionary:
 			if level >= 3:
 				s.abilities.R = "moonbeam"
 		_:   # boarvhal
-			var strm := mod(17 + (2 if level >= 4 else 0))
+			var strm := mod(_main_score(17, level))
 			s.hp = 15 + (level - 1) * 10
 			s.hit_die = 12
 			s.con_mod = 3
@@ -167,8 +183,11 @@ static func stats(key: String, level: int) -> Dictionary:
 			s.athletics = strm + p
 			s.dex_save = 1
 			s.con_save = 3 + p
-			s.rage_uses = 2 if level < 3 else 3
-			s.rage_damage = 2
+			s.rage_uses = 2 if level < 3 else (3 if level < 6 else 4)
+			s.rage_damage = 2 if level < 9 else 3
+			s.brutal = 1 if level >= 9 else 0         # Brutal Critical: one extra weapon die on a crit
+			s.reclaim = level >= 6                    # Reclaim Potential
+			s.feral = level >= 7                      # Feral Instinct: advantage on initiative
 			s.rage_seconds = 60.0
 			s.extra_attack = level >= 5
 			s.weapon = {"name": "Greataxe", "kind": "melee", "attack": strm + p, "count": 1, "sides": 12, "bonus": strm,
@@ -183,8 +202,12 @@ static func stats(key: String, level: int) -> Dictionary:
 	return s
 
 
-## Wild Shape forms (SRD 5.1 Black Bear; Giant Wolf Spider).
+## Wild Shape forms (SRD 5.1 Black Bear, Brown Bear; Giant Wolf Spider).
 const FORMS := {
+	"brown_bear": {"name": "Brown Bear", "hp": 34, "ac": 11, "speed_ft": 40, "sprite": "form_bear", "frame": [24, 18],
+		"tint": Color(1.25, 1.05, 0.85),
+		"weapon": {"name": "Claws", "kind": "melee", "attack": 6, "count": 2, "sides": 6, "bonus": 4, "type": "slashing",
+			"reach": 24.0, "swing": 0.8}},
 	"bear": {"name": "Black Bear", "hp": 19, "ac": 11, "speed_ft": 40, "sprite": "form_bear", "frame": [24, 18],
 		"weapon": {"name": "Claws", "kind": "melee", "attack": 4, "count": 2, "sides": 4, "bonus": 2, "type": "slashing",
 			"reach": 24.0, "swing": 0.8}},
@@ -203,41 +226,66 @@ static func level_features(key: String, lv: int) -> String:
 				3: return "Scorching Ray (L): three rays of fire, 2d6 each (2nd-level slot). Spell slots: 4 + 2."
 				4: return "Ability Score Improvement: Intelligence 18. +1 to spell attacks and save DCs."
 				5: return "Fire Bolt now deals 2d10. More spell slots (4 + 5)."
+				6: return "Fireball (L, replaces Scorching Ray): a bead of flame bursts in a 20-ft radius, 8d6 fire, Dexterity save for half (3rd-level slot)."
+				7: return "More spell slots (4 + 7)."
+				8: return "Ability Score Improvement: Intelligence 20. +1 to spell attacks and save DCs."
+				9: return "Proficiency +4. More spell slots (4 + 10)."
+				10: return "More spell slots (4 + 11). Fireball now burns hotter from higher slots."
 		"erwar":
 			match lv:
 				2: return "War Blessing (I): ready it, and the next attack that would miss gains +10. Once per delve (a campfire restores it)."
 				3: return "Spiritual Weapon (L): a spectral mace fights beside you for a minute (2nd-level slot)."
 				4: return "Ability Score Improvement: Wisdom 18. Healing and the spectral mace hit harder."
 				5: return "More spell slots (4 + 5). Proficiency +3."
+				6: return "Spirit Guardians (L, replaces Spiritual Weapon): radiant spirits circle you for a minute; foes within 15 ft take 3d8 radiant, Wisdom save for half (3rd-level slot). War Blessing twice per delve."
+				7: return "More spell slots (4 + 7)."
+				8: return "Ability Score Improvement: Wisdom 20. Divine Strike: your mace hits deal an extra 1d8 radiant."
+				9: return "Proficiency +4. More spell slots (4 + 10)."
+				10: return "More spell slots (4 + 11). Spirit Guardians grow stronger with higher slots."
 		"lyburnum":
 			match lv:
 				2: return "Divine Smite (L toggles): hits spend a spell slot for +2d8 radiant. Defense fighting style: +1 AC."
 				3: return "Dread Aura (I): foes within 30 ft make a Wisdom save or flee in fear. Once per delve (a campfire restores it)."
 				4: return "Ability Score Improvement: Strength 18. +1 to hit and damage."
 				5: return "Extra Attack: much faster sword strikes. More smites."
+				6: return "Aura of Protection: +2 to every saving throw you make."
+				7: return "More spell slots (4 + 3). Lay on Hands pool 35."
+				8: return "Ability Score Improvement: Strength 20. +1 to hit and damage."
+				9: return "Proficiency +4. More spell slots (4 + 5)."
+				10: return "Aura of Courage: you can't be frightened. Lay on Hands pool 50."
 		"suilean":
 			match lv:
 				2: return "Wild Shape: I turns you into a black bear, Y into a giant wolf spider. Two uses per delve."
 				3: return "Moonbeam (L): a beam of moonlight scorches foes standing in it (2nd-level slot). Press L again to move it."
 				4: return "Ability Score Improvement: Wisdom 18. +1 to spell attacks and save DCs."
 				5: return "Thorn Whip now deals 2d6. More spell slots (4 + 5)."
+				6: return "Circle Forms: your bear shape is now a brown bear (34 HP, claws 2d6 + 4)."
+				7: return "More spell slots (4 + 7)."
+				8: return "Ability Score Improvement: Wisdom 20. +1 to spell attacks and save DCs."
+				9: return "Proficiency +4. More spell slots (4 + 10)."
+				10: return "More spell slots (4 + 11). Moonbeam burns hotter from higher slots."
 		_:
 			match lv:
 				2: return "Reckless Attack (L / right trigger): advantage on your attacks, but enemies get advantage on you. Danger Sense: advantage on Dexterity saves."
 				3: return "Echo (I): leave a shimmering double of yourself; goblins next to it are flanked. I again swaps places. Right-click (or Y) moves it anywhere; more than 30 ft from you and it fades. Rage uses: 3."
 				4: return "Ability Score Improvement: Strength 19. +1 to hit and damage."
 				5: return "Extra Attack: much faster axe swings. Fast Movement: +10 ft speed. Proficiency +3."
+				6: return "Reclaim Potential: when your echo is destroyed, you shake it off and recover 2d6 + 3 hit points. Rage uses: 4."
+				7: return "Feral Instinct: advantage on initiative rolls."
+				8: return "Ability Score Improvement: Strength 20. +1 to hit and damage."
+				9: return "Brutal Critical: one extra greataxe die on a critical hit. Rage damage +3. Proficiency +4."
+				10: return "Your echo lingers: it can now stray 60 ft from you before it fades."
 	return ""
 
 
 ## Key hints for the run, per hero: [key, what it does].
-static func hints(key: String) -> Array:
+static func hints(key: String, level := 1) -> Array:
 	var head := [["WASD", "MOVE"], ["SPACE", "HOP"]]
 	var tail := [["SHIFT", "DODGE ROLL"], ["E", "USE"], ["H", "POTION"], ["TAB", "ROLL LOG"], ["WHEEL", "MUSIC VOL"], ["ESC", "PAUSE"]]
 	var mid: Array = []
 	match key:
-		"ceridwen": mid = [["J/CLICK", "FIRE BOLT"], ["K", "MAGIC MISSILE"], ["L", "SCORCHING RAY"], ["I", "FORESIGHT"]]
-		"erwar": mid = [["J/CLICK", "MACE"], ["K", "HEALING WORD"], ["L", "SPIRIT WEAPON"], ["I", "WAR BLESSING"]]
+		"ceridwen": mid = [["J/CLICK", "FIRE BOLT"], ["K", "MAGIC MISSILE"], ["L", "FIREBALL" if level >= 6 else "SCORCHING RAY"], ["I", "FORESIGHT"]]
+		"erwar": mid = [["J/CLICK", "MACE"], ["K", "HEALING WORD"], ["L", "SPIRIT GUARDIANS" if level >= 6 else "SPIRIT WEAPON"], ["I", "WAR BLESSING"]]
 		"lyburnum": mid = [["J/CLICK", "LONGSWORD"], ["K", "LAY ON HANDS"], ["L", "DIVINE SMITE"], ["I", "DREAD AURA"]]
 		"suilean": mid = [["J/CLICK", "THORN WHIP"], ["K", "ENTANGLE"], ["L", "MOONBEAM"], ["I", "BEAR FORM"], ["Y", "SPIDER FORM"]]
 		_: mid = [["J/CLICK", "ATTACK"], ["K", "RAGE"], ["L", "RECKLESS"], ["I", "ECHO / SWAP"], ["Y/RMB", "MOVE ECHO"]]

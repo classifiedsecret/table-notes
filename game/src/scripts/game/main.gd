@@ -4,9 +4,10 @@ extends Node2D
 
 enum Phase { TAVERN, RUN, DOORS, BATTLE, OVER, CARD }   # TAVERN = walking around the inn
 
-const BIOME := "Goblin Warren"
+const BIOME := "Goblin Warren"   # the first quest; see biome() for the current delve
 const ROOMS_BEFORE_BOSS := 5
 const ROOM_POOL := TDRooms.POOL
+const SEWER_HINT := {"combat": "Rats and cultists. The way on bars until they fall.", "boss": "The cult's hideout."}
 const ROOM_LABEL := {"combat": "COMBAT", "gauntlet": "GAUNTLET", "treasure": "TREASURE", "campfire": "CAMPFIRE", "elite": "ELITE", "boss": "BOSS"}
 const ROOM_HINT := {"combat": "Goblins. The door bars until they fall.", "gauntlet": "Traps and spikes. Few foes.",
 	"treasure": "A locked chest, lightly guarded.", "campfire": "A safe fire for a short rest.",
@@ -14,6 +15,25 @@ const ROOM_HINT := {"combat": "Goblins. The door bars until they fall.", "gauntl
 const POTION_PRICE := 50
 
 var dice: Dice
+var delve := "warren"   # "warren" (the cave-in, first quest) or "sewer" (the grate, second quest)
+
+
+func biome() -> String:
+	return "Waterdeep Sewers" if delve == "sewer" else BIOME
+
+
+func cur_tier() -> int:
+	return hero.sewer_tier if delve == "sewer" else hero.tier
+
+
+func room_pool() -> Dictionary:
+	return TDRooms.SEWER_POOL if delve == "sewer" else ROOM_POOL
+
+
+func room_hint(kind: String) -> String:
+	if delve == "sewer" and SEWER_HINT.has(kind):
+		return SEWER_HINT[kind]
+	return ROOM_HINT.get(kind, "")
 var sfx: Sfx
 var room: World
 var player: Player
@@ -253,10 +273,12 @@ func _load_hero_key(key: String) -> void:
 			inn.send_to_cellar("npc_" + party[i], i)
 	var owner := hero.owner
 	var heard := hero.quest_given
+	var heard2 := hero.sewer_quest
 	hero = Hero.new()
 	hero.set_key(key)
 	hero.owner = owner
 	hero.quest_given = heard
+	hero.sewer_quest = heard2
 	player.hero = hero
 	_switching = true
 	if _bridge:
@@ -271,11 +293,13 @@ func _load_hero_key(key: String) -> void:
 
 func _on_hero_loaded(args: Array) -> void:
 	var heard := hero.quest_given
+	var heard2 := hero.sewer_quest
 	if args.size() > 0 and args[0] != null:
 		var d = JSON.parse_string(str(args[0]))
 		if typeof(d) == TYPE_DICTIONARY:
 			hero.load_dict(d)
 	hero.quest_given = hero.quest_given or heard   # you, the player, already heard the Stranger
+	hero.sewer_quest = hero.sewer_quest or heard2
 	save_mode = str(_bridge.mode()) if _bridge else "local"
 	var first := not _loaded
 	_loaded = true
@@ -313,14 +337,22 @@ func _on_hero_loaded(args: Array) -> void:
 			for k in a.substr(8).split(","):
 				if Kits.has(k):
 					party.append(k)
+	if _arg("sewer"):
+		delve = "sewer"   # test switch: --sewer / ?test=sewer, with --boss for the hideout
+	if _arg_value("level") != "":
+		hero.level = clampi(int(_arg_value("level")), 1, 10)   # test switch: --level=7
+		hero.xp = Hero.XP_THRESHOLDS[hero.level - 1]
+		player.apply_hero(hero)
 	var force := _arg_value("room")
 	if force != "" and TDRooms.ROOMS.has(force):
+		if force.begins_with("sewer"):
+			delve = "sewer"
 		# Test switch: ?room=combat_2 (or --room=combat_2) starts a delve in that cave room.
 		_force_room = force
 		_start_run()
 		return
 	if _arg("boss"):
-		if not _arg("lv5"):
+		if not _arg("lv5") and _arg_value("level") == "":
 			hero.level = 2
 			hero.xp = 300
 		_start_run()
@@ -413,7 +445,7 @@ func _save_run_record(result: String) -> void:
 	if not _bridge:
 		return
 	var rec := {"hero": hero.name, "owner": hero.owner, "level": hero.level, "result": result, "depth": depth,
-		"biome": BIOME, "kills": stats.get("kills", 0), "gold": run_gold, "nat20s": stats.get("nat20s", 0),
+		"biome": biome(), "kills": stats.get("kills", 0), "gold": run_gold, "nat20s": stats.get("nat20s", 0),
 		"time": Time.get_unix_time_from_system()}
 	_bridge.saveDoc("vd_runs", "%s_%d" % [hero.id, Time.get_unix_time_from_system()], JSON.stringify(rec), _cb_save)
 
@@ -421,10 +453,15 @@ func _save_run_record(result: String) -> void:
 # ---------------- tavern ----------------
 
 func _tavern_options() -> Array:
+	var tier_txt := ""
+	if delve == "sewer":
+		tier_txt = "Difficulty: %s (%s)%s" % [Creatures.TIERS[hero.sewer_tier].name, Creatures.TIERS[hero.sewer_tier].levels, "  - press to change" if hero.sewer_tier_unlocked > 4 else "  - find the hideout to unlock Tier V"]
+	else:
+		tier_txt = "Difficulty: %s (%s)%s" % [Creatures.TIERS[hero.tier].name, Creatures.TIERS[hero.tier].levels, "  - press to change" if hero.tier_unlocked > 1 else "  - clear it to unlock Tier II"]
 	return [
-		["Descend into the %s" % BIOME, "start"],
+		["Descend into the %s" % biome(), "start"],
 		["Hero: %s  - press to change" % hero.short(), "hero"],
-		["Difficulty: %s (%s)%s" % [Creatures.TIERS[hero.tier].name, Creatures.TIERS[hero.tier].levels, "  - press to change" if hero.tier_unlocked > 1 else "  - clear it to unlock Tier II"], "tier"],
+		[tier_txt, "tier"],
 		["Buy a Potion of Healing (%d gp)" % POTION_PRICE, "potion"],
 		["Back to the taproom", "back"],
 		["Return to Session Scribe", "leave"],
@@ -490,7 +527,14 @@ func _tavern_input() -> void:
 				sfx.play("step", -6.0)
 				_refresh_tavern()
 			"tier":
-				if hero.tier_unlocked > 1:
+				if delve == "sewer":
+					if hero.sewer_tier_unlocked > 4:
+						hero.sewer_tier = 4 + (hero.sewer_tier - 4 + 1) % (hero.sewer_tier_unlocked - 3)
+						save_hero()
+						sfx.play("step", -6.0)
+					else:
+						toast("Defeat the Cultist Fanatic to unlock Tier V.")
+				elif hero.tier_unlocked > 1:
 					hero.tier = hero.tier % hero.tier_unlocked + 1
 					save_hero()
 					sfx.play("step", -6.0)
@@ -573,11 +617,11 @@ func _enter_room(kind: String) -> void:
 		file = _force_room
 		_force_room = ""
 	elif kind == "boss":
-		file = "boss"
+		file = "sewer_boss" if delve == "sewer" else "boss"
 	else:
-		var pool: Array = ROOM_POOL[kind].filter(func(f): return not _used_rooms.has(f))
+		var pool: Array = room_pool()[kind].filter(func(f): return not _used_rooms.has(f))
 		if pool.is_empty():
-			pool = ROOM_POOL[kind]
+			pool = room_pool()[kind]
 		file = pool[dice.die(pool.size()) - 1]
 		_used_rooms.append(file)
 	if kind == "campfire":
@@ -595,7 +639,7 @@ func _enter_room(kind: String) -> void:
 		player.echo.queue_free()
 	_snap_view()
 	phase = Phase.RUN
-	var label := "%s  %s  ROOM %d / %d  %s" % [BIOME.to_upper(), Creatures.TIERS[hero.tier].name.to_upper(), mini(depth, ROOMS_BEFORE_BOSS + 1), ROOMS_BEFORE_BOSS + 1, ROOM_LABEL[kind]]
+	var label := "%s  %s  ROOM %d / %d  %s" % [biome().to_upper(), Creatures.TIERS[cur_tier()].name.to_upper(), mini(depth, ROOMS_BEFORE_BOSS + 1), ROOMS_BEFORE_BOSS + 1, ROOM_LABEL[kind]]
 	hud.set_room(label)
 	hud.banner(ROOM_LABEL[kind], Color(1, 0.88, 0.55))
 	log_line("Room %d: %s." % [depth, ROOM_LABEL[kind].capitalize()])
@@ -638,8 +682,8 @@ func _load_room(file: String, quiet := false) -> void:
 		return
 	for s in room.spawns:
 		var key: String = s[0]
-		if key == "B":
-			continue
+		if key == "B" or key == "F":
+			continue   # bosses step out when the turn-based fight starts
 		spawn_monster(key, s[1])
 	if enemies.is_empty():
 		room.open_exit()   # nothing here to fight: the tunnel stands open
@@ -688,7 +732,7 @@ func on_inn_map(w: World, at: Vector2) -> void:
 	_snap_view()
 	inn.set_playing(hero.key)
 	if inn.dm:
-		inn.dm.set_marker(_loaded and not hero.quest_given)
+		inn.dm.set_marker(_dm_has_quest())
 
 
 ## Small rooms sit in the middle of the screen; big ones scroll with you.
@@ -702,9 +746,9 @@ func _set_camera_limits() -> void:
 	camera.limit_bottom = int(sz.y + my - 16.0)
 
 
-## Back out of the cave-in, into the cellar.
+## Back out of the cave-in (or away from the grate), into the cellar.
 func _step_off_trapdoor() -> void:
-	player.global_position = Vector2(6.5, 7.6) * World.T
+	player.global_position = (Vector2(13.0, 4.2) if delve == "sewer" else Vector2(6.5, 7.6)) * World.T
 	player.velocity = Vector2.ZERO
 	player.reset_physics_interpolation()
 
@@ -713,9 +757,17 @@ func _step_off_trapdoor() -> void:
 func _use_inn_door(d: Dictionary) -> void:
 	_close_talk()
 	if d.to == "sewer":
-		# The way to another quest, for another day.
-		sfx.play("deflect", -10.0)
-		toast("A rusted grate. Foul air and the drip of the Waterdeep sewers beyond. Not today.")
+		# The way into the Waterdeep Sewers: opens once the Stranger has given the second quest.
+		if hero.level >= 5 and hero.sewer_quest:
+			delve = "sewer"
+			sfx.play("thud", -6.0)
+			_open_card()
+		elif hero.level >= 5:
+			sfx.play("deflect", -10.0)
+			toast("The grate is rusted shut. The Hooded Stranger upstairs might know why the cult wants it open.")
+		else:
+			sfx.play("deflect", -10.0)
+			toast("A rusted grate. Foul air and the drip of the Waterdeep sewers beyond. (Reach 5th level.)")
 		return
 	sfx.play("thud", -10.0)
 	inn.go(d.to, d.get("spawn", ""))
@@ -735,7 +787,7 @@ func _enter_inn(at_cellar := false) -> void:
 	hud.hide_doors()
 	hud.set_inn_mode(true)
 	if at_cellar:
-		inn.go("cellar", "breach")
+		inn.go("cellar", "grate" if delve == "sewer" else "breach")
 	else:
 		var rs: Array = inn.room_spawn(hero.key)
 		if _arg_value("map") != "" and not has_meta("map_used"):
@@ -753,7 +805,7 @@ func _open_card() -> void:
 
 func spawn_monster(key: String, pos: Vector2) -> Enemy:
 	var e := Enemy.new()
-	e.setup(self, Creatures.scaled(Creatures.monster(key), hero.tier))
+	e.setup(self, Creatures.scaled(Creatures.monster(key), cur_tier()))
 	e.position = pos
 	e.facing = -1 if pos.x > player.global_position.x else 1
 	e.look = Vector2(e.facing, 0)
@@ -856,7 +908,7 @@ func _weighted(w: Dictionary) -> String:
 
 func _show_doors() -> void:
 	var labels: Array = _door_options.map(func(k): return ROOM_LABEL[k])
-	var hints: Array = _door_options.map(func(k): return ROOM_HINT[k])
+	var hints: Array = _door_options.map(func(k): return room_hint(k))
 	hud.show_doors(labels, hints, _door_pick)
 
 
@@ -974,7 +1026,7 @@ func _process(delta: float) -> void:
 				elif Input.is_action_just_pressed("back") or not inn.at_exit(player.global_position):
 					_cancel_exit()
 			if inn.dm:
-				inn.dm.set_marker(_loaded and not hero.quest_given)
+				inn.dm.set_marker(_dm_has_quest())
 			_barred_t = maxf(0.0, _barred_t - delta)
 			if _loaded and not hero.quest_given and inn.near_cellar(player.global_position):
 				# The way down stays shut until the stranger has had his word.
@@ -986,6 +1038,7 @@ func _process(delta: float) -> void:
 					_barred_t = 3.0
 			elif _loaded and not _switching and inn.at_cellar(player.global_position):
 				_close_talk()
+				delve = "warren"
 				_open_card()
 			_update_talk()
 		Phase.CARD:
@@ -1025,7 +1078,27 @@ func _snap_view() -> void:
 
 
 ## Talking in the inn: E shows the next line from the nearest person; walking away closes it.
+## The Stranger has something for you: the cellar quest, or at 5th level the sewer quest.
+func _dm_has_quest() -> bool:
+	return _loaded and (not hero.quest_given or (hero.level >= 5 and not hero.sewer_quest))
+
+
 func _talk(n: InnNPC) -> void:
+	if n == inn.dm and _loaded and hero.quest_given and hero.level >= 5 and not hero.sewer_quest:
+		_talking = n
+		n.face_toward(player.global_position.x)
+		_quest_i += 1
+		hud.show_dialogue(n.display_name, Inn.SEWER_LINES[_quest_i])
+		sfx.play("step", -8.0)
+		if _quest_i >= Inn.SEWER_LINES.size() - 1:
+			hero.sewer_quest = true
+			_quest_i = -1
+			n.set_marker(false)
+			save_hero()
+			toast("QUEST ACCEPTED: FIND THE CULT'S HIDEOUT IN THE SEWERS")
+			sfx.play("crit", -6.0)
+			inn.go_keep_player.call_deferred()   # the inn starts talking about the cult
+		return
 	if n == inn.dm and _loaded and not hero.quest_given:
 		_talking = n
 		n.face_toward(player.global_position.x)
@@ -1232,19 +1305,24 @@ func end_run(result: String) -> void:
 	var body := ""
 	if result == "cleared":
 		hero.clears += 1
-		if hero.tier == hero.tier_unlocked and hero.tier_unlocked < 3:
+		if delve == "sewer":
+			if hero.sewer_tier == hero.sewer_tier_unlocked and hero.sewer_tier_unlocked < 6:
+				hero.sewer_tier_unlocked += 1
+				toast("%s unlocked for the sewers." % Creatures.TIERS[hero.sewer_tier_unlocked].name)
+		elif hero.tier == hero.tier_unlocked and hero.tier_unlocked < 3:
 			hero.tier_unlocked += 1
 			toast("%s unlocked at the tavern." % Creatures.TIERS[hero.tier_unlocked].name)
 		hero.gold += run_gold
 		hero.potions = run_potions
-		body = "The Bugbear Chief is dead and the Goblin Warren is broken.\n\nYou bank %d gp and carry %d potion%s home." % [run_gold, run_potions, "" if run_potions == 1 else "s"]
+		var won := "The Cultist Fanatic is dead and the cult's hideout beneath Waterdeep is found." if delve == "sewer" else "The Bugbear Chief is dead and the Goblin Warren is broken."
+		body = won + "\n\nYou bank %d gp and carry %d potion%s home." % [run_gold, run_potions, "" if run_potions == 1 else "s"]
 	else:
 		hero.deaths += 1
 		hero.potions = mini(hero.potions, run_potions)
 		body = "%s\n\nThe party carries %s back to the tavern. Gold found this run is lost (%d gp). XP is kept." % [result, hero.short(), run_gold]
 	var rolls: int = stats.get("rolls", 0)
 	var pct := 0 if rolls == 0 else roundi(100.0 * stats.hits / rolls)
-	body += "\n\nRooms: %d   Goblins slain: %d   XP earned: %d\nAttack rolls %d, hits %d (%d%%), glancing %d, crits %d, natural 1s %d" % [
+	body += "\n\nRooms: %d   Foes slain: %d   XP earned: %d\nAttack rolls %d, hits %d (%d%%), glancing %d, crits %d, natural 1s %d" % [
 		depth, stats.get("kills", 0), stats.get("xp", 0), rolls, stats.hits, pct, stats.glances, stats.crits, stats.fumbles]
 	save_hero()
 	_save_run_record(result if result == "cleared" else "died")
@@ -1258,10 +1336,10 @@ func _on_player_died(reason: String) -> void:
 
 func on_battle_end(victory: bool) -> void:
 	if victory:
-		var hoard := roundi((40 + dice.roll(4, 6).reduce(func(a, b): return a + b, 0) * 5) * float(Creatures.TIERS[hero.tier].gold))
+		var hoard := roundi((40 + dice.roll(4, 6).reduce(func(a, b): return a + b, 0) * 5) * float(Creatures.TIERS[cur_tier()].gold))
 		var share := add_gold(hoard)
 		if party_size() > 1:
-			log_line("The chief's hoard: %d gp, split %d ways (%d each)." % [hoard, party_size(), share])
+			log_line("The %s: %d gp, split %d ways (%d each)." % ["cult's coffers" if delve == "sewer" else "chief's hoard", hoard, party_size(), share])
 		end_run("cleared")
 
 
@@ -1498,8 +1576,13 @@ func _bot(delta: float) -> void:
 			elif inn.current == "upstairs":
 				goal = Vector2(31.0, 3.8) * World.T           # the stairs down
 			elif inn.current == "cellar":
-				goal = Vector2(1.5, 7.0) * World.T            # the cave-in
-			elif not hero.quest_given and inn.dm and not OS.get_cmdline_user_args().has("--rush"):
+				if hero.sewer_quest and hero.level >= 5:
+					goal = Vector2(13.0, 3.0) * World.T       # the sewer grate
+					if player.global_position.distance_to(goal) < 14.0 and int(_bot_t * 4) % 2 == 0:
+						Input.action_press("interact")
+				else:
+					goal = Vector2(1.5, 7.0) * World.T        # the cave-in
+			elif _dm_has_quest() and inn.dm and not OS.get_cmdline_user_args().has("--rush"):
 				goal = inn.dm.global_position + Vector2(0, 12)
 				if player.global_position.distance_to(inn.dm.global_position) < 24.0:
 					if int(_bot_t * 4) % 2 == 0:

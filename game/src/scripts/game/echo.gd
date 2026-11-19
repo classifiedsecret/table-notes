@@ -35,4 +35,5 @@ func receive_attack(enemy: Node2D, wpn: Dictionary) -> void:
 	FloatText.fling(game, global_position + Vector2(0, -24), Vector2(0, -1), "ECHO DESTROYED", "", Color(0.6, 0.8, 1.0), 0, 1.0)
 	game.sfx.play("deflect", -4.0)
 	game.toast("Your echo is destroyed.")
+	game.player.reclaim_potential()
 	queue_free()
