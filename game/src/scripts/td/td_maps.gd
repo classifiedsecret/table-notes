@@ -38,7 +38,7 @@ static func taproom() -> Dictionary:
 		"spawns": {"stairs": Vector2(33.0, 5.2), "cellar": Vector2(29.5, 14.2), "door": Vector2(5.0, 14.6)},
 		"links": [
 			{"cells": [Vector2i(32, 1), Vector2i(33, 1), Vector2i(32, 0), Vector2i(33, 0)], "to": "upstairs", "spawn": "stairs", "walk": true},
-			{"cells": [Vector2i(31, 13), Vector2i(32, 13), Vector2i(31, 14), Vector2i(32, 14)], "to": "cellar", "walk": true},
+			{"cells": [Vector2i(31, 13), Vector2i(32, 13), Vector2i(31, 14), Vector2i(32, 14)], "to": "cellar", "spawn": "ladder", "walk": true},
 			{"cells": [Vector2i(4, 15), Vector2i(5, 15), Vector2i(4, 16), Vector2i(5, 16)], "to": "exit", "label": "EXIT TO SESSION SCRIBE"},
 		],
 		"props": [
@@ -150,7 +150,50 @@ static func private_room(k: String) -> Dictionary:
 		"props": p, "npcs": []}
 
 
+## The inn's cellar, down the ladder from the taproom trapdoor: casks and stores, a sewer
+## grate in the north wall, and in the west wall the cave-in that broke through into the
+## Goblin Warren.
+static func cellar() -> Dictionary:
+	var g: Array[String] = []
+	for y in 14:
+		if y <= 1 or y == 12:
+			g.append("#".repeat(30))
+		elif y == 13:
+			g.append(" ".repeat(30))
+		elif y == 6 or y == 7:
+			g.append(".".repeat(29) + "#")             # the breach runs out through the west wall
+		else:
+			g.append("####" + ".".repeat(25) + "#")
+	var props: Array = [
+		["ladder", 24.5, 3.0, {}],
+		["grate", 13.0, 2.0, {"wall": true, "label": "SEWER GRATE"}],
+		["shelf", 7.0, 2.0, {"wall": true}],
+		["keg_rack", 18.5, 3.4, {"solid": [32, 8]}],
+		["sconce", 10.0, 1.8, {"wall": true}], ["sconce", 16.0, 1.8, {"wall": true}], ["sconce", 21.5, 1.8, {"wall": true}],
+		["sconce", 27.5, 1.8, {"wall": true}],
+		["cobweb", 4.5, 1.6, {"wall": true}], ["cobweb", 28.4, 1.6, {"wall": true, "flip": true}],
+		["rubble", 5.2, 5.6, {"solid": [24, 7], "label": "CAVE-IN"}],
+		["rubble", 5.0, 9.4, {"solid": [24, 7], "flip": true}],
+		["rocks", 7.0, 8.9, {}],
+		["barrel", 27.6, 10.2, {"solid": [12, 6], "tint": BARREL}], ["barrel", 26.7, 10.4, {"solid": [12, 6], "tint": BARREL}],
+		["barrel", 27.6, 11.4, {"solid": [12, 6], "tint": BARREL}], ["barrel", 28.3, 8.8, {"solid": [12, 6], "tint": BARREL}],
+		["crate", 9.0, 11.6, {"solid": [14, 6]}], ["crate", 10.1, 11.7, {"solid": [14, 6]}], ["crate", 9.5, 10.6, {"solid": [14, 6]}],
+		["sacks", 14.0, 11.6, {"solid": [16, 6]}], ["sacks", 16.0, 11.5, {"solid": [16, 6]}],
+		["shelf", 22.0, 11.9, {"solid": [44, 6]}],
+	]
+	return {"title": "THE GRYPHON'S ROOST - CELLAR", "theme": "cellar", "dark": true, "grid": g, "cave_x": 4,
+		"spawns": {"ladder": Vector2(24.5, 4.4), "breach": Vector2(6.5, 7.6)},
+		"links": [
+			{"cells": [Vector2i(24, 2), Vector2i(25, 2)], "to": "taproom", "spawn": "cellar", "walk": true},
+			{"cells": [Vector2i(0, 6), Vector2i(0, 7), Vector2i(1, 6), Vector2i(1, 7), Vector2i(2, 6), Vector2i(2, 7)], "to": "warren", "walk": true},
+			{"cells": [Vector2i(12, 2), Vector2i(13, 2)], "to": "sewer", "label": "EXAMINE THE SEWER GRATE"},
+		],
+		"props": props, "npcs": []}
+
+
 static func get_map(name: String) -> Dictionary:
+	if name == "cellar":
+		return cellar()
 	if name == "taproom":
 		return taproom()
 	if name == "upstairs":

@@ -151,8 +151,10 @@ func _collide(r: Rect2, pathing := false) -> void:
 
 func _floor_tile(c: Vector2i) -> void:
 	var s := Sprite2D.new()
-	if theme == "cave":
+	if _theme_at(c) == "cave":
 		s.texture = TDArt.tex("dirt_%d" % (1 + ((c.x * 7 + c.y * 13 + (c.x * c.y) % 5) % 4)))
+	elif theme == "cellar":
+		s.texture = TDArt.tex("flag_%d" % (1 + ((c.x * 5 + c.y * 3 + (c.x * c.y) % 3) % 4)))
 	else:
 		s.texture = TDArt.tex("floor_%d" % (1 + ((c.x * 3 + c.y * 5 + (c.x / 3) * 7) % 4)))
 	s.position = cell_center(c)
@@ -163,7 +165,7 @@ func _floor_tile(c: Vector2i) -> void:
 ## west and east walls show their top with the inner lip, carried up to the top row so they meet
 ## the north cap in a clean T; the south wall shows its lip along the top; inner corners join.
 func _wall(c: Vector2i) -> void:
-	var pre := "cave_" if theme == "cave" else "wall_"
+	var pre: String = {"cave": "cave_", "cellar": "stone_"}.get(_theme_at(c), "wall_")
 	var f := func(dx: int, dy: int) -> bool: return floorish(cell(c + Vector2i(dx, dy)))
 	var base := Node2D.new()
 	base.position = Vector2(c.x * T + T / 2.0, c.y * T + T)
@@ -192,6 +194,13 @@ func _wall(c: Vector2i) -> void:
 	elif f.call(-1, -1):
 		piece = "corner_se"
 	_tspr(base, pre + piece, Vector2(0, -8))
+
+
+## A map can have a stretch of raw cave (the cellar's cave-in): columns left of "cave_x".
+func _theme_at(c: Vector2i) -> String:
+	if c.x < int(map.get("cave_x", -1)):
+		return "cave"
+	return theme
 
 
 func _under_cap(c: Vector2i) -> bool:

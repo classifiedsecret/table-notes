@@ -273,12 +273,12 @@ func at_exit(p: Vector2) -> bool:
 	return not l.is_empty() and l.to == "exit"
 
 
-## Standing on the open trapdoor down to the cellar.
+## Standing in the cave-in at the back of the cellar: the way down into the Goblin Warren.
 func at_cellar(p: Vector2) -> bool:
-	if not is_instance_valid(room) or current != "taproom":
+	if not is_instance_valid(room) or current != "cellar":
 		return false
 	var l := room.link_at(room.to_cell(p), true)
-	return not l.is_empty() and l.to == "cellar"
+	return not l.is_empty() and l.to == "warren"
 
 
 func near_cellar(p: Vector2) -> bool:
@@ -334,7 +334,7 @@ func _physics_process(delta: float) -> void:
 	var p: Vector2 = game.player.global_position
 	if _link_cool <= 0.0:
 		var l := room.link_at(room.to_cell(p), true)
-		if not l.is_empty() and l.to != "cellar":
+		if not l.is_empty() and l.to != "warren":
 			_link_cool = 0.6
 			game.sfx.play("step", -4.0)
 			go(l.to, l.get("spawn", ""))

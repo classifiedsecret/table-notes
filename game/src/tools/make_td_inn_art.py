@@ -673,6 +673,175 @@ def torch_post():         # 8 x 22 a torch on a stake (light source in the warre
     return im
 
 
+
+
+# ---------------- the inn's cellar: dressed stone walls and flagstones ----------------
+S1, S2, S3, S4 = (104, 104, 112, 255), (128, 128, 136, 255), (78, 78, 88, 255), (156, 156, 164, 255)
+SD1, SD2 = (50, 50, 58, 255), (38, 38, 46, 255)
+MORTAR = (66, 64, 70, 255)
+
+
+def _stone_mass(im):
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 15], fill=SD1)
+    d.point((4, 5), fill=SD2); d.point((11, 10), fill=SD2); d.point((7, 13), fill=SD2)
+    return d
+
+
+@item
+def stone_face():         # a cellar wall: courses of dressed stone with a dark foot
+    im = canvas(16, 16); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 15], fill=MORTAR)
+    for row, (y0, y1) in enumerate(((0, 3), (5, 8), (10, 12))):
+        off = 0 if row % 2 == 0 else 4
+        for x in range(-8 + off, 16, 8):
+            x0, x1 = max(0, x), min(15, x + 6)
+            if x1 > x0:
+                d.rectangle([x0, y0, x1, y1], fill=S1 if (x // 8 + row) % 2 else S2)
+                d.point((x0, y0), fill=S4)
+    d.rectangle([0, 13, 15, 15], fill=SD1)
+    return im
+
+
+@item
+def stone_cap():
+    im = canvas(16, 16); _stone_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([0, 11, 15, 15], fill=S3); d.line([0, 11, 15, 11], fill=S4)
+    return im
+
+
+@item
+def stone_mass():
+    im = canvas(16, 16); _stone_mass(im); return im
+
+
+@item
+def stone_side_l():
+    im = canvas(16, 16); _stone_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([11, 0, 15, 15], fill=S3); d.line([11, 0, 11, 15], fill=S4)
+    return im
+
+
+@item
+def stone_side_r():
+    im = canvas(16, 16); _stone_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 4, 15], fill=S3); d.line([4, 0, 4, 15], fill=S4)
+    return im
+
+
+@item
+def stone_south():
+    im = canvas(16, 16); _stone_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 4], fill=S3); d.line([0, 4, 15, 4], fill=S4)
+    return im
+
+
+@item
+def stone_corner_sw():
+    im = canvas(16, 16); _stone_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([11, 0, 15, 4], fill=S3); d.line([11, 0, 11, 4], fill=S4); d.line([11, 4, 15, 4], fill=S4)
+    return im
+
+
+@item
+def stone_corner_se():
+    im = canvas(16, 16); _stone_mass(im); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 4, 4], fill=S3); d.line([4, 0, 4, 4], fill=S4); d.line([0, 4, 4, 4], fill=S4)
+    return im
+
+
+@item
+def stone_cap_l():
+    im = items['stone_cap'](); d = ImageDraw.Draw(im)
+    d.rectangle([11, 0, 15, 10], fill=S3); d.line([11, 0, 11, 10], fill=S4)
+    return im
+
+
+@item
+def stone_cap_r():
+    im = items['stone_cap'](); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 4, 10], fill=S3); d.line([4, 0, 4, 10], fill=S4)
+    return im
+
+
+def flag_tile(seed):
+    im = canvas(16, 16); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 15, 15], fill=MORTAR)
+    tones = ((92, 90, 96, 255), (100, 98, 104, 255), (86, 84, 92, 255), (96, 94, 100, 255))
+    if seed % 2 == 0:
+        d.rectangle([1, 1, 14, 6], fill=tones[seed]); d.rectangle([1, 8, 7, 14], fill=tones[(seed + 1) % 4]); d.rectangle([9, 8, 14, 14], fill=tones[(seed + 2) % 4])
+    else:
+        d.rectangle([1, 1, 6, 14], fill=tones[seed]); d.rectangle([8, 1, 14, 7], fill=tones[(seed + 1) % 4]); d.rectangle([8, 9, 14, 14], fill=tones[(seed + 3) % 4])
+    d.point((3, 3), fill=(118, 116, 122, 255)); d.point((11, 11), fill=(70, 68, 76, 255))
+    return im
+
+
+for k in range(4):
+    items['flag_%d' % (k + 1)] = (lambda k=k: flag_tile(k))
+
+
+@item
+def grate():              # 26 x 20 an iron sewer grate set low in the wall
+    im = canvas(26, 20); d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, 25, 19], fill=(30, 30, 34, 255), outline=O)
+    d.rectangle([2, 2, 23, 17], fill=(14, 16, 18, 255))
+    iron, iron2 = (86, 88, 96, 255), (120, 122, 130, 255)
+    for x in range(3, 24, 4):
+        d.line([x, 2, x, 17], fill=iron); d.point((x, 2), fill=iron2)
+    d.line([2, 9, 23, 9], fill=iron2)
+    d.rectangle([0, 16, 25, 19], fill=(60, 80, 60, 255))     # green slime at its foot
+    d.point((5, 17), fill=(90, 120, 80, 255)); d.point((19, 18), fill=(90, 120, 80, 255))
+    return im
+
+
+@item
+def rubble():             # 30 x 18 fallen stones and a broken beam
+    im = canvas(30, 18); d = ImageDraw.Draw(im)
+    d.polygon([(2, 3), (27, 11), (26, 14), (1, 6)], fill=W3, outline=O)          # broken beam
+    for (x0, y0, x1, y1, c) in ((0, 8, 10, 17, S1), (8, 5, 18, 15, S2), (16, 9, 29, 17, S1), (5, 12, 14, 17, S3)):
+        d.ellipse([x0, y0, x1, y1], fill=c, outline=O)
+    d.point((11, 7), fill=S4); d.point((20, 11), fill=S4); d.point((4, 10), fill=S4)
+    return im
+
+
+@item
+def ladder():             # 16 x 36 a ladder up to the taproom trapdoor
+    im = canvas(16, 36); d = ImageDraw.Draw(im)
+    box(d, 1, 0, 3, 35, W3); box(d, 12, 0, 14, 35, W3)
+    for y in range(4, 34, 6):
+        d.rectangle([3, y, 12, y + 1], fill=W2, outline=O)
+    d.rectangle([0, 0, 15, 2], fill=(220, 190, 120, 255))    # light from the trapdoor above
+    return im
+
+
+@item
+def sacks():              # 18 x 14 grain sacks
+    im = canvas(18, 14); d = ImageDraw.Draw(im)
+    burlap, b2 = (186, 160, 112, 255), (150, 126, 86, 255)
+    d.rounded_rectangle([0, 3, 10, 13], 3, fill=burlap, outline=O); d.rounded_rectangle([7, 1, 17, 13], 3, fill=b2, outline=O)
+    d.line([9, 1, 15, 1], fill=O); d.line([2, 3, 8, 3], fill=O)
+    return im
+
+
+@item
+def crate():              # 16 x 16
+    im = canvas(16, 16); d = ImageDraw.Draw(im)
+    box(d, 0, 2, 15, 15, W1); d.rectangle([0, 0, 15, 4], fill=W2, outline=O)
+    d.line([1, 6, 14, 14], fill=W3); d.line([1, 14, 14, 6], fill=W3)
+    return im
+
+
+@item
+def cobweb():             # 16 x 14 a web in a corner of the wall
+    im = canvas(16, 14); d = ImageDraw.Draw(im)
+    web = (210, 210, 220, 160)
+    for a in (0, 4, 8, 12):
+        d.line([0, 0, 15 - a, a], fill=web)
+    for r in (4, 8, 12):
+        d.arc([-r, -r, r, r], 0, 90, fill=web)
+    return im
+
+
 # ---------------- pack ----------------
 built = {k: (fn() if callable(fn) else fn) for k, fn in items.items()}
 order = sorted(built, key=lambda k: -built[k].size[1])

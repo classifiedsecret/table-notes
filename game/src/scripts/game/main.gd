@@ -701,8 +701,9 @@ func _set_camera_limits() -> void:
 	camera.limit_bottom = int(sz.y + my - 16.0)
 
 
+## Back out of the cave-in, into the cellar.
 func _step_off_trapdoor() -> void:
-	player.global_position = Vector2(29.6, 12.4) * World.T
+	player.global_position = Vector2(6.5, 7.6) * World.T
 	player.velocity = Vector2.ZERO
 	player.reset_physics_interpolation()
 
@@ -710,6 +711,11 @@ func _step_off_trapdoor() -> void:
 ## Through a door in the inn: hallway to private room, or back out.
 func _use_inn_door(d: Dictionary) -> void:
 	_close_talk()
+	if d.to == "sewer":
+		# The way to another quest, for another day.
+		sfx.play("deflect", -10.0)
+		toast("A rusted grate. Foul air and the drip of the Waterdeep sewers beyond. Not today.")
+		return
 	sfx.play("thud", -10.0)
 	inn.go(d.to, d.get("spawn", ""))
 
@@ -728,7 +734,7 @@ func _enter_inn(at_cellar := false) -> void:
 	hud.hide_doors()
 	hud.set_inn_mode(true)
 	if at_cellar:
-		inn.go("taproom", "cellar")
+		inn.go("cellar", "breach")
 	else:
 		var rs: Array = inn.room_spawn(hero.key)
 		if _arg_value("map") != "" and not has_meta("map_used"):
@@ -1490,6 +1496,8 @@ func _bot(delta: float) -> void:
 				goal = Vector2(6.0, 8.6) * World.T            # out through the doorway
 			elif inn.current == "upstairs":
 				goal = Vector2(31.0, 3.8) * World.T           # the stairs down
+			elif inn.current == "cellar":
+				goal = Vector2(1.5, 7.0) * World.T            # the cave-in
 			elif not hero.quest_given and inn.dm and not OS.get_cmdline_user_args().has("--rush"):
 				goal = inn.dm.global_position + Vector2(0, 12)
 				if player.global_position.distance_to(inn.dm.global_position) < 24.0:
