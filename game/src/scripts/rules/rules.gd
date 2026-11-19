@@ -57,6 +57,10 @@ static func save(dice: Dice, bonus: int, dc: int, mode: int = Dice.Mode.NORMAL) 
 
 ## One death saving throw. Returns the d20 and its effect:
 ## "revive" (natural 20: regain 1 HP), "success" (10+), "fail", or "fail2" (natural 1: two failures).
+## House rule: a death save succeeds on 6 or higher (75%), not the book's 10. A natural 20
+## still brings you back with 1 HP and a natural 1 still counts as two failures.
+const DEATH_SAVE_DC := 6
+
 static func death_save(dice: Dice) -> Dictionary:
 	var r := dice.die(20)
 	var effect := "success"
@@ -64,7 +68,7 @@ static func death_save(dice: Dice) -> Dictionary:
 		effect = "revive"
 	elif r == 1:
 		effect = "fail2"
-	elif r < 10:
+	elif r < DEATH_SAVE_DC:
 		effect = "fail"
 	return {"roll": r, "effect": effect}
 

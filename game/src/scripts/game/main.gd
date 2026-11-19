@@ -640,6 +640,8 @@ func _load_room(file: String, quiet := false) -> void:
 		if key == "B":
 			continue
 		spawn_monster(key, s[1])
+	if enemies.is_empty():
+		room.open_exit()   # nothing here to fight: the tunnel stands open
 	for c in room.chests:
 		var ch := Chest.new()
 		ch.game = self
@@ -764,10 +766,9 @@ func _spawn_player() -> void:
 	player.downed.connect(func(): hud.death_saves(true, player.death_saves); hud.banner("DOWN!", Color(1, 0.4, 0.35)))
 
 
+## The way on opens only when every monster in the room is down (any kind of room).
 func room_cleared() -> bool:
-	if room_type in ["combat", "elite"]:
-		return living_enemies().is_empty()
-	return true
+	return living_enemies().is_empty()
 
 
 func try_interact() -> void:
@@ -800,7 +801,10 @@ func _check_exit() -> void:
 		return
 	var near := player.global_position.distance_to(room.exit_pos) < 14.0
 	if not near:
+		_doors_dismissed = false
 		return
+	if _doors_dismissed:
+		return   # closed the door choice: step away and back to open it again
 	if not room_cleared():
 		if _barred_t <= 0.0:
 			toast("The way on is barred. Clear the room first.")
@@ -849,7 +853,16 @@ func _show_doors() -> void:
 	hud.show_doors(labels, hints, _door_pick)
 
 
+var _doors_dismissed := false
+
 func _doors_input() -> void:
+	# The X in the corner (or Esc) closes the choice and returns you to the room.
+	if Input.is_action_just_pressed("back") or (clicked() and under_mouse([hud.door_close]) >= 0):
+		hud.hide_doors()
+		phase = Phase.RUN
+		_doors_dismissed = true
+		sfx.play("step", -8.0)
+		return
 	var hov := under_mouse(hud.door_boxes)
 	if hov >= 0 and hov < _door_options.size() and hov != _door_pick and mouse_moved():
 		_door_pick = hov
@@ -882,7 +895,7 @@ func on_enemy_killed(e: Enemy) -> void:
 	log_line("%s is slain. +%d XP." % [e.data.name, e.data.xp])
 	sfx.play("thud", -6.0)
 	gain_xp(int(e.data.xp))
-	if room_cleared() and phase == Phase.RUN and room_type in ["combat", "elite"]:
+	if room_cleared() and phase == Phase.RUN and not room.exit_opened:
 		room.open_exit()
 		toast("The way on is open.")
 

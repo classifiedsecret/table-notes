@@ -37,6 +37,7 @@ var center_title: Label
 var center_body: Label
 var center_foot: Label
 var doors_panel: PanelContainer
+var door_close: Label         # the X in the door choice's corner
 var door_labels: Array[Label] = []
 var door_hints: Array[Label] = []
 var door_boxes: Array[ColorRect] = []
@@ -153,7 +154,7 @@ func build(g: Node) -> void:
 	ds_marks = _label(ds_panel, Vector2(0, 40), "", 8, Color.WHITE)
 	ds_marks.size = Vector2(240, 10)
 	ds_marks.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var dt := _label(ds_panel, Vector2(0, 52), "D20: 10+ SUCCEEDS, 1 COUNTS TWICE, 20 REVIVES", 8, Color(0.7, 0.7, 0.75))
+	var dt := _label(ds_panel, Vector2(0, 52), "D20: %d+ SUCCEEDS, 1 COUNTS TWICE, 20 REVIVES" % Rules.DEATH_SAVE_DC, 8, Color(0.7, 0.7, 0.75))
 	dt.size = Vector2(240, 10)
 	dt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ds_panel.visible = false
@@ -185,7 +186,9 @@ func build(g: Node) -> void:
 		h.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		door_hints.append(h)
-	var dfoot := _label(doors_panel, Vector2(0, 96), "CLICK A DOOR, OR LEFT / RIGHT AND ENTER", 8, Color(0.6, 0.6, 0.66))
+	var dfoot := _label(doors_panel, Vector2(0, 96), "CLICK A DOOR, OR LEFT / RIGHT AND ENTER    X / ESC: BACK", 8, Color(0.6, 0.6, 0.66))
+	door_close = _label(doors_panel, Vector2(340, 2), "X", 16, Color(1, 0.75, 0.6), true)
+	door_close.size = Vector2(16, 16)
 	dfoot.size = Vector2(360, 10)
 	dfoot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	doors_panel.visible = false
@@ -521,7 +524,7 @@ func death_saves(visible_now: bool, ds: Rules.DeathSaves, last: Dictionary = {})
 	if last.has("roll"):
 		_ds_final = str(last.roll)
 		_ds_tumble = 0.35
-		var col := Color(0.6, 1, 0.6) if last.roll >= 10 else Color(1, 0.45, 0.4)
+		var col := Color(0.6, 1, 0.6) if last.roll >= Rules.DEATH_SAVE_DC else Color(1, 0.45, 0.4)
 		if last.roll == 20:
 			col = Color(1, 0.85, 0.3)
 		ds_roll.label_settings.font_color = col
