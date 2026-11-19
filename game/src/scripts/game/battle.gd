@@ -7,6 +7,7 @@ enum Mode { IDLE, MENU, MOVE, TARGET, BUSY, ECHO }
 const T := 16
 const REACH_HERO := 1
 const NO_CELL := Vector2i(-99, -99)
+const MENU_TOP := 64.0     # just below the (scaled) hero panel
 
 var game: Node
 var active := false
@@ -465,7 +466,7 @@ func _render_menu() -> void:
 			l.label_settings.font_color = Color(0.45, 1.0, 0.45)
 		else:
 			l.label_settings.font_color = Color(0.92, 0.92, 0.9)
-	menu_panel.size.y = 8.0 + 10.0 * menu_items.size()
+	menu_panel.size.y = 10.0 + 10.0 * menu_items.size()
 	var res := "ACTION %s  BONUS %s  MOVE %d FT" % ["OK" if h_action > 0 else "USED", "OK" if h_bonus > 0 else "USED", h_move * 5]
 	_info(res + "    CLICK OR UP/DOWN + ENTER TO ACT")
 
@@ -1614,7 +1615,9 @@ func _build_ui() -> void:
 	order_panel = top
 	order_label = _label(top, Vector2(5, 3), 8, Color(0.92, 0.9, 0.85))
 	order_label.label_settings.line_spacing = -3.0
-	menu_panel = _panel(Vector2(4, 72), Vector2(186, 100))
+	menu_panel = _panel(Vector2(4, MENU_TOP), Vector2(186, 100))
+	menu_panel.scale = Vector2.ONE * Hud.UI_SCALE
+	order_panel.scale = Vector2.ONE * Hud.UI_SCALE
 	menu_label = _label(menu_panel, Vector2(6, 4), 8, Color.WHITE)
 	menu_lines.clear()
 	for i in 14:
@@ -1625,12 +1628,12 @@ func _build_ui() -> void:
 	intent_label.size = Vector2(280, 22)
 	intent_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intent_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# Turn info and controls use the bottom line of the screen (the run's key hints are hidden in battle).
-	info_label = _label(ui, Vector2(0, 259), 8, Color(0.7, 0.85, 1.0))
-	info_label.size = Vector2(480, 10)
-	info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		# Bottom-left, at the HUD's 80% scale, clear of the roll log in the bottom-right corner.
+	info_label = _label(ui, Vector2(6, 258), 8, Color(0.7, 0.85, 1.0))
+	info_label.size = Vector2(390, 10)
+	info_label.pivot_offset = Vector2(0, 10)
+	info_label.scale = Vector2.ONE * Hud.UI_SCALE
+	info_label.clip_text = true
 	game.hud.hints.visible = false
 	game.hud.room_label.visible = false
 	_show_intent()
@@ -1682,8 +1685,12 @@ func _refresh_order() -> void:
 	order_label.text = "\n".join(lines)
 	# The box grows with the initiative list (allies make it longer); the action menu moves below it.
 	var sz := order_label.get_minimum_size()
-	order_panel.size = Vector2(maxf(116.0, sz.x + 10.0), sz.y + 6.0)
-	menu_panel.position.y = maxf(72.0, order_panel.position.y + order_panel.size.y + 4.0) if order_panel.position.x < menu_panel.position.x + menu_panel.size.x else 72.0
+	order_panel.size = Vector2(maxf(116.0, sz.x + 10.0), sz.y + 8.0)
+	# Centred at the top, drawn at the HUD's 80% scale.
+	order_panel.pivot_offset = Vector2(order_panel.size.x / 2.0, 0)
+	order_panel.position.x = 240.0 - order_panel.size.x / 2.0
+	var order_right := 240.0 - order_panel.size.x * Hud.UI_SCALE / 2.0
+	menu_panel.position.y = maxf(MENU_TOP, order_panel.position.y + order_panel.size.y * Hud.UI_SCALE + 4.0) if order_right < menu_panel.position.x + menu_panel.size.x * Hud.UI_SCALE else MENU_TOP
 	if combatants[turn_index].side != "hero":
 		for l in menu_lines:
 			l.visible = false

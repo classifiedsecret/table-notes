@@ -246,6 +246,43 @@ def couch_back():         # a couch seen from behind (it faces the fireplace)
     return im
 
 
+
+@item
+def couch_side():         # 22 x 42 a couch against the west wall, seen from above: back on the left, facing east
+    im = canvas(22, 42); d = ImageDraw.Draw(im)
+    box(d, 2, 38, 5, 41, D1); box(d, 16, 38, 19, 41, D1)              # front feet
+    d.rounded_rectangle([0, 0, 21, 38], 3, fill=RED2, outline=O)      # frame
+    d.rectangle([1, 2, 6, 36], fill=REDD)                              # the backrest
+    d.line([6, 2, 6, 36], fill=O)
+    d.rectangle([1, 0, 20, 5], fill=RED2); d.line([1, 5, 20, 5], fill=O)      # north arm
+    d.rectangle([1, 32, 20, 37], fill=RED2); d.line([1, 32, 20, 32], fill=O)  # south arm
+    d.rectangle([7, 6, 20, 18], fill=RED1); d.rectangle([7, 19, 20, 31], fill=RED1)   # two seat cushions
+    d.line([7, 18, 20, 18], fill=REDD)
+    d.line([9, 8, 18, 8], fill=(206, 82, 88, 255)); d.line([9, 21, 18, 21], fill=(206, 82, 88, 255))
+    return im
+
+
+@item
+def table_round():        # 28 x 24 a round table on a pedestal
+    im = canvas(28, 24); d = ImageDraw.Draw(im)
+    box(d, 11, 14, 16, 22, W3)
+    d.ellipse([7, 20, 20, 23], fill=W3, outline=O)
+    d.ellipse([0, 0, 27, 17], fill=W1, outline=O)
+    d.ellipse([3, 2, 24, 13], fill=W2)
+    d.arc([3, 2, 24, 13], 200, 340, fill=W4)
+    return im
+
+
+@item
+def table_round_small():  # 20 x 18
+    im = canvas(20, 18); d = ImageDraw.Draw(im)
+    box(d, 8, 10, 11, 16, W3)
+    d.ellipse([5, 14, 14, 17], fill=W3, outline=O)
+    d.ellipse([0, 0, 19, 12], fill=W1, outline=O)
+    d.ellipse([2, 2, 17, 9], fill=W2)
+    return im
+
+
 def rug(w, h, base, edge, star):
     im = canvas(w, h); d = ImageDraw.Draw(im)
     d.ellipse([0, 0, w - 1, h - 1], fill=edge)

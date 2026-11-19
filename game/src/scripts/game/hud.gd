@@ -20,8 +20,9 @@ var log_panel: PanelContainer
 var log_label: Label
 var log_title: Label
 var log_open := false
+const UI_SCALE := 0.8         # corner readouts drawn at 80% so they cover less of the room
 const LOG_Y := 255.0          # bottom edge of the screen, minus the collapsed bar
-const LOG_SHUT_H := 13.0
+const LOG_SHUT_H := 14.0
 const LOG_OPEN_H := 86.0
 var banner_label: Label
 var toast_label: Label
@@ -60,7 +61,7 @@ var dlg_name: Label
 var dlg_text: Label
 var dlg_yes: Label
 var dlg_no: Label
-const HINTS_INN := [["WASD", "MOVE"], ["SPACE", "HOP"], ["SHIFT/K", "DODGE ROLL"], ["E", "TALK / DOORS"], ["M", "MUSIC ON/OFF"], ["WHEEL", "MUSIC VOL"],
+const HINTS_INN := [["WASD", "MOVE"], ["SPACE", "HOP"], ["SHIFT", "DODGE ROLL"], ["E", "TALK / DOORS"], ["M", "MUSIC ON/OFF"], ["WHEEL", "MUSIC VOL"],
 	["ESC", "PAUSE"], ["", "CELLAR: TRAPDOOR BY THE BAR"]]
 
 var _log: Array[String] = []
@@ -80,8 +81,9 @@ func build(g: Node) -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 
-	var hero := _panel(Vector2(4, 4), Vector2(158, 64))
+	var hero := _panel(Vector2(4, 4), Vector2(158, 68))
 	hero_panel = hero
+	hero.scale = Vector2.ONE * UI_SCALE
 	name_label = _label(hero, Vector2(6, 3), "", 8, Color(1, 0.9, 0.65))
 	title_label = _label(hero, Vector2(6, 12), "", 8, Color(0.75, 0.8, 0.9))
 	_rect(hero, Vector2(6, 23), Vector2(92, 7), Color(0.15, 0.05, 0.06))
@@ -100,8 +102,10 @@ func build(g: Node) -> void:
 	room_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	room_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-	var sp := _panel(Vector2(286, 4), Vector2(190, 22))
+	var sp := _panel(Vector2(286, 4), Vector2(190, 24))
 	stats_panel = sp
+	sp.pivot_offset = Vector2(190, 0)      # shrinks toward the top-right corner
+	sp.scale = Vector2.ONE * UI_SCALE
 	stats_label = _label(sp, Vector2(5, 2), "", 8, Color(0.9, 0.9, 0.85))
 	rule_label = _label(sp, Vector2(5, 11), "", 8, Color(0.7, 0.75, 0.85))
 
@@ -308,12 +312,16 @@ func _show_hints(list: Array) -> void:
 		acts.append(str(h[1]))
 	_hint_keys.text = "\n".join(ks)
 	_hint_acts.text = "\n".join(acts)
-	var h := 6.0 + 9.0 * list.size()
+	var h := 8.0 + 9.0 * list.size()
 	var w := 45.0 + _hint_acts.label_settings.font.get_multiline_string_size(_hint_acts.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x + 6.0
 	hints.position = Vector2(4, 266.0 - h)
 	hints.size = Vector2(w, h)
 	hints.reset_size()
 	hints.size = Vector2(w, h)
+	# The panel may grow to fit its text: anchor its real bottom edge just above the screen's.
+	hints.position.y = 266.0 - hints.size.y
+	hints.pivot_offset = Vector2(0, hints.size.y)   # shrinks toward the bottom-left corner
+	hints.scale = Vector2.ONE * UI_SCALE
 
 
 ## The hint list fades when the hero walks behind it.
@@ -411,6 +419,8 @@ func _set_log_open(on: bool) -> void:
 	log_panel.custom_minimum_size = Vector2(190, h)
 	log_panel.size = Vector2(190, h)
 	log_panel.position = Vector2(286, LOG_Y + LOG_SHUT_H - h)
+	log_panel.pivot_offset = Vector2(190, h)   # shrinks toward the bottom-right corner
+	log_panel.scale = Vector2.ONE * UI_SCALE
 	log_label.visible = on
 	log_title.clip_text = true
 	log_title.size = Vector2(181, 10)
@@ -521,6 +531,9 @@ func death_saves(visible_now: bool, ds: Rules.DeathSaves, last: Dictionary = {})
 
 func _process(delta: float) -> void:
 	_fade_hints()
+	if hints and hints.position.y != 266.0 - hints.size.y:
+		hints.position.y = 266.0 - hints.size.y   # its text can resize it a frame later
+		hints.pivot_offset = Vector2(0, hints.size.y)
 	if game and game.clicked() and mouse_over_log():
 		_set_log_open(not log_open)
 	if _banner_t > 0.0:

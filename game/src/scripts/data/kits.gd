@@ -233,7 +233,7 @@ static func level_features(key: String, lv: int) -> String:
 ## Key hints for the run, per hero: [key, what it does].
 static func hints(key: String) -> Array:
 	var head := [["WASD", "MOVE"], ["SPACE", "HOP"]]
-	var tail := [["SHIFT/K", "DODGE ROLL"], ["E", "USE"], ["H", "POTION"], ["TAB", "ROLL LOG"], ["WHEEL", "MUSIC VOL"], ["ESC", "PAUSE"]]
+	var tail := [["SHIFT", "DODGE ROLL"], ["E", "USE"], ["H", "POTION"], ["TAB", "ROLL LOG"], ["WHEEL", "MUSIC VOL"], ["ESC", "PAUSE"]]
 	var mid: Array = []
 	match key:
 		"ceridwen": mid = [["J", "FIRE BOLT"], ["L", "MAGIC MISSILE"], ["R", "SCORCHING RAY"], ["U", "FORESIGHT"]]

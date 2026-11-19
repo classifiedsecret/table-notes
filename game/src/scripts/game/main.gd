@@ -105,7 +105,7 @@ func _setup_input() -> void:
 	var keys := {
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT], "move_down": [KEY_S, KEY_DOWN],
 		"move_up": [KEY_W, KEY_UP],
-		"jump": [KEY_SPACE, KEY_W, KEY_UP], "attack": [KEY_J, KEY_Z], "dodge": [KEY_K, KEY_SHIFT, KEY_C],
+		"jump": [KEY_SPACE, KEY_W, KEY_UP], "attack": [KEY_J, KEY_Z], "dodge": [KEY_SHIFT, KEY_C],
 		"rage": [KEY_L, KEY_Q], "toggle_log": [KEY_TAB, KEY_I], "confirm": [KEY_ENTER, KEY_KP_ENTER],
 		"interact": [KEY_E, KEY_F], "potion": [KEY_H], "reckless": [KEY_R], "echo": [KEY_U],
 		"back": [KEY_ESCAPE, KEY_BACKSPACE], "test_down": [KEY_F2], "music": [KEY_M], "form": [KEY_Y],
@@ -287,6 +287,8 @@ func _on_hero_loaded(args: Array) -> void:
 	if first and phase == Phase.TAVERN:
 		# Every hero starts the day in their own room.
 		var rs: Array = inn.room_spawn(hero.key)
+		if _arg_value("map") != "":
+			rs = [_arg_value("map"), _arg_value("spawn")]   # test switch: ?map=taproom&spawn=door
 		inn.go(rs[0], rs[1])
 	if not first:
 		if phase == Phase.CARD:
@@ -512,6 +514,24 @@ func _tavern_input() -> void:
 				_refresh_tavern()
 
 
+## Back at the Gryphon's Roost counts as a long rest (2024 rules): full hit points, every spent
+## Hit Point Die back, rages and spell slots restored.
+func _long_rest() -> void:
+	if not is_instance_valid(player) or hero == null:
+		return
+	var was_hurt: bool = player.hp < player.max_hp or hit_dice < hero.level
+	if player.is_down() or player.state == Player.State.DEAD:
+		player.revive_full()
+	player.hp = player.max_hp
+	hit_dice = hero.level
+	player.rage_uses = player.stats.rage_uses
+	player.used_second_wind = false
+	player.kit.long_rest()
+	player.hp_changed.emit()
+	if was_hurt:
+		log_line("A long rest at the Gryphon's Roost: hit points, Hit Dice, and spells restored.")
+
+
 # ---------------- runs ----------------
 
 func _start_run() -> void:
@@ -695,6 +715,7 @@ func _use_inn_door(d: Dictionary) -> void:
 ## Back in the Gryphon's Roost: at the front door on first arrival, at the cellar door after a delve.
 func _enter_inn(at_cellar := false) -> void:
 	music.play("tavern", 2.0)
+	_long_rest()
 	_clear_companions()
 	_load_room("", true)
 	if not inn.is_inside_tree():
@@ -708,6 +729,9 @@ func _enter_inn(at_cellar := false) -> void:
 		inn.go("taproom", "cellar")
 	else:
 		var rs: Array = inn.room_spawn(hero.key)
+		if _arg_value("map") != "" and not has_meta("map_used"):
+			set_meta("map_used", true)
+			rs = [_arg_value("map"), _arg_value("spawn")]   # test switch: ?map=taproom&spawn=door
 		inn.go(rs[0], rs[1])
 
 
