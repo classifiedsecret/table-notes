@@ -1023,6 +1023,13 @@ func _talk(n: InnNPC) -> void:
 	if _member_key(n) != "" and _loaded:
 		_ask_join(n)
 		return
+	if n == inn.dm:
+		# Once the quest is given, the Stranger just mutters: his lines float over him in a bubble.
+		_close_talk()
+		n.face_toward(player.global_position.x)
+		n.say(n.next_line(), 3.6)
+		sfx.play("step", -8.0)
+		return
 	if n != _talking:
 		n.line_i = n.line_i % maxi(1, n.lines.size())
 	_talking = n
