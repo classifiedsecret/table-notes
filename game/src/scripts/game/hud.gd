@@ -123,6 +123,8 @@ func build(g: Node) -> void:
 	log_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	_set_log_open(false)
 
+	_build_creator()
+
 	banner_label = _label(root, Vector2(0, 70), "", 24, Color.WHITE, true)
 	banner_label.size = Vector2(480, 24)
 	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -314,6 +316,105 @@ func refresh(p: Player, stats: Dictionary, g: Node) -> void:
 
 
 ## Key hints as a stacked list: keys in gold on the left, what they do on the right.
+# ---------------- character creation ----------------
+
+var creator: PanelContainer
+var cr_name: LineEdit
+var cr_rows: Array[Label] = []        # name, class, look, begin
+var cr_arrows: Array[Label] = []      # class <, class >, look <, look >
+var cr_blurb: Label
+var cr_preview: AnimatedSprite2D
+var cr_begin: Label
+
+const CLASS_BLURBS := {
+	"boarvhal": "BARBARIAN: RAGE, RECKLESS ATTACK AND AN ECHO OF YOURSELF (ECHO KNIGHT). TOUGH AND HARD-HITTING.",
+	"ceridwen": "WIZARD: FIRE BOLT, MAGIC MISSILE, SCORCHING RAY AND FORESIGHT. LATER, FIREBALL.",
+	"erwar": "CLERIC: MACE AND SHIELD, HEALING WORD, SPIRITUAL WEAPON, WAR BLESSING. LATER, SPIRIT GUARDIANS.",
+	"lyburnum": "PALADIN: LONGSWORD, LAY ON HANDS, DIVINE SMITE AND DREAD AURA. HEAVY ARMOUR.",
+	"suilean": "DRUID: THORN WHIP, ENTANGLE, MOONBEAM, AND WILD SHAPE INTO A BEAR OR A GIANT SPIDER.",
+}
+
+
+func _build_creator() -> void:
+	creator = _panel(Vector2(70, 34), Vector2(340, 200), 0.97)
+	creator.z_index = 5
+	var t := _label(creator, Vector2(0, 6), "CREATE YOUR CHARACTER", 16, Color(1, 0.88, 0.55), true)
+	t.size = Vector2(340, 16)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var holder: Control = creator.get_meta("holder")
+	cr_rows.clear()
+	cr_arrows.clear()
+	cr_rows.append(_label(creator, Vector2(16, 34), "NAME", 8, Color.WHITE))
+	cr_name = LineEdit.new()
+	cr_name.position = Vector2(80, 30)
+	cr_name.size = Vector2(150, 16)
+	cr_name.max_length = 18
+	cr_name.placeholder_text = "Type a name"
+	cr_name.add_theme_font_override("font", Art.label_settings(8, Color.WHITE, 0).font)
+	cr_name.add_theme_font_size_override("font_size", 8)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.12, 0.1, 0.14)
+	sb.border_color = Color(0.6, 0.5, 0.35)
+	sb.set_border_width_all(1)
+	sb.content_margin_left = 3
+	sb.content_margin_right = 3
+	sb.content_margin_top = 1
+	sb.content_margin_bottom = 1
+	for st in ["normal", "focus", "read_only"]:
+		cr_name.add_theme_stylebox_override(st, sb)
+	cr_name.custom_minimum_size = Vector2(150, 12)
+	cr_name.size = Vector2(150, 12)
+	holder.add_child(cr_name)
+	cr_rows.append(_label(creator, Vector2(16, 62), "CLASS", 8, Color.WHITE))
+	cr_arrows.append(_label(creator, Vector2(80, 62), "<", 8, Color(1, 0.85, 0.5)))
+	cr_arrows.append(_label(creator, Vector2(222, 62), ">", 8, Color(1, 0.85, 0.5)))
+	cr_blurb = _label(creator, Vector2(16, 76), "", 8, Color(0.8, 0.8, 0.85))
+	cr_blurb.size = Vector2(308, 30)
+	cr_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	cr_rows.append(_label(creator, Vector2(16, 112), "LOOK", 8, Color.WHITE))
+	cr_arrows.append(_label(creator, Vector2(80, 112), "<", 8, Color(1, 0.85, 0.5)))
+	cr_arrows.append(_label(creator, Vector2(132, 112), ">", 8, Color(1, 0.85, 0.5)))
+	cr_preview = AnimatedSprite2D.new()
+	cr_preview.position = Vector2(112, 128)
+	cr_preview.scale = Vector2(1.5, 1.5)
+	holder.add_child(cr_preview)
+	cr_begin = _label(creator, Vector2(0, 160), "BEGIN", 16, Color(1, 0.9, 0.5), true)
+	cr_begin.size = Vector2(340, 16)
+	cr_begin.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cr_rows.append(cr_begin)
+	var foot := _label(creator, Vector2(0, 184), "UP/DOWN: CHOOSE A LINE   LEFT/RIGHT: CHANGE   ENTER OR CLICK: BEGIN", 8, Color(0.6, 0.6, 0.66))
+	foot.size = Vector2(340, 10)
+	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	creator.visible = false
+
+
+func show_creator(kit_key: String, look: String, row: int) -> void:
+	creator.visible = true
+	hero_panel.visible = false
+	cr_rows[1].text = "CLASS"
+	var cls: String = Hero.CLASS_NAMES[kit_key].to_upper()
+	var cl := cr_rows[1].get_parent().get_node_or_null("cls_name") as Label
+	if cl == null:
+		cl = _label(creator, Vector2(94, 62), "", 8, Color(1, 0.95, 0.8))
+		cl.name = "cls_name"
+		cl.size = Vector2(124, 10)
+		cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cl.text = cls
+	cr_blurb.text = CLASS_BLURBS.get(kit_key, "")
+	cr_preview.sprite_frames = Art.strip_frames(load("res://assets/sprites/%s.png" % look), 16, 28, {
+		"idle": [0, 4, 6, true], "run": [4, 4, 11, true], "hit": [8, 1, 1, false]})
+	cr_preview.play("idle")
+	for i in cr_rows.size():
+		cr_rows[i].label_settings.font_color = Color(1, 0.85, 0.4) if i == row else (Color(0.75, 0.72, 0.7) if i == 3 else Color.WHITE)
+	cr_begin.text = "> BEGIN <" if row == 3 else "BEGIN"
+
+
+func hide_creator() -> void:
+	creator.visible = false
+	hero_panel.visible = true
+	cr_name.release_focus()
+
+
 func _show_hints(list: Array) -> void:
 	var ks: Array[String] = []
 	var acts: Array[String] = []

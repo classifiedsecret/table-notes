@@ -165,7 +165,7 @@ func reclaim_potential() -> void:
 	reclaim_left -= 1
 	var d := Rules.damage(game.dice, 2, 6, 3)
 	heal(int(d.total))
-	game.log_line("Reclaim Potential: Boar-vhal shakes off the lost echo and recovers %d HP (%d left)." % [d.total, reclaim_left])
+	game.log_line("Reclaim Potential: %s shakes off the lost echo and recovers %d HP (%d left)." % [short_name(), d.total, reclaim_left])
 
 
 ## The hero's sprite sheet and weapon (or the Wild Shape beast's).
@@ -180,14 +180,14 @@ func _apply_look() -> void:
 		sprite.self_modulate = form_data.get("tint", Color.WHITE)
 		weapon_pivot.visible = false
 	else:
-		sprite.sprite_frames = Art.strip_frames(load("res://assets/sprites/%s.png" % info.sprite), 16, 28, {
+		sprite.sprite_frames = Art.strip_frames(load("res://assets/sprites/%s.png" % (hero.sprite() if hero else info.sprite)), 16, 28, {
 			"idle": [0, 4, 6, true], "run": [4, 4, 11, true], "hit": [8, 1, 1, false]})
 		sprite.offset = Vector2(0, -14)
 		sprite.self_modulate = Color.WHITE
 		weapon_sprite.texture = Art.region(info.weapon_sprite)
 		weapon_pivot.visible = not is_down()
 	sprite.play("idle")
-	_look_key = key
+	_look_key = hero.sprite() if hero else key
 
 
 ## Wild Shape in or out. An empty dictionary returns to the hero's own shape.
@@ -248,7 +248,7 @@ func apply_hero(h: Hero) -> void:
 	ac = stats.ac if form_data.is_empty() else int(form_data.ac)
 	recovery = RECOVERY * (0.5 if h.has_extra_attack() else 1.0)
 	if is_inside_tree():
-		if _look_key != h.key:
+		if _look_key != h.sprite():
 			form_data = {}
 			ac = stats.ac
 			_apply_look()
@@ -852,7 +852,7 @@ func _update_echo(delta: float) -> void:
 			echo.queue_free()
 			echo = null
 			echo_target = Vector2.INF
-			game.log_line("The echo is more than 30 ft from Boar-vhal and fades away.")
+			game.log_line("The echo strays too far from %s and fades away." % short_name())
 			game.toast("Your echo fades (more than 30 ft away).")
 
 
@@ -881,7 +881,7 @@ func _try_echo() -> void:
 		echo.global_position = global_position
 		_echo_round = 2.0
 		echo_target = Vector2.INF
-		game.log_line("Bonus action: Boar-vhal leaves an Echo. Goblins beside it are flanked.")
+		game.log_line("Bonus action: %s leaves an Echo. Foes beside it are flanked." % short_name())
 		game.sfx.play("dodge", -8.0)
 	else:
 		# Swap places with the echo.

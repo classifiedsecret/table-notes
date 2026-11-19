@@ -177,6 +177,10 @@ form_strip(giant_rat, 20, 14, 4, 4, 'giant_rat.png', rim=False)
 form_strip(rat_swarm, 24, 16, 4, 4, 'rat_swarm.png', rim=False)
 print('sewer sizes', cu, cf)
 
+# Looks for created characters (unrecoloured 0x72 heroes, with the same light rim).
+for base in ['elf_m', 'elf_f', 'dwarf_m', 'dwarf_f', 'knight_m', 'knight_f', 'lizard_m', 'lizard_f', 'wizzard_m']:
+    strip(frames(base, [('idle', 4), ('run', 4), ('hit', 1)]), None, 'look_%s.png' % base)
+    outline('look_%s.png' % base, 16, (255, 236, 190, 150))
 form_strip(bear, 24, 18, 4, 4, 'form_bear.png')
 form_strip(spider, 24, 14, 4, 4, 'form_spider.png', rim=False)
 print('frame sizes', bv, gm, gw, bb, inn_sizes)

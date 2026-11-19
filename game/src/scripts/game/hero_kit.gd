@@ -76,7 +76,7 @@ func long_rest() -> void:
 func _roll_foresight() -> void:
 	foresight = [game.dice.die(20), game.dice.die(20)]
 	foresight_armed = -1
-	game.log_line("Foresight: Ceridwen glimpses %d and %d. Press I to ready one." % [foresight[0], foresight[1]])
+	game.log_line("Foresight: %s glimpses %d and %d. Press I to ready one." % [p.short_name(), foresight[0], foresight[1]])
 
 
 ## Campfire short rest: Channel Divinity and Wild Shape come back.
@@ -301,7 +301,7 @@ func _spirit_guardians() -> void:
 	p.cast_pose()
 	concentration = SpellZone.make(game, self, SpellZone.Kind.GUARDIANS, p.global_position, 60.0)
 	concentration.half_w = 48.0
-	game.log_line("Spirit Guardians: radiant spirits circle Erwar (15 ft, 3d8 radiant, Wisdom save DC %d for half)." % int(s.spell_dc))
+	game.log_line("Spirit Guardians: radiant spirits circle %s (15 ft, 3d8 radiant, Wisdom save DC %d for half)." % [p.short_name(), int(s.spell_dc)])
 	game.sfx.play("dodge", -6.0)
 
 
@@ -332,7 +332,7 @@ func take_foresight() -> int:
 	var v: int = foresight[foresight_armed]
 	foresight.remove_at(foresight_armed)
 	foresight_armed = -1
-	game.log_line("Foresight: the d20 is a %d, as Ceridwen foresaw." % v)
+	game.log_line("Foresight: the d20 is a %d, as %s foresaw." % [v, p.short_name()])
 	game.banner("FORESIGHT %d" % v, Color(0.75, 0.7, 1.0))
 	return v
 
@@ -371,7 +371,7 @@ func _spiritual_weapon() -> void:
 	p.bonus_cd = Player.BONUS_ACTION_COOLDOWN
 	spirit = SpellZone.make(game, self, SpellZone.Kind.SPIRIT, p.global_position + Vector2(0, -28), 60.0)
 	game.banner("SPIRITUAL WEAPON", Color(0.6, 0.85, 1.0))
-	game.log_line("Bonus action: Spiritual Weapon. A spectral mace fights beside Erwar for a minute (1d8%+d force).")
+	game.log_line("Bonus action: Spiritual Weapon. A spectral mace fights beside %s for a minute (1d8%+d force)." % [p.short_name(), int(s.spell_mod)])
 	game.sfx.play("dodge", -4.0)
 
 
@@ -476,7 +476,7 @@ func try_relentless() -> bool:
 		return false
 	relentless_ready = false
 	game.banner("RELENTLESS ENDURANCE", Color(1.0, 0.6, 0.4))
-	game.log_line("Relentless Endurance: Lyburnum drops to 1 HP instead of 0 (once per delve).")
+	game.log_line("Relentless Endurance: %s drops to 1 HP instead of 0 (once per delve)." % p.short_name())
 	return true
 
 
@@ -583,7 +583,7 @@ func _wild_shape(which: String) -> void:
 	p.set_form(f)
 	SpellFx.burst(game, p.global_position + Vector2(0, -8), SPELL_COLORS.nature, 18.0)
 	game.banner(str(f.name).to_upper(), Color(0.6, 0.9, 0.5))
-	game.log_line("Wild Shape: Suilean becomes a %s (%d HP, AC %d). %d use%s left." % [f.name, f.hp, f.ac, wild_uses, "" if wild_uses == 1 else "s"])
+	game.log_line("Wild Shape: %s becomes a %s (%d HP, AC %d). %d use%s left." % [p.short_name(), f.name, f.hp, f.ac, wild_uses, "" if wild_uses == 1 else "s"])
 	game.sfx.play("thud", -6.0)
 
 
@@ -595,7 +595,7 @@ func end_form(announce: bool) -> void:
 	p.set_form({})
 	if announce:
 		SpellFx.burst(game, p.global_position + Vector2(0, -8), SPELL_COLORS.nature, 14.0)
-		game.log_line("Suilean returns to her own shape.")
+		game.log_line("%s returns to %s own shape." % [p.short_name(), p.hero.pronoun("his")])
 
 
 ## Damage taken while in beast form comes off the beast first. Returns what carries over.

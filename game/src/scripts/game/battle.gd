@@ -1218,7 +1218,7 @@ func _move_echo(col: Vector2i) -> void:
 		var tw := create_tween()
 		tw.tween_property(echo_node, "global_position", _pos(col), 0.2)
 		await tw.finished
-	game.log_line("Boar-vhal sends his echo across the field (free movement).")
+	game.log_line("%s sends the echo across the field (free movement)." % game.player.short_name())
 	if _d(echo_col, _hero().col) > echo_leash:
 		game.toast("The echo is more than 30 ft away: it fades at the end of your turn.")
 	_open_menu()
@@ -1239,7 +1239,7 @@ func _echo_swap() -> void:
 	if is_instance_valid(echo_node):
 		echo_node.global_position = _pos(echo_col)
 	game.sfx.play("dodge", -6.0)
-	game.log_line("Boar-vhal swaps places with his echo (15 ft of movement).")
+	game.log_line("%s swaps places with the echo (15 ft of movement)." % game.player.short_name())
 	await get_tree().create_timer(0.25).timeout
 	_face_nearest(p, hc)
 	_open_menu()
@@ -1251,7 +1251,7 @@ func _echo_range_check() -> void:
 		echo_col = NO_CELL
 		if is_instance_valid(echo_node):
 			echo_node.queue_free()
-		game.log_line("The echo is more than 30 ft from Boar-vhal and fades away.")
+		game.log_line("The echo strays too far from %s and fades away." % game.player.short_name())
 		game.toast("Your echo fades (more than 30 ft away).")
 
 

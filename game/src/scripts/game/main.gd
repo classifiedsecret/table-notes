@@ -2,7 +2,7 @@ extends Node2D
 ## Vanguard's Descent, top-down: the Gryphon's Roost hub, Goblin Warren runs, door choices,
 ## the turn-based boss, saves.
 
-enum Phase { TAVERN, RUN, DOORS, BATTLE, OVER, CARD }   # TAVERN = walking around the inn
+enum Phase { TAVERN, RUN, DOORS, BATTLE, OVER, CARD, CREATE }   # TAVERN = walking around the inn
 
 const BIOME := "Goblin Warren"   # the first quest; see biome() for the current delve
 const ROOMS_BEFORE_BOSS := 5
@@ -235,7 +235,131 @@ func _on_whoami(args: Array) -> void:
 			hero.owner = str(d.get("player", d.get("name", "")))
 			member = str(d.get("name", ""))
 	_me_key = Kits.key_for_name(member)
-	_load_hero_key(_me_key if _me_key != "" else "boarvhal")
+	if _me_key == "":
+		# Not one of the party (the DM, or "Choose..." on Session Scribe): play your own character.
+		_load_custom()
+		return
+	_load_hero_key(_me_key)
+
+
+# ---------------- character creation ----------------
+
+var _want_custom := false
+var _cr_kit := 0
+var _cr_look := 0
+var _cr_row := 0
+
+## Loads this player's created character, or opens character creation if there is none yet.
+func _load_custom() -> void:
+	_want_custom = true
+	var owner := hero.owner
+	var heard := hero.quest_given
+	hero = Hero.new()
+	hero.owner = owner
+	hero.quest_given = heard
+	player.hero = hero
+	_switching = true
+	if _bridge:
+		hero.id = _hero_id("custom")
+		_bridge.loadDoc("vd_heroes", hero.id, _cb_load)
+	else:
+		hero.id = "local_custom"
+		var txt := FileAccess.get_file_as_string("user://hero_custom.json") if not bot else ""
+		_on_hero_loaded([txt if txt != "" else null])
+
+
+func _open_creator() -> void:
+	phase = Phase.CREATE
+	player.visible = false
+	_cr_row = 0
+	hud.cr_name.text = ""
+	_show_creator()
+	hud.cr_name.grab_focus()
+	if not hud.cr_name.text_submitted.is_connected(_on_name_entered):
+		hud.cr_name.text_submitted.connect(_on_name_entered)
+
+
+func _on_name_entered(_t: String) -> void:
+	hud.cr_name.release_focus()
+	_cr_row = 1
+	_show_creator()
+
+
+func _show_creator() -> void:
+	hud.show_creator(Kits.ORDER[_cr_kit], Hero.LOOKS[_cr_look], _cr_row)
+
+
+func _creator_input() -> void:
+	if hud.cr_name.has_focus():
+		if clicked() and not hud.cr_name.get_global_rect().has_point(get_viewport().get_mouse_position()):
+			hud.cr_name.release_focus()
+		else:
+			return   # typing a name: letters are not commands
+	var arrow := under_mouse(hud.cr_arrows)
+	if clicked():
+		if hud.cr_name.get_global_rect().has_point(get_viewport().get_mouse_position()):
+			_cr_row = 0
+			hud.cr_name.grab_focus()
+		elif arrow >= 0:
+			if arrow < 2:
+				_cr_kit = (_cr_kit + (1 if arrow == 1 else -1) + Kits.ORDER.size()) % Kits.ORDER.size()
+				_cr_row = 1
+			else:
+				_cr_look = (_cr_look + (1 if arrow == 3 else -1) + Hero.LOOKS.size()) % Hero.LOOKS.size()
+				_cr_row = 2
+			sfx.play("step", -8.0)
+		elif under_mouse([hud.cr_begin]) >= 0:
+			_finish_creation()
+			return
+		_show_creator()
+		return
+	var step := 0
+	if Input.is_action_just_pressed("move_up"):
+		_cr_row = (_cr_row + 3) % 4
+	elif Input.is_action_just_pressed("move_down"):
+		_cr_row = (_cr_row + 1) % 4
+	elif Input.is_action_just_pressed("move_left"):
+		step = -1
+	elif Input.is_action_just_pressed("move_right"):
+		step = 1
+	elif ui_confirm():
+		if _cr_row == 0:
+			hud.cr_name.grab_focus()
+		elif _cr_row == 3:
+			_finish_creation()
+			return
+		else:
+			_cr_row += 1
+	else:
+		return
+	if step != 0:
+		if _cr_row == 1:
+			_cr_kit = (_cr_kit + step + Kits.ORDER.size()) % Kits.ORDER.size()
+		elif _cr_row == 2:
+			_cr_look = (_cr_look + step + Hero.LOOKS.size()) % Hero.LOOKS.size()
+		sfx.play("step", -8.0)
+	if _cr_row == 0:
+		hud.cr_name.grab_focus()
+	_show_creator()
+
+
+func _finish_creation() -> void:
+	var nm := hud.cr_name.text.strip_edges()
+	if nm == "":
+		toast("Give your character a name first.")
+		_cr_row = 0
+		hud.cr_name.grab_focus()
+		_show_creator()
+		return
+	hero.make_custom(Kits.ORDER[_cr_kit], nm, Hero.LOOKS[_cr_look])
+	hud.hide_creator()
+	player.visible = true
+	phase = Phase.TAVERN
+	sfx.play("crit", -6.0)
+	save_hero()
+	_want_custom = false
+	_on_hero_loaded([JSON.stringify(hero.to_dict())])
+	banner(hero.name.to_upper(), Color(1, 0.85, 0.4))
 
 
 func _hero_arg() -> String:
@@ -256,10 +380,14 @@ func _load_hero() -> void:
 		_cb_load = JavaScriptBridge.create_callback(_on_hero_loaded)
 		_cb_save = JavaScriptBridge.create_callback(_on_hero_saved)
 		_cb_who = JavaScriptBridge.create_callback(_on_whoami)
-		if _hero_arg() != "":
+		if _hero_arg() == "custom":
+			_load_custom()
+		elif _hero_arg() != "":
 			_load_hero_key(_hero_arg())
 		else:
 			_bridge.whoami(_cb_who)
+	elif _hero_arg() == "custom":
+		_load_custom()   # test switch: --hero=custom plays (or creates) your own character
 	else:
 		_load_hero_key(_hero_arg() if Kits.has(_hero_arg()) else "boarvhal")
 
@@ -298,6 +426,9 @@ func _on_hero_loaded(args: Array) -> void:
 		var d = JSON.parse_string(str(args[0]))
 		if typeof(d) == TYPE_DICTIONARY:
 			hero.load_dict(d)
+	if _want_custom and not hero.custom:
+		_open_creator()   # no character yet: make one
+		return
 	hero.quest_given = hero.quest_given or heard   # you, the player, already heard the Stranger
 	hero.sewer_quest = hero.sewer_quest or heard2
 	save_mode = str(_bridge.mode()) if _bridge else "local"
@@ -307,11 +438,11 @@ func _on_hero_loaded(args: Array) -> void:
 	player.apply_hero(hero)
 	player.hp = player.max_hp
 	player.hp_changed.emit()
-	inn.set_playing(hero.key)
+	inn.set_playing("" if hero.custom else hero.key)
 	hud.set_hero_hints(hero.key)
 	if first and phase == Phase.TAVERN:
 		# Every hero starts the day in their own room.
-		var rs: Array = inn.room_spawn(hero.key)
+		var rs: Array = ["taproom", "door"] if hero.custom else inn.room_spawn(hero.key)
 		if _arg_value("map") != "":
 			rs = [_arg_value("map"), _arg_value("spawn")]   # test switch: ?map=taproom&spawn=door
 		inn.go(rs[0], rs[1])
@@ -431,7 +562,7 @@ func save_hero() -> void:
 	if _bridge:
 		_bridge.saveDoc("vd_heroes", hero.id, json, _cb_save)
 	elif not bot:
-		var f := FileAccess.open("user://hero.json" if hero.key == "boarvhal" else "user://hero_%s.json" % hero.key, FileAccess.WRITE)
+		var f := FileAccess.open("user://hero_custom.json" if hero.custom else ("user://hero.json" if hero.key == "boarvhal" else "user://hero_%s.json" % hero.key), FileAccess.WRITE)
 		if f:
 			f.store_string(json)
 
@@ -460,7 +591,7 @@ func _tavern_options() -> Array:
 		tier_txt = "Difficulty: %s (%s)%s" % [Creatures.TIERS[hero.tier].name, Creatures.TIERS[hero.tier].levels, "  - press to change" if hero.tier_unlocked > 1 else "  - clear it to unlock Tier II"]
 	return [
 		["Descend into the %s" % biome(), "start"],
-		["Hero: %s  - press to change" % hero.short(), "hero"],
+		["Hero: %s  (your own character)" % hero.short() if hero.custom else "Hero: %s  - press to change" % hero.short(), "hero"],
 		[tier_txt, "tier"],
 		["Buy a Potion of Healing (%d gp)" % POTION_PRICE, "potion"],
 		["Back to the taproom", "back"],
@@ -521,6 +652,9 @@ func _tavern_input() -> void:
 			"start":
 				_start_run()
 			"hero":
+				if hero.custom:
+					toast("This is your own character.")
+					return
 				save_hero()
 				var i := Kits.ORDER.find(hero.key)
 				_load_hero_key(Kits.ORDER[(i + 1) % Kits.ORDER.size()])
@@ -598,7 +732,8 @@ func _start_run() -> void:
 	player.hp_changed.emit()
 	hud.set_hero_hints(hero.key)
 	_clear_companions()
-	party.erase(hero.key)
+	if not hero.custom:
+		party.erase(hero.key)
 	for i in party.size():
 		var c := Companion.make(self, party[i], hero.level, i)
 		companions.append(c)
@@ -730,7 +865,7 @@ func on_inn_map(w: World, at: Vector2) -> void:
 	hud.set_room(w.map.get("title", "THE GRYPHON'S ROOST INN - WATERDEEP"))
 	_set_camera_limits()
 	_snap_view()
-	inn.set_playing(hero.key)
+	inn.set_playing("" if hero.custom else hero.key)
 	if inn.dm:
 		inn.dm.set_marker(_dm_has_quest())
 
@@ -789,7 +924,7 @@ func _enter_inn(at_cellar := false) -> void:
 	if at_cellar:
 		inn.go("cellar", "grate" if delve == "sewer" else "breach")
 	else:
-		var rs: Array = inn.room_spawn(hero.key)
+		var rs: Array = ["taproom", "door"] if hero.custom else inn.room_spawn(hero.key)
 		if _arg_value("map") != "" and not has_meta("map_used"):
 			set_meta("map_used", true)
 			rs = [_arg_value("map"), _arg_value("spawn")]   # test switch: ?map=taproom&spawn=door
@@ -1043,6 +1178,8 @@ func _process(delta: float) -> void:
 			_update_talk()
 		Phase.CARD:
 			_tavern_input()
+		Phase.CREATE:
+			_creator_input()
 		Phase.DOORS:
 			_doors_input()
 		Phase.RUN:
@@ -1565,6 +1702,12 @@ func _bot(delta: float) -> void:
 	for a in ["move_left", "move_right", "move_up", "move_down", "attack", "dodge", "rage", "confirm", "interact", "potion", "form"]:
 		Input.action_release(a)
 	match phase:
+		Phase.CREATE:
+			hud.cr_name.text = "Testa Brightblade"
+			_cr_kit = 1
+			_cr_look = 4
+			_finish_creation()
+			return
 		Phase.CARD, Phase.DOORS, Phase.OVER:
 			if int(_bot_t * 4) % 2 == 0:
 				Input.action_press("confirm")

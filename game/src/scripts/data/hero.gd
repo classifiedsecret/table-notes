@@ -28,8 +28,26 @@ var sewer_tier_unlocked := 4
 var tier := 1
 
 
-## Which party member this is (see Kits.ORDER).
+## Which party member this is (see Kits.ORDER). A created character borrows a party member's
+## class kit (their key) but has their own name and look.
 var key := "boarvhal"
+var custom := false
+var custom_name := ""
+var look := ""          # sprite for a created character, e.g. "look_elf_f"
+
+const CLASS_NAMES := {"boarvhal": "Barbarian", "ceridwen": "Wizard", "erwar": "Cleric", "lyburnum": "Paladin", "suilean": "Druid"}
+const LOOKS := ["look_elf_f", "look_elf_m", "look_dwarf_f", "look_dwarf_m", "look_knight_f", "look_knight_m",
+	"look_lizard_f", "look_lizard_m", "look_wizzard_m"]
+
+
+## Makes this a created character with a class kit, a name and a look.
+func make_custom(kit_key: String, nm: String, look_name: String) -> void:
+	key = kit_key if Kits.has(kit_key) else "boarvhal"
+	custom = true
+	custom_name = nm.strip_edges().substr(0, 18) if nm.strip_edges() != "" else "Adventurer"
+	look = look_name if LOOKS.has(look_name) else LOOKS[0]
+	name = custom_name
+	title = CLASS_NAMES[key]
 
 
 func set_key(k: String) -> void:
@@ -39,10 +57,17 @@ func set_key(k: String) -> void:
 
 
 func short() -> String:
-	return Kits.info(key).short
+	return custom_name if custom else Kits.info(key).short
+
+
+## The sprite strip this hero is drawn with.
+func sprite() -> String:
+	return look if custom and look != "" else str(Kits.info(key).sprite)
 
 
 func pronoun(which: String) -> String:
+	if custom:
+		return {"he": "they", "his": "their", "him": "them"}.get(which, "they")
 	return Kits.info(key).get(which, "they")
 
 
@@ -87,6 +112,9 @@ func has_extra_attack() -> bool:
 func combat_stats() -> Dictionary:
 	var s := Kits.stats(key, level)
 	s.name = name
+	if custom:
+		s.short = custom_name
+		s.title = "%s %d" % [CLASS_NAMES[key], level]
 	return s
 
 
@@ -108,7 +136,8 @@ func to_dict() -> Dictionary:
 	return {"id": id, "owner": owner, "name": name, "level": level, "xp": xp, "gold": gold, "potions": potions,
 		"runs": runs, "clears": clears, "deaths": deaths, "kills": kills, "best_depth": best_depth,
 		"nat20s": nat20s, "biggest_hit": biggest_hit, "tier_unlocked": tier_unlocked, "tier": tier, "quest_given": quest_given, "sewer_quest": sewer_quest,
-		"sewer_tier": sewer_tier, "sewer_tier_unlocked": sewer_tier_unlocked, "class": key, "updated": Time.get_unix_time_from_system()}
+		"sewer_tier": sewer_tier, "sewer_tier_unlocked": sewer_tier_unlocked, "class": key,
+		"custom": custom, "custom_name": custom_name, "look": look, "updated": Time.get_unix_time_from_system()}
 
 
 func load_dict(d: Dictionary) -> void:
@@ -120,5 +149,7 @@ func load_dict(d: Dictionary) -> void:
 	sewer_quest = bool(d.get("sewer_quest", false))
 	sewer_tier = clampi(int(d.get("sewer_tier", 4)), 4, 6)
 	sewer_tier_unlocked = clampi(int(d.get("sewer_tier_unlocked", 4)), 4, 6)
+	if bool(d.get("custom", false)):
+		make_custom(str(d.get("class", "boarvhal")), str(d.get("custom_name", "Adventurer")), str(d.get("look", "")))
 	tier_unlocked = clampi(tier_unlocked, 1, 3)
 	tier = clampi(tier, 1, tier_unlocked)
