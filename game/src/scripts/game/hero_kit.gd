@@ -75,7 +75,7 @@ func long_rest() -> void:
 func _roll_foresight() -> void:
 	foresight = [game.dice.die(20), game.dice.die(20)]
 	foresight_armed = -1
-	game.log_line("Foresight: Ceridwen glimpses %d and %d. Press U to ready one." % [foresight[0], foresight[1]])
+	game.log_line("Foresight: Ceridwen glimpses %d and %d. Press I to ready one." % [foresight[0], foresight[1]])
 
 
 ## Campfire short rest: Channel Divinity and Wild Shape come back.
@@ -111,7 +111,7 @@ func press(slot: String) -> void:
 			game.toast("%s unlocks at level %d." % [lock[1], lock[0]])
 		return
 	if form != "" and id not in ["bear", "spider"]:
-		game.toast("Beasts can't cast spells. Press U or Y to change back.")
+		game.toast("Beasts can't cast spells. Press I or Y to change back.")
 		return
 	if _cast_t > 0.0:
 		return
@@ -123,7 +123,7 @@ func press(slot: String) -> void:
 			if is_instance_valid(p.echo):
 				p.command_echo(p.echo.global_position + p.aim * Player.ECHO_RANGE_PX)
 			else:
-				game.toast("No echo to command. Press U to make one.")
+				game.toast("No echo to command. Press I to make one.")
 		"magic_missile": _magic_missile()
 		"scorching_ray": _scorching_ray()
 		"foresight": _cycle_foresight()
@@ -454,7 +454,7 @@ func _moonbeam() -> void:
 	p.cast_pose()
 	concentration = SpellZone.make(game, self, SpellZone.Kind.MOONBEAM, at, 30.0)
 	concentration.half_w = 16.0
-	game.log_line("Moonbeam: a silver beam (Constitution save DC %d, 2d10 radiant, half on a success). Press R again to move it." % s.spell_dc)
+	game.log_line("Moonbeam: a silver beam (Constitution save DC %d, 2d10 radiant, half on a success). Press L again to move it." % s.spell_dc)
 	game.sfx.play("dodge", -6.0)
 
 

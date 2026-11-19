@@ -106,8 +106,9 @@ func _setup_input() -> void:
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT], "move_down": [KEY_S, KEY_DOWN],
 		"move_up": [KEY_W, KEY_UP],
 		"jump": [KEY_SPACE, KEY_W, KEY_UP], "attack": [KEY_J, KEY_Z], "dodge": [KEY_SHIFT, KEY_C],
-		"rage": [KEY_L, KEY_Q], "toggle_log": [KEY_TAB, KEY_I], "confirm": [KEY_ENTER, KEY_KP_ENTER],
-		"interact": [KEY_E, KEY_F], "potion": [KEY_H], "reckless": [KEY_R], "echo": [KEY_U],
+		# Spells and abilities sit on J (attack or cantrip), K, L and I.
+		"rage": [KEY_K, KEY_Q], "toggle_log": [KEY_TAB], "confirm": [KEY_ENTER, KEY_KP_ENTER],
+		"interact": [KEY_E, KEY_F], "potion": [KEY_H], "reckless": [KEY_L], "echo": [KEY_I],
 		"back": [KEY_ESCAPE, KEY_BACKSPACE], "test_down": [KEY_F2], "music": [KEY_M], "form": [KEY_Y],
 	}
 	var pads := {"jump": [JOY_BUTTON_A], "attack": [JOY_BUTTON_X], "dodge": [JOY_BUTTON_B],

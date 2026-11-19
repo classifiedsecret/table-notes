@@ -199,32 +199,32 @@ static func level_features(key: String, lv: int) -> String:
 	match key:
 		"ceridwen":
 			match lv:
-				2: return "Foresight (U): at the start of every delve you glimpse two d20 results. Press U to ready one; the next attack roll, yours or a foe's against you, uses that number."
-				3: return "Scorching Ray (R): three rays of fire, 2d6 each (2nd-level slot). Spell slots: 4 + 2."
+				2: return "Foresight (I): at the start of every delve you glimpse two d20 results. Press I to ready one; the next attack roll, yours or a foe's against you, uses that number."
+				3: return "Scorching Ray (L): three rays of fire, 2d6 each (2nd-level slot). Spell slots: 4 + 2."
 				4: return "Ability Score Improvement: Intelligence 18. +1 to spell attacks and save DCs."
 				5: return "Fire Bolt now deals 2d10. More spell slots (4 + 5)."
 		"erwar":
 			match lv:
-				2: return "War Blessing (U): ready it, and the next attack that would miss gains +10. Once per delve (a campfire restores it)."
-				3: return "Spiritual Weapon (R): a spectral mace fights beside you for a minute (2nd-level slot)."
+				2: return "War Blessing (I): ready it, and the next attack that would miss gains +10. Once per delve (a campfire restores it)."
+				3: return "Spiritual Weapon (L): a spectral mace fights beside you for a minute (2nd-level slot)."
 				4: return "Ability Score Improvement: Wisdom 18. Healing and the spectral mace hit harder."
 				5: return "More spell slots (4 + 5). Proficiency +3."
 		"lyburnum":
 			match lv:
-				2: return "Divine Smite (R toggles): hits spend a spell slot for +2d8 radiant. Defense fighting style: +1 AC."
-				3: return "Dread Aura (U): foes within 30 ft make a Wisdom save or flee in fear. Once per delve (a campfire restores it)."
+				2: return "Divine Smite (L toggles): hits spend a spell slot for +2d8 radiant. Defense fighting style: +1 AC."
+				3: return "Dread Aura (I): foes within 30 ft make a Wisdom save or flee in fear. Once per delve (a campfire restores it)."
 				4: return "Ability Score Improvement: Strength 18. +1 to hit and damage."
 				5: return "Extra Attack: much faster sword strikes. More smites."
 		"suilean":
 			match lv:
-				2: return "Wild Shape: U turns you into a black bear, Y into a giant wolf spider that climbs walls (hold toward a wall). Two uses per delve."
-				3: return "Moonbeam (R): a beam of moonlight scorches foes standing in it (2nd-level slot). Press R again to move it."
+				2: return "Wild Shape: I turns you into a black bear, Y into a giant wolf spider. Two uses per delve."
+				3: return "Moonbeam (L): a beam of moonlight scorches foes standing in it (2nd-level slot). Press L again to move it."
 				4: return "Ability Score Improvement: Wisdom 18. +1 to spell attacks and save DCs."
 				5: return "Thorn Whip now deals 2d6. More spell slots (4 + 5)."
 		_:
 			match lv:
-				2: return "Reckless Attack (R / right trigger): advantage on your attacks, but enemies get advantage on you. Danger Sense: advantage on Dexterity saves."
-				3: return "Echo (U): leave a shimmering double of yourself; goblins next to it are flanked. U again swaps places. Right-click (or Y) moves it anywhere; more than 30 ft from you and it fades. Rage uses: 3."
+				2: return "Reckless Attack (L / right trigger): advantage on your attacks, but enemies get advantage on you. Danger Sense: advantage on Dexterity saves."
+				3: return "Echo (I): leave a shimmering double of yourself; goblins next to it are flanked. I again swaps places. Right-click (or Y) moves it anywhere; more than 30 ft from you and it fades. Rage uses: 3."
 				4: return "Ability Score Improvement: Strength 19. +1 to hit and damage."
 				5: return "Extra Attack: much faster axe swings. Fast Movement: +10 ft speed. Proficiency +3."
 	return ""
@@ -236,9 +236,9 @@ static func hints(key: String) -> Array:
 	var tail := [["SHIFT", "DODGE ROLL"], ["E", "USE"], ["H", "POTION"], ["TAB", "ROLL LOG"], ["WHEEL", "MUSIC VOL"], ["ESC", "PAUSE"]]
 	var mid: Array = []
 	match key:
-		"ceridwen": mid = [["J", "FIRE BOLT"], ["L", "MAGIC MISSILE"], ["R", "SCORCHING RAY"], ["U", "FORESIGHT"]]
-		"erwar": mid = [["J", "MACE"], ["L", "HEALING WORD"], ["R", "SPIRIT WEAPON"], ["U", "WAR BLESSING"]]
-		"lyburnum": mid = [["J", "LONGSWORD"], ["L", "LAY ON HANDS"], ["R", "DIVINE SMITE"], ["U", "DREAD AURA"]]
-		"suilean": mid = [["J", "THORN WHIP"], ["L", "ENTANGLE"], ["R", "MOONBEAM"], ["U", "BEAR FORM"], ["Y", "SPIDER FORM"]]
-		_: mid = [["J/CLICK", "ATTACK"], ["L", "RAGE"], ["R", "RECKLESS"], ["U", "ECHO / SWAP"], ["Y/RMB", "MOVE ECHO"]]
+		"ceridwen": mid = [["J/CLICK", "FIRE BOLT"], ["K", "MAGIC MISSILE"], ["L", "SCORCHING RAY"], ["I", "FORESIGHT"]]
+		"erwar": mid = [["J/CLICK", "MACE"], ["K", "HEALING WORD"], ["L", "SPIRIT WEAPON"], ["I", "WAR BLESSING"]]
+		"lyburnum": mid = [["J/CLICK", "LONGSWORD"], ["K", "LAY ON HANDS"], ["L", "DIVINE SMITE"], ["I", "DREAD AURA"]]
+		"suilean": mid = [["J/CLICK", "THORN WHIP"], ["K", "ENTANGLE"], ["L", "MOONBEAM"], ["I", "BEAR FORM"], ["Y", "SPIDER FORM"]]
+		_: mid = [["J/CLICK", "ATTACK"], ["K", "RAGE"], ["L", "RECKLESS"], ["I", "ECHO / SWAP"], ["Y/RMB", "MOVE ECHO"]]
 	return head + mid + tail

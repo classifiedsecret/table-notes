@@ -792,7 +792,7 @@ func _try_potion() -> void:
 ## Free movement: command the echo anywhere; it glides there (it can float up, too).
 func command_echo(to: Vector2) -> void:
 	if not is_instance_valid(echo):
-		game.toast("No echo to command. Press U to make one.")
+		game.toast("No echo to command. Press I to make one.")
 		return
 	echo_target = to
 	game.sfx.play("dodge", -12.0, 0.4)
