@@ -52,7 +52,10 @@ const CAST := [
 		"Roll for initiative.",
 		"Are you sure you want to do that?",
 		"The cellar door creaks open. What do you do?",
-		"Make a Perception check. No, the other kind."]},
+		"Make a Perception check. No, the other kind.",
+		"*wears an evil grin and chuckles to himself*",
+		"...I told them it was a bad idea...",
+		"...the paladin used the bow..."]},
 ]
 
 ## Staff from Session Scribe's Business tab, matched by role. Fallbacks are used offline.
@@ -94,6 +97,9 @@ const CHATTER := [
 	[["npc_bard", "*strums a jaunty tune*"]],
 	[["npc_server", "Coming through!"]],
 	[["npc_dm", "*rolls a die behind a little screen*"]],
+	[["npc_dm", "*wears an evil grin and chuckles to himself*"]],
+	[["npc_dm", "...I told them it was a bad idea..."]],
+	[["npc_dm", "...the paladin used the bow..."]],
 	[["npc_suilean", "*snores softly*"]],
 	[["npc_orfi", "*breathes slowly*"]],
 	[["npc_galinnadin", "*counts coins that are not his*"]],
