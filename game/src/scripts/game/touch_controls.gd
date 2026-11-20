@@ -52,6 +52,7 @@ func _ready() -> void:
 	_button("interact", Vector2(458, 132), 13, "TALK")
 	_button("potion", Vector2(350, 212), 11, "POT")
 	_button("back", Vector2(14, 64), 9, "II")
+	_buttons["back"].node.process_mode = Node.PROCESS_MODE_ALWAYS   # also closes the pause menu
 	_button("toggle_log", Vector2(468, 104), 9, "LOG")
 
 
