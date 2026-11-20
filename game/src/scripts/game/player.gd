@@ -313,7 +313,7 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_just_pressed("dodge"):
 			_try_dodge(input)
 		# Space (or the gamepad's A): a quick hop. Spikes and arrows pass beneath you.
-		var space := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_joy_button_pressed(0, JOY_BUTTON_A)
+		var space := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_joy_button_pressed(0, JOY_BUTTON_A) or Input.is_action_pressed("hop")
 		if space and not _space_held and _hop_t <= 0.0 and (state == State.NORMAL or state == State.ATTACK):
 			_hop_t = HOP_TIME
 			game.sfx.play("jump", -10.0)
@@ -378,7 +378,7 @@ func _update_aim(input: Vector2, delta: float) -> void:
 		var mouse := get_global_mouse_position() - (global_position + Vector2(0, -10))
 		if stick.length() > 0.5:
 			aim = stick.normalized()
-		elif _mouse_aim and _mouse_idle < 1.5 and mouse.length() > 4.0:
+		elif _mouse_aim and not game.touch_mode and _mouse_idle < 1.5 and mouse.length() > 4.0:
 			aim = mouse.normalized()
 		elif input != Vector2.ZERO:
 			aim = input.normalized()
@@ -417,6 +417,12 @@ func _recovery() -> float:
 
 func _start_attack() -> void:
 	_attack_queued = false
+	if game.touch_mode:
+		# On a touchscreen, swings turn toward the nearest foe close by.
+		var near := nearest_enemy(56.0)
+		if near:
+			aim = (near.global_position - global_position).normalized()
+			facing = 1 if aim.x >= 0.0 else -1
 	_set_state(State.ATTACK)
 	_attack_phase = 0
 	_shot_done = false

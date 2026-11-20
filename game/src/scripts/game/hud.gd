@@ -382,7 +382,8 @@ func _build_creator() -> void:
 	cr_begin.size = Vector2(340, 16)
 	cr_begin.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	cr_rows.append(cr_begin)
-	var foot := _label(creator, Vector2(0, 184), "UP/DOWN: CHOOSE A LINE   LEFT/RIGHT: CHANGE   ENTER OR CLICK: BEGIN", 8, Color(0.6, 0.6, 0.66))
+	var foot_text := "TAP < > TO CHANGE   TAP BEGIN WHEN READY" if TouchControls.wanted() else "UP/DOWN: CHOOSE A LINE   LEFT/RIGHT: CHANGE   ENTER OR CLICK: BEGIN"
+	var foot := _label(creator, Vector2(0, 184), foot_text, 8, Color(0.6, 0.6, 0.66))
 	foot.size = Vector2(340, 10)
 	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	creator.visible = false
@@ -415,6 +416,17 @@ func hide_creator() -> void:
 	cr_name.release_focus()
 
 
+var touch_mode := false
+
+## On touch devices the key hints give way to the thumb stick, and the roll log moves up
+## out of the way of the buttons.
+func set_touch_mode(on: bool) -> void:
+	touch_mode = on
+	if hints:
+		hints.visible = not on
+	_set_log_open(log_open)
+
+
 func _show_hints(list: Array) -> void:
 	var ks: Array[String] = []
 	var acts: Array[String] = []
@@ -433,6 +445,8 @@ func _show_hints(list: Array) -> void:
 	hints.position.y = 266.0 - hints.size.y
 	hints.pivot_offset = Vector2(0, hints.size.y)   # shrinks toward the bottom-left corner
 	hints.scale = Vector2.ONE * UI_SCALE
+	if touch_mode:
+		hints.visible = false
 
 
 ## The hint list fades when the hero walks behind it.
@@ -498,6 +512,8 @@ func set_room(text: String) -> void:
 
 
 func prompt(text: String) -> void:
+	if touch_mode and text.begins_with("E: "):
+		text = "TALK: " + text.substr(3)
 	prompt_label.text = text
 	var w := 350.0 if _inn_mode else TOAST_W
 	prompt_label.custom_minimum_size = Vector2(w, 10)
@@ -538,6 +554,9 @@ func _set_log_open(on: bool) -> void:
 	log_panel.size = Vector2(190, h)
 	log_panel.position = Vector2(286, LOG_Y + LOG_SHUT_H - h)
 	log_panel.pivot_offset = Vector2(190, h)   # shrinks toward the bottom-right corner
+	if touch_mode:
+		log_panel.position = Vector2(286, 26)      # under the roll stats, clear of the buttons
+		log_panel.pivot_offset = Vector2(190, 0)
 	log_panel.scale = Vector2.ONE * UI_SCALE
 	log_label.visible = on
 	log_title.clip_text = true

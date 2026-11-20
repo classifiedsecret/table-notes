@@ -100,6 +100,8 @@ func _ready() -> void:
 	hud = Hud.new()
 	add_child(hud)
 	hud.build(self)
+	if TouchControls.wanted():
+		_enable_touch()
 	battle = preload("res://scripts/game/battle.gd").new()
 	add_child(battle)
 	music = Music.new()
@@ -130,6 +132,7 @@ func _setup_input() -> void:
 		"rage": [KEY_K, KEY_Q], "toggle_log": [KEY_TAB], "confirm": [KEY_ENTER, KEY_KP_ENTER],
 		"interact": [KEY_E, KEY_F], "potion": [KEY_H], "reckless": [KEY_L], "echo": [KEY_I],
 		"back": [KEY_ESCAPE, KEY_BACKSPACE], "test_down": [KEY_F2], "music": [KEY_M], "form": [KEY_Y],
+		"hop": [],   # Space is read directly; the touch HOP button presses this
 	}
 	var pads := {"jump": [JOY_BUTTON_A], "attack": [JOY_BUTTON_X], "dodge": [JOY_BUTTON_B],
 		"rage": [JOY_BUTTON_Y], "toggle_log": [JOY_BUTTON_BACK], "confirm": [JOY_BUTTON_START, JOY_BUTTON_A],
@@ -158,6 +161,24 @@ func _setup_input() -> void:
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
 	InputMap.action_add_event("attack", click)
+
+
+# ---------------- touch ----------------
+
+var touch_mode := false
+var touch: TouchControls
+
+## Phones and tablets: on-screen stick and buttons. A tap no longer attacks (it's a click for
+## menus, cards and the battle grid); the ATK button does.
+func _enable_touch() -> void:
+	touch_mode = true
+	touch = TouchControls.new()
+	touch.game = self
+	add_child(touch)
+	for ev in InputMap.action_get_events("attack"):
+		if ev is InputEventMouseButton:
+			InputMap.action_erase_event("attack", ev)
+	hud.set_touch_mode(true)
 
 
 # ---------------- mouse ----------------
@@ -1464,7 +1485,7 @@ func end_run(result: String) -> void:
 	save_hero()
 	_save_run_record(result if result == "cleared" else "died")
 	get_tree().create_timer(1.0).timeout.connect(func():
-		hud.show_center("VICTORY" if result == "cleared" else "RUN OVER", body + "\n\nPress Enter, Start or attack to return to the tavern."))
+		hud.show_center("VICTORY" if result == "cleared" else "RUN OVER", body + ("\n\nTap to return to the tavern." if touch_mode else "\n\nPress Enter, Start or attack to return to the tavern.")))
 
 
 func _on_player_died(reason: String) -> void:
