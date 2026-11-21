@@ -156,9 +156,16 @@ func _pos(cell: Vector2i) -> Vector2:
 	return Vector2(cell.x * T + 8.0, cell.y * T + 13.0)
 
 
-func _walkable(cell: Vector2i) -> bool:
+func _walkable(cell: Vector2i, wade := false) -> bool:
 	var r: World = game.room
+	if wade and _is_water(cell):
+		return true
 	return r.astar.is_in_boundsv(cell) and not r.astar.is_point_solid(cell)
+
+
+## Sewer water: party allies hop across it but can't end a move standing in it.
+func _is_water(cell: Vector2i) -> bool:
+	return (game.room as World).cell(cell) == "~"
 
 
 func _free_cell_near(cell: Vector2i) -> Vector2i:
@@ -179,7 +186,7 @@ func _free_cell_near(cell: Vector2i) -> Vector2i:
 
 ## Every square reachable within `steps` squares of movement (walls and furniture block;
 ## people can be passed through). Returns {cell: previous cell} for walking the path back.
-func _reach_map(from: Vector2i, steps: int) -> Dictionary:
+func _reach_map(from: Vector2i, steps: int, wade := false) -> Dictionary:
 	var prev := {from: from}
 	var dist := {from: 0}
 	var todo: Array[Vector2i] = [from]
@@ -192,15 +199,44 @@ func _reach_map(from: Vector2i, steps: int) -> Dictionary:
 				if dx == 0 and dy == 0:
 					continue
 				var n := c + Vector2i(dx, dy)
-				if dist.has(n) or not _walkable(n):
+				if dist.has(n) or not _walkable(n, wade):
 					continue
 				# No cutting a corner past a wall.
-				if dx != 0 and dy != 0 and (not _walkable(c + Vector2i(dx, 0)) or not _walkable(c + Vector2i(0, dy))):
+				if dx != 0 and dy != 0 and (not _walkable(c + Vector2i(dx, 0), wade) or not _walkable(c + Vector2i(0, dy), wade)):
 					continue
 				dist[n] = dist[c] + 1
 				prev[n] = c
 				todo.append(n)
 	return prev
+
+
+## Walking distance (in squares) from every reachable square to `to`, going around
+## water and walls. Used so movers head for the bridge instead of the near bank.
+func _walk_field(to: Vector2i, wade := false) -> Dictionary:
+	var dist := {to: 0}
+	var todo: Array[Vector2i] = [to]
+	var i := 0
+	while i < todo.size():
+		var c: Vector2i = todo[i]
+		i += 1
+		for dy in [-1, 0, 1]:
+			for dx in [-1, 0, 1]:
+				if dx == 0 and dy == 0:
+					continue
+				var n := c + Vector2i(dx, dy)
+				if dist.has(n) or not _walkable(n, wade):
+					continue
+				if dx != 0 and dy != 0 and (not _walkable(c + Vector2i(dx, 0), wade) or not _walkable(c + Vector2i(0, dy), wade)):
+					continue
+				dist[n] = dist[c] + 1
+				todo.append(n)
+	return dist
+
+
+## How far a square is from a target for movement purposes: walking distance when
+## there is a route, otherwise straight-line distance plus a big penalty.
+static func _gap(field: Dictionary, cell: Vector2i, to: Vector2i) -> int:
+	return int(field[cell]) if field.has(cell) else _d(cell, to) + 1000
 
 
 func _path(prev: Dictionary, to: Vector2i) -> Array[Vector2i]:
@@ -1458,13 +1494,14 @@ func _ally_turn(c: Dictionary) -> void:
 	foes.sort_custom(func(a, b): return _d(a.col, c.col) < _d(b.col, c.col))
 	var t: Dictionary = foes[0]
 	if _d(t.col, c.col) > reach or (reach > 1 and not _sees(c.col, t.col)):
-		var opts := _reach_map(c.col, int(ally.stats.speed_ft) / 5)
+		var opts := _reach_map(c.col, int(ally.stats.speed_ft) / 5, true)
+		var field := _walk_field(t.col, true)
 		var dest: Vector2i = c.col
-		var best := 9999
+		var best := 99999
 		for cell in opts:
-			if _occupied(cell, c):
+			if _occupied(cell, c) or _is_water(cell):
 				continue
-			var score := _d(cell, t.col) * 10 + _path(opts, cell).size()
+			var score := _gap(field, cell, t.col) * 10 + _path(opts, cell).size()
 			if _d(cell, t.col) <= reach and (reach <= 1 or _sees(cell, t.col)):
 				score = _path(opts, cell).size()
 			if score < best:
@@ -1521,12 +1558,14 @@ func _end_foe_turn(c: Dictionary) -> void:
 
 func _foe_move_toward(c: Dictionary, hc: Dictionary, reach: int) -> void:
 	var opts := _reach_map(c.col, 6)
+	var field := _walk_field(hc.col)
 	var target: Vector2i = c.col
-	var best := 9999
+	var best := 99999
 	for cell in opts:
 		if _occupied(cell, c):
 			continue
-		var score := maxi(0, _d(cell, hc.col) - reach) * 10 + _path(opts, cell).size()
+		var gap := 0 if _d(cell, hc.col) <= reach else _gap(field, cell, hc.col)
+		var score := gap * 10 + _path(opts, cell).size()
 		if score < best:
 			best = score
 			target = cell
